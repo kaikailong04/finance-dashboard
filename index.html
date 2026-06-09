@@ -563,13 +563,11 @@ const DEFAULT_GOALS = {
 
 const DEFAULT_NETWORTH = {
   accounts: {
-    checking:   0,
-    hysa:       0,
-    rothIRA:    0,
-    ira401k:    0,
-    brokerage:  0,
-    creditCard: 0,
-    loans:      0,
+    checking:   0,   // editable here
+    brokerage:  0,   // editable here
+    creditCard: 0,   // editable here
+    loans:      0,   // editable here
+    // hysa / rothIRA / ira401k come from fd_goals (single source of truth)
   },
   history: [],
 };
@@ -1538,36 +1536,91 @@ function HBar({ label, value, max, color }) {
 
 function SvgLine({ history }) {
   if (history.length < 2) return (
-    <div className="chart-wrap chart-empty">Save 2+ monthly snapshots to see trend</div>
+    <div className="chart-wrap" style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:100}}>
+      <span style={{color:'var(--t3)',fontSize:'.75rem'}}>Save 2+ monthly snapshots to see the trend</span>
+    </div>
   );
-  const W=600, H=100, PAD=28;
+
+  // Layout constants
+  const VW=560, VH=160, PL=58, PR=10, PT=10, PB=32;
+  const IW = VW-PL-PR, IH = VH-PT-PB;
+
   const vals = history.map(h=>h.netWorth);
-  const minV = Math.min(...vals);
-  const maxV = Math.max(...vals);
+  const rawMin = Math.min(...vals);
+  const rawMax = Math.max(...vals);
+  // Always include 0 so the zero line is visible
+  const minV = Math.min(rawMin, 0);
+  const maxV = Math.max(rawMax, 0) || 1;
   const range = maxV - minV || 1;
-  const pts = history.map((h,i) => ({
-    x: (i/(history.length-1))*W,
-    y: H - ((h.netWorth-minV)/range)*H,
-    month: h.month,
-  }));
-  const line = pts.map(p=>`${p.x},${p.y}`).join(' ');
-  const fill = `0,${H} ${line} ${W},${H}`;
+
+  const toX = i  => PL + (history.length > 1 ? (i/(history.length-1)) : 0.5) * IW;
+  const toY = v  => PT + IH - ((v - minV) / range) * IH;
+
+  const pts = history.map((h,i) => ({ x:toX(i), y:toY(h.netWorth), month:h.month, val:h.netWorth }));
+  const lineStr  = pts.map(p=>`${p.x},${p.y}`).join(' ');
+  const fillStr  = `${pts[0].x},${toY(0)} ${lineStr} ${pts[pts.length-1].x},${toY(0)}`;
+
   const up = vals[vals.length-1] >= vals[0];
-  const stroke = up ? '#22c55e' : '#ef4444';
-  const fillClr = up ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.1)';
+  const stroke   = up ? '#22c55e' : '#ef4444';
+  const fillClr  = up ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)';
+
+  // Y-axis: 3 evenly spaced labels
+  const yTicks = [maxV, (maxV+minV)/2, minV];
+  const fmtY = v => {
+    const abs = Math.abs(v);
+    const sign = v < 0 ? '-' : '';
+    if (abs >= 1000000) return `${sign}$${(abs/1000000).toFixed(1)}M`;
+    if (abs >= 1000)    return `${sign}$${(abs/1000).toFixed(0)}k`;
+    return `${sign}$${abs.toFixed(0)}`;
+  };
+
+  // X-axis labels — skip every other if crowded
+  const fmtX = m => {
+    const [y,mo] = m.split('-');
+    return new Date(+y,+mo-1,1).toLocaleDateString('en-US',{month:'short'})+" '"+String(+y).slice(2);
+  };
+
+  // Zero line (only if range spans positive and negative)
+  const showZero = minV < 0 && maxV > 0;
+
   return (
     <div className="chart-wrap">
-      <svg viewBox={`0 0 ${W} ${H+PAD}`} style={{width:'100%',display:'block'}}>
-        <polygon points={fill} fill={fillClr} />
-        <polyline points={line} fill="none" stroke={stroke} strokeWidth="2.5" />
-        {pts.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r="5" fill={stroke} />)}
+      <svg viewBox={`0 0 ${VW} ${VH}`} style={{width:'100%',display:'block'}}>
+        {/* Horizontal grid lines at each y-tick */}
+        {yTicks.map((v,i) => (
+          <line key={i} x1={PL} y1={toY(v)} x2={VW-PR} y2={toY(v)}
+            stroke="#222" strokeWidth="1" strokeDasharray="3,5" />
+        ))}
+        {/* Zero line (bolder when range crosses zero) */}
+        {showZero && (
+          <line x1={PL} y1={toY(0)} x2={VW-PR} y2={toY(0)}
+            stroke="#3f3f46" strokeWidth="1.5" />
+        )}
+        {/* Y-axis labels */}
+        {yTicks.map((v,i) => (
+          <text key={i} x={PL-6} y={toY(v)+5} textAnchor="end"
+            fill="#52525b" fontSize="17" fontFamily="Inter,system-ui,sans-serif">
+            {fmtY(v)}
+          </text>
+        ))}
+        {/* Fill area */}
+        <polygon points={fillStr} fill={fillClr} />
+        {/* Line */}
+        <polyline points={lineStr} fill="none" stroke={stroke} strokeWidth="2" />
+        {/* Dots */}
+        {pts.map((p,i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="4.5" fill={stroke} />
+        ))}
+        {/* X-axis labels */}
         {pts.map((p,i) => {
-          if (history.length > 7 && i % 2 !== 0) return null;
+          if (history.length > 8 && i % 2 !== 0) return null;
           const anchor = i===0 ? 'start' : i===pts.length-1 ? 'end' : 'middle';
-          return <text key={i} x={p.x} y={H+22} textAnchor={anchor}
-            fill="#52525b" fontSize="22" fontFamily="Inter,system-ui,sans-serif">
-            {p.month.slice(5)}
-          </text>;
+          return (
+            <text key={i} x={p.x} y={VH-4} textAnchor={anchor}
+              fill="#52525b" fontSize="17" fontFamily="Inter,system-ui,sans-serif">
+              {fmtX(p.month)}
+            </text>
+          );
         })}
       </svg>
     </div>
@@ -1575,19 +1628,29 @@ function SvgLine({ history }) {
 }
 
 // ── Net Worth page ────────────────────────────────────────────────────────
-function NetWorth({ netWorth, setNetWorth, transactions, goals, settings }) {
+function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settings }) {
   const acc  = netWorth.accounts || {};
   const hist = netWorth.history  || [];
 
-  const totalAssets = (acc.checking||0)+(acc.hysa||0)+(acc.rothIRA||0)+(acc.ira401k||0)+(acc.brokerage||0);
-  const totalLiab   = (acc.creditCard||0)+(acc.loans||0);
+  // ── Balances: HYSA / Roth / 401k come from fd_goals (single source of truth)
+  const hysaBal  = goals.hysaBalance   || 0;
+  const rothBal  = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
+  const k401Bal  = goals.ira401kBalance || 0;
+
+  // Setters that write back to fd_goals
+  const setHYSA  = v => setGoals(g => ({ ...g, hysaBalance:   v }));
+  const setRoth  = v => setGoals(g => ({ ...g, rothIRAOverride: v }));
+  const set401k  = v => setGoals(g => ({ ...g, ira401kBalance: v }));
+
+  // Remaining accounts live in fd_networth
+  const setAcc   = (key, val) => setNetWorth(s => ({ ...s, accounts: { ...s.accounts, [key]: val } }));
+
+  const totalAssets = (acc.checking||0) + hysaBal + rothBal + k401Bal + (acc.brokerage||0);
+  const totalLiab   = (acc.creditCard||0) + (acc.loans||0);
   const nw          = totalAssets - totalLiab;
   const isPos       = nw >= 0;
 
-  const setAcc = (key, val) =>
-    setNetWorth(s => ({ ...s, accounts: { ...s.accounts, [key]: val } }));
-
-  // Snapshot logic
+  // ── Snapshot
   const now      = new Date();
   const monthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const hasMonth = hist.some(h => h.month === monthKey);
@@ -1597,45 +1660,43 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, settings }) {
     setNetWorth(s => ({
       ...s,
       history: [...s.history.filter(h=>h.month!==monthKey), entry]
-        .sort((a,b)=>a.month.localeCompare(b.month)),
+        .sort((a,b) => a.month.localeCompare(b.month)),
     }));
   };
 
-  const delSnapshot = m => setNetWorth(s => ({ ...s, history:s.history.filter(h=>h.month!==m) }));
+  const delSnapshot = m => setNetWorth(s => ({ ...s, history: s.history.filter(h=>h.month!==m) }));
 
-  // Spending by category (all time)
+  // ── Spending by category (all time)
   const catSpend = {};
   for (const t of transactions.filter(t=>t.type==='expense'))
     catSpend[t.category] = (catSpend[t.category]||0) + t.amount;
-  const topCats    = Object.entries(catSpend).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const topCats     = Object.entries(catSpend).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const maxCatSpend = topCats[0]?.[1] || 1;
-
-  const CAT_COLOR = {housing:'var(--blue)',groceries:'var(--green)',gas:'var(--yellow)',
+  const CAT_COLOR   = {housing:'var(--blue)',groceries:'var(--green)',gas:'var(--yellow)',
     dining:'#f97316',shopping:'var(--purple)',travel:'#06b6d4',utilities:'var(--yellow)',
     savings:'var(--green)',other:'var(--t3)'};
 
-  // Asset bars (only non-zero)
+  // ── Asset breakdown bars (non-zero only)
   const assetBars = [
-    {label:'Checking',  val:acc.checking||0,  color:'var(--blue)'  },
-    {label:'HYSA',      val:acc.hysa||0,       color:'var(--green)' },
-    {label:'Roth IRA',  val:acc.rothIRA||0,    color:'var(--purple)'},
-    {label:'401(k)',    val:acc.ira401k||0,    color:'var(--yellow)'},
-    {label:'Brokerage', val:acc.brokerage||0,  color:'#06b6d4'      },
-  ].filter(a=>a.val>0);
+    {label:'Checking',  val:acc.checking||0, color:'var(--blue)'  },
+    {label:'HYSA',      val:hysaBal,          color:'var(--green)' },
+    {label:'Roth IRA',  val:rothBal,          color:'var(--purple)'},
+    {label:'401(k)',    val:k401Bal,          color:'var(--yellow)'},
+    {label:'Brokerage', val:acc.brokerage||0, color:'#06b6d4'      },
+  ].filter(a => a.val > 0);
 
-  // Goal progress
-  const rothBal   = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
-  const goalRows  = [
-    {label:`HYSA — ${currency(goals.hysaBalance||0)} / ${currency(settings.hysaGoal)}`,        val:goals.hysaBalance||0,    max:settings.hysaGoal,          color:'var(--green)' },
-    {label:`Roth IRA — ${currency(rothBal)} / ${currency(settings.rothIRAYearlyLimit)}`,         val:rothBal,                 max:settings.rothIRAYearlyLimit, color:'var(--purple)'},
-    {label:`401(k) — ${currency(goals.ira401kBalance||0)} / ${currency(settings.ira401kYearlyMax)}`, val:goals.ira401kBalance||0, max:settings.ira401kYearlyMax,  color:'var(--yellow)'},
+  // ── Goal progress rows
+  const goalRows = [
+    {label:`HYSA — ${currency(hysaBal)} / ${currency(settings.hysaGoal)}`,                                     val:hysaBal,  max:settings.hysaGoal,           color:'var(--green)' },
+    {label:`Roth IRA — ${currency(rothBal)} / ${currency(settings.rothIRAYearlyLimit)}`,                        val:rothBal,  max:settings.rothIRAYearlyLimit,  color:'var(--purple)'},
+    {label:`401(k) — ${currency(k401Bal)} / ${currency(settings.ira401kYearlyMax)}`,                            val:k401Bal,  max:settings.ira401kYearlyMax,    color:'var(--yellow)'},
   ];
 
-  // History with change delta
+  // ── History with deltas
   const histWithDelta = hist.map((h,i) => {
-    const prev   = hist[i-1];
-    const delta  = prev ? h.netWorth - prev.netWorth : null;
-    const deltaPct = prev && prev.netWorth !== 0 ? (delta/Math.abs(prev.netWorth))*100 : null;
+    const prev      = hist[i-1];
+    const delta     = prev ? h.netWorth - prev.netWorth : null;
+    const deltaPct  = prev && prev.netWorth !== 0 ? (delta/Math.abs(prev.netWorth))*100 : null;
     return { ...h, delta, deltaPct };
   });
 
@@ -1658,10 +1719,10 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, settings }) {
         </button>
       </div>
 
-      {/* Hero stat */}
+      {/* Hero */}
       <div className="stat" style={{
-        borderColor:isPos?'rgba(34,197,94,.25)':'rgba(239,68,68,.25)',
-        background: isPos?'rgba(34,197,94,.04)':'rgba(239,68,68,.04)',
+        borderColor: isPos?'rgba(34,197,94,.25)':'rgba(239,68,68,.25)',
+        background:  isPos?'rgba(34,197,94,.04)':'rgba(239,68,68,.04)',
       }}>
         <div className="stat-label">Net Worth</div>
         <div className="stat-val" style={{color:isPos?'var(--green)':'var(--red)',fontSize:'2.6rem'}}>{currency(nw)}</div>
@@ -1680,27 +1741,54 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, settings }) {
         </div>
       </div>
 
-      {/* Account inputs — Assets */}
+      {/* Account balances — Assets */}
       <div className="card">
         <div className="card-label">Assets</div>
-        <AccountRow label="Checking"               color="var(--blue)"   value={acc.checking}   onChange={v=>setAcc('checking',v)} />
-        <AccountRow label="HYSA / Emergency Fund"  color="var(--green)"  value={acc.hysa}       onChange={v=>setAcc('hysa',v)} />
-        <AccountRow label="Roth IRA"               color="var(--purple)" value={acc.rothIRA}    onChange={v=>setAcc('rothIRA',v)} />
-        <AccountRow label="401(k)"                 color="var(--yellow)" value={acc.ira401k}    onChange={v=>setAcc('ira401k',v)} />
-        <AccountRow label="Taxable Brokerage"      color="#06b6d4"       value={acc.brokerage}  onChange={v=>setAcc('brokerage',v)} />
+        <AccountRow label="Checking"              color="var(--blue)"   value={acc.checking||0} onChange={v=>setAcc('checking',v)} />
+        <AccountRow label="HYSA / Emergency Fund" color="var(--green)"  value={hysaBal}         onChange={setHYSA} />
+        <AccountRow label="Roth IRA"              color="var(--purple)" value={rothBal}          onChange={setRoth} />
+        <AccountRow label="401(k)"                color="var(--yellow)" value={k401Bal}          onChange={set401k} />
+        <AccountRow label="Taxable Brokerage"     color="#06b6d4"       value={acc.brokerage||0} onChange={v=>setAcc('brokerage',v)} />
+        <div style={{paddingTop:10,fontSize:'.65rem',color:'var(--t3)'}}>
+          HYSA, Roth IRA, and 401(k) are synced with the Goals page.
+        </div>
       </div>
 
-      {/* Account inputs — Liabilities */}
+      {/* Account balances — Liabilities */}
       <div className="card">
         <div className="card-label">Liabilities</div>
-        <AccountRow label="Credit Card"            color="var(--red)"    value={acc.creditCard} onChange={v=>setAcc('creditCard',v)} />
-        <AccountRow label="Loans / Other Debt"     color="#f97316"       value={acc.loans}      onChange={v=>setAcc('loans',v)} />
+        <AccountRow label="Credit Card"           color="var(--red)"  value={acc.creditCard||0} onChange={v=>setAcc('creditCard',v)} />
+        <AccountRow label="Loans / Other Debt"    color="#f97316"     value={acc.loans||0}      onChange={v=>setAcc('loans',v)} />
       </div>
 
-      {/* Net worth over time */}
+      {/* Net Worth Over Time chart */}
       <div className="card">
-        <div className="card-label">Net Worth Over Time</div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <div className="card-label" style={{margin:0}}>Net Worth Over Time</div>
+          {hist.length > 0 && (
+            <span style={{fontSize:'.65rem',color:'var(--t3)'}}>{hist.length} snapshot{hist.length!==1?'s':''}</span>
+          )}
+        </div>
         <SvgLine history={hist} />
+        {/* Latest snapshots below chart */}
+        {hist.length > 0 && (
+          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:14}}>
+            {[...hist].reverse().slice(0,6).map(h => (
+              <div key={h.month} style={{
+                background:'var(--s2)',border:'1px solid var(--border)',borderRadius:'var(--r-s)',
+                padding:'7px 12px',flex:'1',minWidth:80,
+              }}>
+                <div style={{fontSize:'.6rem',color:'var(--t3)',fontWeight:600,letterSpacing:'.08em',textTransform:'uppercase',marginBottom:3}}>
+                  {fmtMonth(h.month)}
+                </div>
+                <div style={{fontSize:'.9rem',fontWeight:700,fontVariantNumeric:'tabular-nums',
+                  color:h.netWorth>=0?'var(--green)':'var(--red)'}}>
+                  {currency(h.netWorth)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Assets breakdown */}
@@ -1716,7 +1804,8 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, settings }) {
         <div className="card">
           <div className="card-label">Spending by Category</div>
           {topCats.map(([cat,amt]) => (
-            <HBar key={cat} label={cat.charAt(0).toUpperCase()+cat.slice(1)} value={amt} max={maxCatSpend} color={CAT_COLOR[cat]||'var(--t3)'} />
+            <HBar key={cat} label={cat.charAt(0).toUpperCase()+cat.slice(1)}
+              value={amt} max={maxCatSpend} color={CAT_COLOR[cat]||'var(--t3)'} />
           ))}
         </div>
       )}
@@ -1739,7 +1828,7 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, settings }) {
         </div>
       </div>
 
-      {/* History */}
+      {/* History table */}
       {histWithDelta.length > 0 && (
         <div className="card">
           <div className="card-label">Monthly History</div>
@@ -1752,13 +1841,16 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, settings }) {
           {[...histWithDelta].reverse().map(h => (
             <div key={h.month} className="hist-row">
               <span style={{fontSize:'.8rem',fontWeight:500,color:'var(--t1)'}}>{fmtMonth(h.month)}</span>
-              <span className="hist-mono" style={{textAlign:'right',color:h.netWorth>=0?'var(--green)':'var(--red)'}}>
+              <span className="hist-mono" style={{textAlign:'right',
+                color:h.netWorth>=0?'var(--green)':'var(--red)'}}>
                 {currency(h.netWorth)}
               </span>
               <span className="hist-mono" style={{textAlign:'right',fontSize:'.72rem',
                 color:h.delta==null?'var(--t3)':h.delta>=0?'var(--green)':'var(--red)'}}>
                 {h.delta==null ? '—' : `${h.delta>=0?'+':''}${currency(h.delta)}`}
-                {h.deltaPct!=null && <span style={{color:'var(--t3)',marginLeft:3}}>({h.deltaPct>=0?'+':''}{h.deltaPct.toFixed(1)}%)</span>}
+                {h.deltaPct!=null && <span style={{color:'var(--t3)',marginLeft:3}}>
+                  ({h.deltaPct>=0?'+':''}{h.deltaPct.toFixed(1)}%)
+                </span>}
               </span>
               <button className="btn-icon btn-icon-del" style={{justifySelf:'end'}}
                 onClick={()=>delSnapshot(h.month)} title="Delete">✕</button>
@@ -1784,7 +1876,7 @@ function App() {
     spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} />,
     goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} />,
     commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} />,
-    networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} settings={settings} />,
+    networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} setGoals={setGoals} settings={settings} />,
     settings:   <Settings   settings={settings} setSettings={useCallback(s=>setSettings(s),[])} />,
   };
 
