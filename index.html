@@ -377,6 +377,41 @@ html{-webkit-text-size-adjust:100%}
 .nw-bar{height:5px;border-radius:99px;background:var(--s3);overflow:hidden;display:flex}
 .nw-seg{height:100%;transition:width .5s cubic-bezier(.4,0,.2,1)}
 
+/* Account input rows */
+.nw-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.nw-row:last-child{border-bottom:none}
+.nw-row-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.nw-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.nw-label{font-size:.84rem;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nw-input{
+  width:120px;background:var(--s2);border:1px solid var(--border2);
+  border-radius:var(--r-s);color:var(--t1);padding:5px 9px;
+  font-size:.84rem;text-align:right;outline:none;flex-shrink:0;
+  transition:border-color .15s,box-shadow .15s;font-feature-settings:'tnum';
+}
+.nw-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+
+/* Horizontal bar chart */
+.hbar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.hbar-row:last-child{margin-bottom:0}
+.hbar-label{width:110px;flex-shrink:0;color:var(--t2);font-size:.75rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbar-track{flex:1;height:5px;background:var(--s3);border-radius:99px;overflow:hidden}
+.hbar-fill{height:100%;border-radius:99px;transition:width .5s cubic-bezier(.4,0,.2,1);min-width:3px}
+.hbar-val{width:72px;text-align:right;flex-shrink:0;color:var(--t1);font-weight:600;font-variant-numeric:tabular-nums;font-size:.75rem}
+
+/* SVG line chart */
+.chart-wrap{background:var(--s2);border-radius:var(--r-s);padding:14px 10px 6px;overflow:hidden}
+.chart-empty{height:80px;display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:.75rem}
+
+/* History table */
+.hist-row{
+  display:grid;grid-template-columns:58px 1fr 1fr 28px;
+  padding:9px 0;border-bottom:1px solid var(--border);align-items:center;
+}
+.hist-row:last-child{border-bottom:none}
+.hist-head{font-size:.58rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)}
+.hist-mono{font-variant-numeric:tabular-nums;font-size:.78rem;font-weight:500}
+
 /* ── Settings ────────────────────────────────────────────────────────── */
 .settings-group{display:flex;flex-direction:column;gap:5px}
 .settings-group label{font-size:.58rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)}
@@ -524,8 +559,19 @@ const DEFAULT_GOALS = {
   hysaBalance:     0,
   ira401kBalance:  0,
   rothIRAOverride: null,
-  netWorthAssets:  {},
-  netWorthDebts:   {},
+};
+
+const DEFAULT_NETWORTH = {
+  accounts: {
+    checking:   0,
+    hysa:       0,
+    rothIRA:    0,
+    ira401k:    0,
+    brokerage:  0,
+    creditCard: 0,
+    loans:      0,
+  },
+  history: [],
 };
 
 function deepMerge(def, stored) {
@@ -568,12 +614,13 @@ function Bar({ value, max, color='var(--blue)', lg=false }) {
 }
 
 const TABS = [
-  { id:'dashboard', label:'Dashboard' },
-  { id:'budget',    label:'Budget'    },
-  { id:'spending',  label:'Spending'  },
-  { id:'goals',     label:'Goals'     },
-  { id:'commission',label:'Commission'},
-  { id:'settings',  label:'Settings'  },
+  { id:'dashboard', label:'Dashboard',  short:'Dash'   },
+  { id:'budget',    label:'Budget',     short:'Budget' },
+  { id:'spending',  label:'Spending',   short:'Spend'  },
+  { id:'goals',     label:'Goals',      short:'Goals'  },
+  { id:'commission',label:'Commission', short:'Comm'   },
+  { id:'networth',  label:'Net Worth',  short:'Worth'  },
+  { id:'settings',  label:'Settings',   short:'More'   },
 ];
 
 const CATEGORIES = [
@@ -1457,12 +1504,279 @@ function Settings({ settings, setSettings }) {
 }
 
 // ── App ────────────────────────────────────────────────────────────────
+// ── Net Worth helpers ─────────────────────────────────────────────────────
+function AccountRow({ label, color, value, onChange }) {
+  const [local, setLocal] = useState(String(value || ''));
+  useEffect(() => { setLocal(String(value || '')); }, [value]);
+  const commit = () => onChange(parseFloat(local) || 0);
+  return (
+    <div className="nw-row">
+      <div className="nw-row-left">
+        <div className="nw-dot" style={{background:color}} />
+        <span className="nw-label">{label}</span>
+      </div>
+      <input className="nw-input" type="number" min="0" step="0.01"
+        value={local}
+        onChange={e => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => e.key==='Enter' && e.target.blur()}
+      />
+    </div>
+  );
+}
+
+function HBar({ label, value, max, color }) {
+  const w = max > 0 ? Math.min((value/max)*100,100) : 0;
+  return (
+    <div className="hbar-row">
+      <div className="hbar-label">{label}</div>
+      <div className="hbar-track"><div className="hbar-fill" style={{width:`${w}%`,background:color}} /></div>
+      <div className="hbar-val">{currency(value)}</div>
+    </div>
+  );
+}
+
+function SvgLine({ history }) {
+  if (history.length < 2) return (
+    <div className="chart-wrap chart-empty">Save 2+ monthly snapshots to see trend</div>
+  );
+  const W=600, H=100, PAD=28;
+  const vals = history.map(h=>h.netWorth);
+  const minV = Math.min(...vals);
+  const maxV = Math.max(...vals);
+  const range = maxV - minV || 1;
+  const pts = history.map((h,i) => ({
+    x: (i/(history.length-1))*W,
+    y: H - ((h.netWorth-minV)/range)*H,
+    month: h.month,
+  }));
+  const line = pts.map(p=>`${p.x},${p.y}`).join(' ');
+  const fill = `0,${H} ${line} ${W},${H}`;
+  const up = vals[vals.length-1] >= vals[0];
+  const stroke = up ? '#22c55e' : '#ef4444';
+  const fillClr = up ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.1)';
+  return (
+    <div className="chart-wrap">
+      <svg viewBox={`0 0 ${W} ${H+PAD}`} style={{width:'100%',display:'block'}}>
+        <polygon points={fill} fill={fillClr} />
+        <polyline points={line} fill="none" stroke={stroke} strokeWidth="2.5" />
+        {pts.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r="5" fill={stroke} />)}
+        {pts.map((p,i) => {
+          if (history.length > 7 && i % 2 !== 0) return null;
+          const anchor = i===0 ? 'start' : i===pts.length-1 ? 'end' : 'middle';
+          return <text key={i} x={p.x} y={H+22} textAnchor={anchor}
+            fill="#52525b" fontSize="22" fontFamily="Inter,system-ui,sans-serif">
+            {p.month.slice(5)}
+          </text>;
+        })}
+      </svg>
+    </div>
+  );
+}
+
+// ── Net Worth page ────────────────────────────────────────────────────────
+function NetWorth({ netWorth, setNetWorth, transactions, goals, settings }) {
+  const acc  = netWorth.accounts || {};
+  const hist = netWorth.history  || [];
+
+  const totalAssets = (acc.checking||0)+(acc.hysa||0)+(acc.rothIRA||0)+(acc.ira401k||0)+(acc.brokerage||0);
+  const totalLiab   = (acc.creditCard||0)+(acc.loans||0);
+  const nw          = totalAssets - totalLiab;
+  const isPos       = nw >= 0;
+
+  const setAcc = (key, val) =>
+    setNetWorth(s => ({ ...s, accounts: { ...s.accounts, [key]: val } }));
+
+  // Snapshot logic
+  const now      = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const hasMonth = hist.some(h => h.month === monthKey);
+
+  const saveSnapshot = () => {
+    const entry = { month:monthKey, netWorth:nw, assets:totalAssets, liabilities:totalLiab };
+    setNetWorth(s => ({
+      ...s,
+      history: [...s.history.filter(h=>h.month!==monthKey), entry]
+        .sort((a,b)=>a.month.localeCompare(b.month)),
+    }));
+  };
+
+  const delSnapshot = m => setNetWorth(s => ({ ...s, history:s.history.filter(h=>h.month!==m) }));
+
+  // Spending by category (all time)
+  const catSpend = {};
+  for (const t of transactions.filter(t=>t.type==='expense'))
+    catSpend[t.category] = (catSpend[t.category]||0) + t.amount;
+  const topCats    = Object.entries(catSpend).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxCatSpend = topCats[0]?.[1] || 1;
+
+  const CAT_COLOR = {housing:'var(--blue)',groceries:'var(--green)',gas:'var(--yellow)',
+    dining:'#f97316',shopping:'var(--purple)',travel:'#06b6d4',utilities:'var(--yellow)',
+    savings:'var(--green)',other:'var(--t3)'};
+
+  // Asset bars (only non-zero)
+  const assetBars = [
+    {label:'Checking',  val:acc.checking||0,  color:'var(--blue)'  },
+    {label:'HYSA',      val:acc.hysa||0,       color:'var(--green)' },
+    {label:'Roth IRA',  val:acc.rothIRA||0,    color:'var(--purple)'},
+    {label:'401(k)',    val:acc.ira401k||0,    color:'var(--yellow)'},
+    {label:'Brokerage', val:acc.brokerage||0,  color:'#06b6d4'      },
+  ].filter(a=>a.val>0);
+
+  // Goal progress
+  const rothBal   = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
+  const goalRows  = [
+    {label:`HYSA — ${currency(goals.hysaBalance||0)} / ${currency(settings.hysaGoal)}`,        val:goals.hysaBalance||0,    max:settings.hysaGoal,          color:'var(--green)' },
+    {label:`Roth IRA — ${currency(rothBal)} / ${currency(settings.rothIRAYearlyLimit)}`,         val:rothBal,                 max:settings.rothIRAYearlyLimit, color:'var(--purple)'},
+    {label:`401(k) — ${currency(goals.ira401kBalance||0)} / ${currency(settings.ira401kYearlyMax)}`, val:goals.ira401kBalance||0, max:settings.ira401kYearlyMax,  color:'var(--yellow)'},
+  ];
+
+  // History with change delta
+  const histWithDelta = hist.map((h,i) => {
+    const prev   = hist[i-1];
+    const delta  = prev ? h.netWorth - prev.netWorth : null;
+    const deltaPct = prev && prev.netWorth !== 0 ? (delta/Math.abs(prev.netWorth))*100 : null;
+    return { ...h, delta, deltaPct };
+  });
+
+  const fmtMonth = m => {
+    const [y,mo] = m.split('-');
+    return new Date(+y,+mo-1,1).toLocaleDateString('en-US',{month:'short',year:'2-digit'});
+  };
+
+  return (
+    <div className="page">
+
+      {/* Header */}
+      <div className="page-top">
+        <div>
+          <div className="page-title">Net Worth</div>
+          <div className="page-sub">{now.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</div>
+        </div>
+        <button className="btn btn-primary btn-sm" onClick={saveSnapshot}>
+          {hasMonth ? 'Update Snapshot' : 'Save Snapshot'}
+        </button>
+      </div>
+
+      {/* Hero stat */}
+      <div className="stat" style={{
+        borderColor:isPos?'rgba(34,197,94,.25)':'rgba(239,68,68,.25)',
+        background: isPos?'rgba(34,197,94,.04)':'rgba(239,68,68,.04)',
+      }}>
+        <div className="stat-label">Net Worth</div>
+        <div className="stat-val" style={{color:isPos?'var(--green)':'var(--red)',fontSize:'2.6rem'}}>{currency(nw)}</div>
+        <div className="stat-sub">{currency(totalAssets)} assets − {currency(totalLiab)} liabilities</div>
+      </div>
+
+      {/* Assets / Liabilities */}
+      <div className="g2">
+        <div className="stat stat-green">
+          <div className="stat-label">Total Assets</div>
+          <div className="stat-val">{currency(totalAssets)}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Liabilities</div>
+          <div className="stat-val" style={{color:'var(--red)'}}>{currency(totalLiab)}</div>
+        </div>
+      </div>
+
+      {/* Account inputs — Assets */}
+      <div className="card">
+        <div className="card-label">Assets</div>
+        <AccountRow label="Checking"               color="var(--blue)"   value={acc.checking}   onChange={v=>setAcc('checking',v)} />
+        <AccountRow label="HYSA / Emergency Fund"  color="var(--green)"  value={acc.hysa}       onChange={v=>setAcc('hysa',v)} />
+        <AccountRow label="Roth IRA"               color="var(--purple)" value={acc.rothIRA}    onChange={v=>setAcc('rothIRA',v)} />
+        <AccountRow label="401(k)"                 color="var(--yellow)" value={acc.ira401k}    onChange={v=>setAcc('ira401k',v)} />
+        <AccountRow label="Taxable Brokerage"      color="#06b6d4"       value={acc.brokerage}  onChange={v=>setAcc('brokerage',v)} />
+      </div>
+
+      {/* Account inputs — Liabilities */}
+      <div className="card">
+        <div className="card-label">Liabilities</div>
+        <AccountRow label="Credit Card"            color="var(--red)"    value={acc.creditCard} onChange={v=>setAcc('creditCard',v)} />
+        <AccountRow label="Loans / Other Debt"     color="#f97316"       value={acc.loans}      onChange={v=>setAcc('loans',v)} />
+      </div>
+
+      {/* Net worth over time */}
+      <div className="card">
+        <div className="card-label">Net Worth Over Time</div>
+        <SvgLine history={hist} />
+      </div>
+
+      {/* Assets breakdown */}
+      {assetBars.length > 0 && (
+        <div className="card">
+          <div className="card-label">Assets Breakdown</div>
+          {assetBars.map(a => <HBar key={a.label} label={a.label} value={a.val} max={totalAssets} color={a.color} />)}
+        </div>
+      )}
+
+      {/* Spending by category */}
+      {topCats.length > 0 && (
+        <div className="card">
+          <div className="card-label">Spending by Category</div>
+          {topCats.map(([cat,amt]) => (
+            <HBar key={cat} label={cat.charAt(0).toUpperCase()+cat.slice(1)} value={amt} max={maxCatSpend} color={CAT_COLOR[cat]||'var(--t3)'} />
+          ))}
+        </div>
+      )}
+
+      {/* Goal progress */}
+      <div className="card">
+        <div className="card-label">Goal Progress</div>
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+          {goalRows.map(g => (
+            <div key={g.label}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:7}}>
+                <span style={{fontSize:'.78rem',color:'var(--t2)'}}>{g.label}</span>
+                <span style={{fontSize:'.78rem',fontWeight:600,color:g.color}}>
+                  {g.max>0 ? pct(Math.min((g.val/g.max)*100,100)) : '0.0%'}
+                </span>
+              </div>
+              <Bar value={g.val} max={g.max} color={g.color} lg />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* History */}
+      {histWithDelta.length > 0 && (
+        <div className="card">
+          <div className="card-label">Monthly History</div>
+          <div className="hist-row" style={{paddingBottom:8}}>
+            <span className="hist-head">Month</span>
+            <span className="hist-head" style={{textAlign:'right'}}>Net Worth</span>
+            <span className="hist-head" style={{textAlign:'right'}}>Change</span>
+            <span />
+          </div>
+          {[...histWithDelta].reverse().map(h => (
+            <div key={h.month} className="hist-row">
+              <span style={{fontSize:'.8rem',fontWeight:500,color:'var(--t1)'}}>{fmtMonth(h.month)}</span>
+              <span className="hist-mono" style={{textAlign:'right',color:h.netWorth>=0?'var(--green)':'var(--red)'}}>
+                {currency(h.netWorth)}
+              </span>
+              <span className="hist-mono" style={{textAlign:'right',fontSize:'.72rem',
+                color:h.delta==null?'var(--t3)':h.delta>=0?'var(--green)':'var(--red)'}}>
+                {h.delta==null ? '—' : `${h.delta>=0?'+':''}${currency(h.delta)}`}
+                {h.deltaPct!=null && <span style={{color:'var(--t3)',marginLeft:3}}>({h.deltaPct>=0?'+':''}{h.deltaPct.toFixed(1)}%)</span>}
+              </span>
+              <button className="btn-icon btn-icon-del" style={{justifySelf:'end'}}
+                onClick={()=>delSnapshot(h.month)} title="Delete">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [tab,setTab]           = useState('dashboard');
   const [settings,setSettings] = usePersist('fd_settings',    DEFAULT_SETTINGS);
   const [transactions,setTx]   = usePersist('fd_transactions', []);
   const [goals,setGoals]       = usePersist('fd_goals',        DEFAULT_GOALS);
   const [commissions,setComm]  = usePersist('fd_commissions',  []);
+  const [nwData,setNwData]     = usePersist('fd_networth',     DEFAULT_NETWORTH);
 
   const pages = {
     dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} />,
@@ -1470,6 +1784,7 @@ function App() {
     spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} />,
     goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} />,
     commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} />,
+    networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} settings={settings} />,
     settings:   <Settings   settings={settings} setSettings={useCallback(s=>setSettings(s),[])} />,
   };
 
@@ -1491,7 +1806,7 @@ function App() {
       <nav className="mobile-nav">
         {TABS.map(t=>(
           <button key={t.id} className={'mnav-btn'+(tab===t.id?' active':'')} onClick={()=>setTab(t.id)}>
-            {t.label}
+            {t.short}
           </button>
         ))}
       </nav>
