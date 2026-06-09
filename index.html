@@ -1,0 +1,1520 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!-- PWA / theme -->
+  <meta name="theme-color" content="#0a0a0a" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- iOS Safari PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Finance" />
+  <meta name="mobile-web-app-capable" content="yes" />
+
+  <!-- Generate apple-touch-icon as PNG via canvas (iOS requires PNG) -->
+  <script>
+  (function(){
+    try {
+      var sz = 180, r = 40;
+      var c = document.createElement('canvas');
+      c.width = c.height = sz;
+      var x = c.getContext('2d');
+      x.fillStyle = '#111111';
+      x.beginPath();
+      x.moveTo(r,0); x.lineTo(sz-r,0);
+      x.quadraticCurveTo(sz,0,sz,r);
+      x.lineTo(sz,sz-r);
+      x.quadraticCurveTo(sz,sz,sz-r,sz);
+      x.lineTo(r,sz);
+      x.quadraticCurveTo(0,sz,0,sz-r);
+      x.lineTo(0,r);
+      x.quadraticCurveTo(0,0,r,0);
+      x.closePath();
+      x.fill();
+      x.fillStyle = '#3b82f6';
+      x.font = 'bold 112px -apple-system,Helvetica Neue,sans-serif';
+      x.textAlign = 'center';
+      x.textBaseline = 'middle';
+      x.fillText('$', sz/2, sz/2 + 4);
+      var l = document.createElement('link');
+      l.rel = 'apple-touch-icon';
+      l.sizes = '180x180';
+      l.href = c.toDataURL('image/png');
+      document.head.appendChild(l);
+    } catch(e){}
+  })();
+  </script>
+
+  <title>Finance</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..900;1,14..32,300..900&display=swap" rel="stylesheet">
+  <style>
+:root {
+  --bg:      #0a0a0a;
+  --s1:      #111111;
+  --s2:      #161616;
+  --s3:      #1c1c1c;
+  --border:  #222222;
+  --border2: #2a2a2a;
+
+  --blue:    #3b82f6;
+  --blue-dk: #2563eb;
+  --blue-lt: rgba(59,130,246,.1);
+  --green:   #22c55e;
+  --green-lt:rgba(34,197,94,.1);
+  --red:     #ef4444;
+  --red-lt:  rgba(239,68,68,.1);
+  --yellow:  #eab308;
+  --yellow-lt:rgba(234,179,8,.08);
+  --purple:  #a78bfa;
+  --purple-lt:rgba(167,139,250,.1);
+
+  --t1: #ffffff;
+  --t2: #a1a1aa;
+  --t3: #52525b;
+  --t4: #3f3f46;
+
+  --r:   6px;
+  --r-s: 4px;
+
+  --shadow: 0 0 0 1px var(--border);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:16px}
+body{
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  background:var(--bg);color:var(--t1);
+  min-height:100dvh;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  font-feature-settings:'cv01','cv02','ss01','cv11';
+}
+button{cursor:pointer;font-family:inherit;transition:background .1s,color .1s,opacity .1s,transform .08s}
+input,select,textarea{font-family:inherit}
+/* Remove iOS blue tap flash */
+button,a,input,select{-webkit-tap-highlight-color:transparent}
+/* Prevent iOS text-size adjustment on rotate */
+html{-webkit-text-size-adjust:100%}
+
+/* ── Shell ──────────────────────────────────────────────────────────── */
+.app{display:flex;flex-direction:column;min-height:100dvh}
+
+.header{
+  position:sticky;top:0;z-index:100;
+  background:rgba(10,10,10,.94);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  /* Extend into the notch / Dynamic Island area */
+  padding-top:env(safe-area-inset-top);
+}
+.header-inner{
+  max-width:1040px;margin:0 auto;padding:0 28px;
+  height:50px;display:flex;align-items:center;justify-content:space-between;gap:24px;
+}
+.logo{
+  font-size:.875rem;font-weight:700;letter-spacing:-.03em;color:var(--t1);
+  white-space:nowrap;user-select:none;display:flex;align-items:center;gap:7px;
+}
+.logo-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--blue);flex-shrink:0;
+}
+
+/* Nav — underline style like Robinhood */
+.nav{display:flex;align-items:center;gap:0;border-bottom:none}
+.nav-btn{
+  background:none;border:none;
+  padding:0 14px;height:50px;
+  font-size:.775rem;font-weight:500;color:var(--t3);
+  white-space:nowrap;letter-spacing:.01em;
+  border-bottom:2px solid transparent;
+  transition:color .15s,border-color .15s;
+  position:relative;top:1px;
+}
+.nav-btn:hover{color:var(--t2)}
+.nav-btn.active{color:var(--t1);font-weight:600;border-bottom-color:var(--blue)}
+
+.main{flex:1;padding-bottom:64px}
+
+.mobile-nav{
+  display:none;position:fixed;bottom:0;left:0;right:0;
+  background:rgba(10,10,10,.97);
+  border-top:1px solid var(--border);z-index:100;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.mnav-btn{
+  flex:1;background:none;border:none;padding:10px 4px;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  color:var(--t3);transition:color .12s;font-size:.58rem;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;
+}
+.mnav-btn.active{color:var(--blue)}
+
+/* ── Page ───────────────────────────────────────────────────────────── */
+.page{
+  max-width:1040px;margin:0 auto;
+  padding:36px 28px 56px;
+  display:flex;flex-direction:column;gap:24px;
+}
+.page-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.page-title{font-size:1.25rem;font-weight:700;letter-spacing:-.035em;color:var(--t1);line-height:1.1}
+.page-sub{font-size:.72rem;color:var(--t3);margin-top:4px;letter-spacing:.01em}
+
+/* ── Badges ─────────────────────────────────────────────────────────── */
+.badge{
+  display:inline-flex;align-items:center;
+  padding:3px 8px;border-radius:var(--r-s);
+  font-size:.625rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+}
+.badge-blue  {background:var(--blue-lt);color:var(--blue);border:1px solid rgba(59,130,246,.2)}
+.badge-green {background:var(--green-lt);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.badge-yellow{background:var(--yellow-lt);color:var(--yellow);border:1px solid rgba(234,179,8,.2)}
+.badge-purple{background:var(--purple-lt);color:var(--purple);border:1px solid rgba(167,139,250,.2)}
+.badge-red   {background:var(--red-lt);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+
+/* ── Section label ──────────────────────────────────────────────────── */
+.slabel{
+  font-size:.6rem;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--t3);
+  padding-bottom:12px;display:flex;align-items:center;gap:10px;
+}
+.slabel::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── Cards ──────────────────────────────────────────────────────────── */
+.card{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--r);padding:22px 24px;
+}
+.card-label{
+  font-size:.6rem;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--t3);margin-bottom:14px;
+}
+
+/* ── Grids ───────────────────────────────────────────────────────────── */
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.g2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+
+/* ── Stat cards ──────────────────────────────────────────────────────── */
+.stat{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--r);padding:20px 22px;
+}
+.stat-label{
+  font-size:.58rem;font-weight:600;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--t3);margin-bottom:10px;
+}
+.stat-val{
+  font-size:1.85rem;font-weight:700;letter-spacing:-.05em;
+  font-variant-numeric:tabular-nums;color:var(--t1);line-height:1;
+}
+.stat-sub{font-size:.68rem;color:var(--t3);margin-top:6px}
+.stat-blue  .stat-val{color:var(--blue)}
+.stat-green .stat-val{color:var(--green)}
+.stat-red   .stat-val{color:var(--red)}
+
+/* ── Income equation ─────────────────────────────────────────────────── */
+.income-eq{
+  display:flex;align-items:stretch;
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;
+}
+.eq-item{flex:1;padding:20px 20px 18px;border-right:1px solid var(--border)}
+.eq-item:last-child{border-right:none;background:var(--blue-lt)}
+.eq-label{font-size:.58rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin-bottom:8px}
+.eq-num{font-size:1.5rem;font-weight:700;letter-spacing:-.04em;font-variant-numeric:tabular-nums;line-height:1}
+.eq-note{font-size:.62rem;color:var(--t3);margin-top:5px;line-height:1.4}
+.eq-op{
+  display:flex;align-items:center;justify-content:center;
+  padding:0 2px;color:var(--t4);font-size:.9rem;flex-shrink:0;
+}
+.c-blue  {color:var(--blue)}
+.c-green {color:var(--green)}
+.c-red   {color:var(--red)}
+.c-yellow{color:var(--yellow)}
+.c-muted {color:var(--t3)}
+
+/* ── Surplus ─────────────────────────────────────────────────────────── */
+.surplus{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:24px 28px;
+}
+.surplus-ok {border-color:rgba(34,197,94,.25);background:rgba(34,197,94,.04)}
+.surplus-over{border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.04)}
+.surplus-label{font-size:.58rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin-bottom:6px}
+.surplus-num{font-size:2.5rem;font-weight:700;letter-spacing:-.06em;font-variant-numeric:tabular-nums;line-height:1}
+.surplus-eq{font-size:.68rem;color:var(--t3);margin-top:6px}
+.surplus-right{text-align:right}
+.surplus-phase{font-size:.68rem;color:var(--t3);margin-top:6px}
+
+/* ── Budget rows ─────────────────────────────────────────────────────── */
+.brow{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:11px 0;border-bottom:1px solid var(--border);font-size:.84rem;
+}
+.brow:last-child{border-bottom:none}
+.brow-label{color:var(--t2);font-weight:400}
+.brow-val{font-weight:600;font-variant-numeric:tabular-nums;color:var(--t1)}
+.brow-full{padding:12px 0;border-bottom:1px solid var(--border)}
+.brow-full:last-child{border-bottom:none}
+.brow-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:.84rem}
+
+/* ── Progress ────────────────────────────────────────────────────────── */
+.track{height:3px;background:var(--s3);border-radius:99px;overflow:hidden}
+.track-lg{height:6px}
+.fill{height:100%;border-radius:99px;transition:width .5s cubic-bezier(.4,0,.2,1)}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:7px 16px;border-radius:var(--r-s);
+  font-size:.775rem;font-weight:600;letter-spacing:.01em;
+  border:1px solid transparent;white-space:nowrap;
+}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:var(--blue-dk)}
+.btn-primary:active{transform:scale(.97);opacity:.9}
+.btn-sm{padding:5px 11px;font-size:.72rem}
+.btn-full{width:100%;padding:11px;font-size:.85rem;justify-content:center;margin-top:6px}
+.btn-ghost{background:transparent;color:var(--t2);border-color:var(--border2)}
+.btn-ghost:hover{background:var(--s2);color:var(--t1)}
+.btn-icon{background:none;border:none;color:var(--t3);padding:5px;border-radius:var(--r-s);font-size:.8rem}
+.btn-icon:hover{background:var(--s3);color:var(--t2)}
+.btn-icon-del:hover{background:var(--red-lt);color:var(--red)}
+.btn-link{background:none;border:none;color:var(--blue);text-decoration:underline;cursor:pointer;font-size:inherit;padding:0}
+
+/* ── Month nav ───────────────────────────────────────────────────────── */
+.month-nav{display:flex;align-items:center;justify-content:center;gap:14px}
+.month-arrow{
+  background:var(--s1);border:1px solid var(--border);color:var(--t2);
+  width:30px;height:30px;border-radius:var(--r-s);
+  display:flex;align-items:center;justify-content:center;font-size:.85rem;
+}
+.month-arrow:hover{border-color:var(--border2);color:var(--t1)}
+.month-name{font-size:.875rem;font-weight:600;letter-spacing:-.02em;min-width:160px;text-align:center;color:var(--t1)}
+
+/* ── Forms ───────────────────────────────────────────────────────────── */
+.form-card{border-color:rgba(59,130,246,.2)!important;background:rgba(59,130,246,.04)!important}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fspan{grid-column:1/-1}
+.fg{display:flex;flex-direction:column;gap:5px}
+.fg label{font-size:.58rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)}
+.fg input,.fg select,.fg textarea{
+  background:var(--s2);border:1px solid var(--border2);border-radius:var(--r-s);
+  color:var(--t1);padding:8px 12px;font-size:.84rem;
+  outline:none;width:100%;transition:border-color .15s,box-shadow .15s;font-feature-settings:'tnum';
+}
+.fg input:focus,.fg select:focus,.fg textarea:focus{
+  border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.15);
+}
+.fg select{appearance:none;cursor:pointer}
+.factions{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end;padding-top:4px}
+
+/* ── Transaction rows ─────────────────────────────────────────────────── */
+.tx-list{display:flex;flex-direction:column}
+.tx-row{display:flex;align-items:center;gap:13px;padding:11px 0;border-bottom:1px solid var(--border)}
+.tx-row:last-child{border-bottom:none}
+.tx-icon{
+  width:32px;height:32px;border-radius:var(--r-s);
+  background:var(--s3);display:flex;align-items:center;justify-content:center;
+  font-size:.7rem;font-weight:700;color:var(--t2);flex-shrink:0;letter-spacing:.04em;
+}
+.tx-body{flex:1;min-width:0}
+.tx-desc{font-size:.84rem;font-weight:500;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-meta{font-size:.68rem;color:var(--t3);margin-top:2px}
+.tx-amt{font-size:.875rem;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tx-del{background:none;border:none;color:var(--t4);padding:4px;border-radius:var(--r-s);cursor:pointer}
+.tx-del:hover{background:var(--red-lt);color:var(--red)}
+
+/* ── Commission ──────────────────────────────────────────────────────── */
+.split-banner{
+  display:flex;align-items:center;gap:12px;
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:14px 20px;
+}
+.split-pill{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 12px;border-radius:var(--r-s);font-size:.75rem;font-weight:600;
+}
+.split-hysa    {background:var(--green-lt);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.split-personal{background:var(--blue-lt);color:var(--blue);border:1px solid rgba(59,130,246,.2)}
+.split-div{color:var(--t4);font-size:.85rem}
+
+.comm-row{display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--border)}
+.comm-row:last-child{border-bottom:none}
+.comm-amt{font-size:1rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.comm-note{font-size:.72rem;color:var(--t2);margin-top:2px}
+.comm-date{font-size:.68rem;color:var(--t3);margin-top:2px}
+.comm-splits{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
+.comm-s{font-size:.68rem;font-weight:600;font-variant-numeric:tabular-nums;padding:2px 8px;border-radius:var(--r-s)}
+.comm-s-green{background:var(--green-lt);color:var(--green)}
+.comm-s-blue {background:var(--blue-lt);color:var(--blue)}
+
+/* ── Goals ───────────────────────────────────────────────────────────── */
+.goal-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:12px}
+.goal-title{font-size:.95rem;font-weight:600;letter-spacing:-.02em;color:var(--t1)}
+.goal-sub{font-size:.68rem;color:var(--t3);margin-top:3px}
+.goal-amounts{text-align:right;flex-shrink:0}
+.goal-curr{font-size:1.4rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.04em;line-height:1}
+.goal-max{font-size:.68rem;color:var(--t3);margin-top:3px}
+.goal-stats{display:flex;justify-content:space-between;font-size:.68rem;color:var(--t3);margin-top:8px}
+.goal-proj{font-size:.7rem;color:var(--t3);margin-top:10px;padding:9px 12px;background:var(--s2);border-radius:var(--r-s);line-height:1.5}
+.goal-update{display:flex;gap:8px;margin-top:14px}
+.goal-update input{
+  flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:var(--r-s);
+  color:var(--t1);padding:7px 11px;font-size:.78rem;outline:none;
+  transition:border-color .15s,box-shadow .15s;font-feature-settings:'tnum';
+}
+.goal-update input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+
+/* ── Net Worth ───────────────────────────────────────────────────────── */
+.nw-bar-wrap{margin:12px 0}
+.nw-bar{height:5px;border-radius:99px;background:var(--s3);overflow:hidden;display:flex}
+.nw-seg{height:100%;transition:width .5s cubic-bezier(.4,0,.2,1)}
+
+/* ── Settings ────────────────────────────────────────────────────────── */
+.settings-group{display:flex;flex-direction:column;gap:5px}
+.settings-group label{font-size:.58rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)}
+.settings-group input{
+  background:var(--s2);border:1px solid var(--border2);border-radius:var(--r-s);
+  color:var(--t1);padding:8px 12px;font-size:.84rem;outline:none;width:100%;
+  transition:border-color .15s,box-shadow .15s;font-feature-settings:'tnum';
+}
+.settings-group input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+.settings-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.settings-remaining{padding:8px 12px;border-radius:var(--r-s);font-size:.72rem;font-weight:600}
+.rem-ok  {background:var(--green-lt);color:var(--green)}
+.rem-over{background:var(--red-lt);color:var(--red)}
+
+/* ── Budget tab ──────────────────────────────────────────────────────── */
+.budget-col-header{
+  font-size:.72rem;font-weight:700;letter-spacing:.04em;color:var(--t1);
+  margin-bottom:2px;
+}
+.budget-col-sub{font-size:.65rem;color:var(--t3);margin-bottom:16px}
+.budget-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 0;border-bottom:1px solid var(--border);
+}
+.budget-row:last-child{border-bottom:none}
+.budget-cat{font-size:.8rem;color:var(--t2);font-weight:400}
+.budget-right{text-align:right}
+.budget-limit{font-size:.8rem;font-weight:600;font-variant-numeric:tabular-nums;color:var(--t1)}
+.budget-rem{font-size:.65rem;color:var(--t3);margin-top:2px;font-variant-numeric:tabular-nums}
+.budget-over{color:var(--red)}
+.budget-total-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 0 0;margin-top:4px;border-top:1px solid var(--border2);
+}
+.budget-total-label{font-size:.72rem;font-weight:600;color:var(--t2);letter-spacing:.03em}
+.budget-total-val{font-size:1rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.025em}
+
+/* ── Empty state ─────────────────────────────────────────────────────── */
+.empty{text-align:center;padding:36px 0;color:var(--t3);font-size:.8rem}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+@media(max-width:700px){
+  .header-inner{padding:0 18px}
+  .nav{display:none}
+  .mobile-nav{display:flex}
+  .page{
+    padding:20px 18px 88px;gap:18px;
+    /* Respect left/right safe areas in landscape */
+    padding-left:max(18px,env(safe-area-inset-left));
+    padding-right:max(18px,env(safe-area-inset-right));
+  }
+  .g3{grid-template-columns:repeat(2,1fr)}
+  .g2{grid-template-columns:1fr}
+  .income-eq{flex-direction:column}
+  .eq-item{border-right:none;border-bottom:1px solid var(--border)}
+  .eq-item:last-child{border-bottom:none}
+  .eq-op{display:none}
+  .surplus{flex-direction:column;gap:14px}
+  .surplus-right{text-align:left}
+  .fgrid{grid-template-columns:1fr}
+  .settings-grid{grid-template-columns:1fr}
+  .split-banner{flex-wrap:wrap}
+
+  /* Minimum 44pt touch targets (iOS HIG) */
+  .btn{min-height:44px;padding-left:18px;padding-right:18px}
+  .btn-sm{min-height:38px}
+  .btn-full{min-height:48px}
+  .fg input,.fg select,.fg textarea,
+  .settings-group input,
+  .goal-update input{min-height:44px;font-size:16px!important}/* 16px prevents iOS auto-zoom */
+  .mnav-btn{min-height:48px}
+  .month-arrow{width:40px;height:40px}
+}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script id="app-src" type="text/jsx-source">
+const { useState, useEffect, useCallback } = React;
+
+// ── Helpers ────────────────────────────────────────────────────────────
+function parseLocalDate(str) {
+  if (!str) return new Date();
+  const [y,m,d] = str.split('-').map(Number);
+  return new Date(y, m-1, d);
+}
+const currency = (n, dec=0) =>
+  new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:dec}).format(n||0);
+const pct = (n,d=1) => (n||0).toFixed(d)+'%';
+
+function getPhaseInfo(startDateStr) {
+  const start = parseLocalDate(startDateStr);
+  const now   = new Date();
+  const idx   = (now.getFullYear()-start.getFullYear())*12+(now.getMonth()-start.getMonth())+1;
+  return {
+    idx,
+    isPreEmployment: idx <= 0,
+    isEarly:         idx >= 1 && idx <= 3,
+    isFull:          idx >= 4,
+  };
+}
+
+// ── Defaults ───────────────────────────────────────────────────────────
+const DEFAULT_SETTINGS = {
+  startDate:            '2026-07-01',
+  grossBase:            5000,
+  grossOTE:             6667,
+  federalTax:           946,
+  contribution401k:     300,
+  takeHome:             3755,
+  commissionHYSAPct:    60,
+  commissionPersonalPct:40,
+  hysaGoal:             11000,
+  rothIRAYearlyLimit:   7500,
+  ira401kYearlyMax:     24500,
+  employerMatchPct:     4,
+  earlyBudget: {
+    utilitiesAndFee:   100,
+    rentersInsurance:  15,
+    rothIRA:           625,
+    hysa:              1800,
+    groceries:         400,
+    gas:               150,
+    funTravel:         250,
+    outToEat:          250,
+    shopping:          150,
+  },
+  laterBudget: {
+    rentAndFee:        1400,
+    utilities:         50,
+    rentersInsurance:  15,
+    rothIRA:           625,
+    hysa:              500,
+    groceries:         400,
+    gas:               130,
+    funTravel:         250,
+    outToEat:          200,
+    shopping:          150,
+  },
+};
+
+const DEFAULT_GOALS = {
+  hysaBalance:     0,
+  ira401kBalance:  0,
+  rothIRAOverride: null,
+  netWorthAssets:  {},
+  netWorthDebts:   {},
+};
+
+function deepMerge(def, stored) {
+  if (Array.isArray(def)) return Array.isArray(stored) ? stored : def;
+  if (!stored || typeof stored !== 'object') return def;
+  const out = { ...def };
+  for (const k of Object.keys(def)) {
+    if (k in stored) {
+      if (Array.isArray(def[k])) {
+        out[k] = Array.isArray(stored[k]) ? stored[k] : def[k];
+      } else if (stored[k] && typeof stored[k] === 'object') {
+        out[k] = deepMerge(def[k], stored[k]);
+      } else {
+        out[k] = stored[k];
+      }
+    }
+  }
+  return out;
+}
+
+function usePersist(key, def) {
+  const [val, setVal] = useState(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return def;
+      return deepMerge(def, JSON.parse(raw));
+    } catch { return def; }
+  });
+  useEffect(() => { localStorage.setItem(key, JSON.stringify(val)); }, [key, val]);
+  return [val, setVal];
+}
+
+function Bar({ value, max, color='var(--blue)', lg=false }) {
+  const p = max ? Math.min((value/max)*100, 100) : 0;
+  return (
+    <div className={'track'+(lg?' track-lg':'')}>
+      <div className="fill" style={{width:`${p}%`,background:color}} />
+    </div>
+  );
+}
+
+const TABS = [
+  { id:'dashboard', label:'Dashboard' },
+  { id:'budget',    label:'Budget'    },
+  { id:'spending',  label:'Spending'  },
+  { id:'goals',     label:'Goals'     },
+  { id:'commission',label:'Commission'},
+  { id:'settings',  label:'Settings'  },
+];
+
+const CATEGORIES = [
+  { id:'housing',   label:'Housing',          abbr:'HSG', color:'var(--blue)'  },
+  { id:'groceries', label:'Groceries',         abbr:'GRC', color:'var(--green)' },
+  { id:'gas',       label:'Gas',               abbr:'GAS', color:'var(--yellow)'},
+  { id:'dining',    label:'Dining',            abbr:'DIN', color:'#f97316'      },
+  { id:'shopping',  label:'Shopping',          abbr:'SHP', color:'var(--purple)'},
+  { id:'travel',    label:'Travel',            abbr:'TRV', color:'#06b6d4'      },
+  { id:'utilities', label:'Utilities',         abbr:'UTL', color:'var(--yellow)'},
+  { id:'savings',   label:'Savings',           abbr:'SAV', color:'var(--green)' },
+  { id:'other',     label:'Other',             abbr:'OTH', color:'var(--t3)'    },
+];
+
+// ── Dashboard ─────────────────────────────────────────────────────────
+function Dashboard({ settings, transactions, goals }) {
+  const phase = getPhaseInfo(settings.startDate);
+  const now   = new Date();
+
+  let phaseLabel, phaseBadge;
+  if (phase.isPreEmployment) {
+    phaseLabel = 'Pre-employment';
+    phaseBadge = <span className="badge badge-purple">Pre-Employment</span>;
+  } else if (phase.isEarly) {
+    phaseLabel = `Month ${phase.idx} of 3 — Rent-Free`;
+    phaseBadge = <span className="badge badge-green">Rent-Free · Month {phase.idx}</span>;
+  } else {
+    phaseLabel = `Month ${phase.idx} — Full Budget`;
+    phaseBadge = <span className="badge badge-blue">Full Budget · Month {phase.idx}</span>;
+  }
+
+  const budget = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget : settings.laterBudget;
+
+  const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const monthTx  = transactions.filter(t=>t.date.startsWith(monthStr)&&t.type==='expense');
+  const byCategory = {};
+  for (const t of monthTx) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
+
+  const budgetRows = phase.isEarly || phase.isPreEmployment ? [
+    { label:'Utilities & Fee', val:budget.utilitiesAndFee, cat:'utilities' },
+    { label:'Roth IRA',        val:budget.rothIRA,         cat:'savings'   },
+    { label:'HYSA',            val:budget.hysa,            cat:'savings'   },
+    { label:'Groceries',       val:budget.groceries,       cat:'groceries' },
+    { label:'Gas',             val:budget.gas,             cat:'gas'       },
+    { label:'Travel',          val:budget.funTravel,       cat:'travel'    },
+    { label:'Dining',          val:budget.outToEat,        cat:'dining'    },
+    { label:'Shopping',        val:budget.shopping,        cat:'shopping'  },
+  ] : [
+    { label:'Rent & Fee',  val:budget.rentAndFee,  cat:'housing'   },
+    { label:'Utilities',   val:budget.utilities,   cat:'utilities' },
+    { label:'Roth IRA',    val:budget.rothIRA,     cat:'savings'   },
+    { label:'HYSA',        val:budget.hysa,        cat:'savings'   },
+    { label:'Groceries',   val:budget.groceries,   cat:'groceries' },
+    { label:'Gas',         val:budget.gas,         cat:'gas'       },
+    { label:'Travel',      val:budget.funTravel,   cat:'travel'    },
+    { label:'Dining',      val:budget.outToEat,    cat:'dining'    },
+    { label:'Shopping',    val:budget.shopping,    cat:'shopping'  },
+  ];
+
+  const totalBudget = budgetRows.reduce((s,r)=>s+r.val, 0);
+  const surplus = settings.takeHome - totalBudget;
+  const recentTx = [...transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
+
+  return (
+    <div className="page">
+      <div className="page-top">
+        <div>
+          <h2 className="page-title">Dashboard</h2>
+          <div className="page-sub">{now.toLocaleDateString('en-US',{month:'long',year:'numeric'})} · {phaseLabel}</div>
+        </div>
+        {phaseBadge}
+      </div>
+
+      {/* Income equation */}
+      <div>
+        <div className="slabel">Income</div>
+        <div className="income-eq">
+          <div className="eq-item">
+            <div className="eq-label">Base</div>
+            <div className="eq-num c-green">{currency(settings.grossBase)}</div>
+            <div className="eq-note">$60k / yr</div>
+          </div>
+          <div className="eq-op" style={{opacity:0}}>·</div>
+          <div className="eq-item">
+            <div className="eq-label">OTE</div>
+            <div className="eq-num c-blue">{currency(settings.grossOTE)}</div>
+            <div className="eq-note">$80k / yr</div>
+          </div>
+          <div className="eq-op">−</div>
+          <div className="eq-item">
+            <div className="eq-label">Tax & FICA</div>
+            <div className="eq-num c-red">{currency(settings.federalTax)}</div>
+            <div className="eq-note">Federal, GA</div>
+          </div>
+          <div className="eq-op">−</div>
+          <div className="eq-item">
+            <div className="eq-label">401(k)</div>
+            <div className="eq-num c-yellow">{currency(settings.contribution401k)}</div>
+            <div className="eq-note">Pre-tax</div>
+          </div>
+          <div className="eq-op">=</div>
+          <div className="eq-item">
+            <div className="eq-label">Take-Home</div>
+            <div className="eq-num c-blue">{currency(settings.takeHome)}</div>
+            <div className="eq-note">Per month</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Surplus */}
+      {!phase.isPreEmployment && (
+        <div className={'surplus '+(surplus>=0?'surplus-ok':'surplus-over')}>
+          <div>
+            <div className="surplus-label">Monthly Surplus</div>
+            <div className="surplus-num" style={{color:surplus>=0?'var(--green)':'var(--red)'}}>
+              {currency(surplus)}
+            </div>
+            <div className="surplus-eq">{currency(settings.takeHome)} − {currency(totalBudget)} budgeted</div>
+          </div>
+          <div className="surplus-right">
+            {phase.isEarly
+              ? <span className="badge badge-green">Rent-Free Phase</span>
+              : <span className="badge badge-blue">Full Budget Phase</span>}
+            <div className="surplus-phase">
+              {phase.isEarly ? 'No rent through Month 3' : 'Rent active from Month 4'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Budget progress */}
+      {!phase.isPreEmployment && (
+        <div>
+          <div className="slabel">This Month</div>
+          <div className="card" style={{padding:'4px 24px 8px'}}>
+            {budgetRows.map(row => {
+              const cat   = CATEGORIES.find(c=>c.id===row.cat);
+              const spent = byCategory[row.cat]||0;
+              const over  = spent > row.val;
+              return (
+                <div key={row.label} className="brow-full">
+                  <div className="brow-top">
+                    <span style={{color:'var(--t2)',fontSize:'.82rem'}}>{row.label}</span>
+                    <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums',fontSize:'.82rem',color:over?'var(--red)':'var(--t1)'}}>
+                      {spent>0?<>{currency(spent)} <span className="c-muted">/ {currency(row.val)}</span></>:currency(row.val)}
+                    </span>
+                  </div>
+                  <div className="track">
+                    <div className="fill" style={{width:`${Math.min((spent/row.val)*100,100)||0}%`,background:over?'var(--red)':(cat?.color||'var(--blue)')}} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {phase.isPreEmployment && (
+        <div className="card" style={{textAlign:'center',padding:'48px 24px'}}>
+          <div style={{fontSize:'1.1rem',fontWeight:700,color:'var(--t1)',marginBottom:8}}>Pre-Employment Setup</div>
+          <div style={{color:'var(--t3)',fontSize:'.8rem',maxWidth:360,margin:'0 auto',lineHeight:1.6}}>
+            Financial tracking starts July 2026. Use this time to configure your settings, open your HYSA, and set up your Roth IRA.
+          </div>
+        </div>
+      )}
+
+      {/* Recent activity */}
+      {recentTx.length > 0 && (
+        <div>
+          <div className="slabel">Recent Activity</div>
+          <div className="card" style={{padding:'4px 24px 8px'}}>
+            <div className="tx-list">
+              {recentTx.map(t => {
+                const cat = CATEGORIES.find(c=>c.id===t.category);
+                return (
+                  <div key={t.id} className="tx-row">
+                    <div className="tx-icon">{cat?.abbr||'OTH'}</div>
+                    <div className="tx-body">
+                      <div className="tx-desc">{t.description}</div>
+                      <div className="tx-meta">{cat?.label} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+                    </div>
+                    <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
+                      {t.type==='income'?'+':'-'}{currency(t.amount)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Budget Tab ─────────────────────────────────────────────────────────
+function Budget({ settings, transactions }) {
+  const now      = new Date();
+  const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const monthTx  = transactions.filter(t=>t.date.startsWith(monthStr)&&t.type==='expense');
+
+  // Aggregate spending by category
+  const spent = {};
+  for (const t of monthTx) spent[t.category]=(spent[t.category]||0)+t.amount;
+
+  // Category → spending lookup for each budget column
+  const eb = settings.earlyBudget;
+  const lb = settings.laterBudget;
+
+  const earlyRows = [
+    { label:'Utilities & Fee',    limit:eb.utilitiesAndFee,  cat:'utilities' },
+    { label:'Renters Insurance',  limit:eb.rentersInsurance, cat:'other'     },
+    { label:'Roth IRA',           limit:eb.rothIRA,          cat:'savings'   },
+    { label:'HYSA',               limit:eb.hysa,             cat:'savings'   },
+    { label:'Groceries',          limit:eb.groceries,        cat:'groceries' },
+    { label:'Gas',                limit:eb.gas,              cat:'gas'       },
+    { label:'Travel',             limit:eb.funTravel,        cat:'travel'    },
+    { label:'Dining',             limit:eb.outToEat,         cat:'dining'    },
+    { label:'Shopping',           limit:eb.shopping,         cat:'shopping'  },
+  ];
+  const laterRows = [
+    { label:'Rent & Fee',         limit:lb.rentAndFee,       cat:'housing'   },
+    { label:'Utilities',          limit:lb.utilities,        cat:'utilities' },
+    { label:'Renters Insurance',  limit:lb.rentersInsurance, cat:'other'     },
+    { label:'Roth IRA',           limit:lb.rothIRA,          cat:'savings'   },
+    { label:'HYSA',               limit:lb.hysa,             cat:'savings'   },
+    { label:'Groceries',          limit:lb.groceries,        cat:'groceries' },
+    { label:'Gas',                limit:lb.gas,              cat:'gas'       },
+    { label:'Travel',             limit:lb.funTravel,        cat:'travel'    },
+    { label:'Dining',             limit:lb.outToEat,         cat:'dining'    },
+    { label:'Shopping',           limit:lb.shopping,         cat:'shopping'  },
+  ];
+
+  const earlyTotal = earlyRows.reduce((s,r)=>s+r.limit,0);
+  const laterTotal = laterRows.reduce((s,r)=>s+r.limit,0);
+
+  const phase = getPhaseInfo(settings.startDate);
+  const activeEarly = phase.isEarly || phase.isPreEmployment;
+
+  function BudgetCol({ rows, total, title, subtitle, isActive }) {
+    return (
+      <div className="card" style={{border: isActive ? '1px solid rgba(59,130,246,.3)' : '1px solid var(--border)',position:'relative'}}>
+        {isActive && (
+          <div style={{position:'absolute',top:16,right:16}}>
+            <span className="badge badge-blue">Active</span>
+          </div>
+        )}
+        <div className="budget-col-header">{title}</div>
+        <div className="budget-col-sub">{subtitle}</div>
+        {rows.map(row => {
+          const s    = spent[row.cat]||0;
+          const rem  = row.limit - s;
+          const over = rem < 0;
+          const cat  = CATEGORIES.find(c=>c.id===row.cat);
+          return (
+            <div key={row.label} className="budget-row">
+              <div className="budget-cat">{row.label}</div>
+              <div className="budget-right">
+                <div className="budget-limit">{currency(row.limit)}</div>
+                {s > 0 && (
+                  <div className={'budget-rem'+(over?' budget-over':'')}>
+                    {over ? `${currency(Math.abs(rem))} over` : `${currency(rem)} left`}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <div className="budget-total-row">
+          <span className="budget-total-label">Total</span>
+          <span className="budget-total-val">{currency(total)}</span>
+        </div>
+        <div style={{marginTop:6,fontSize:'.68rem',color:'var(--t3)'}}>
+          {currency(settings.takeHome - total)} surplus on {currency(settings.takeHome)} take-home
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page">
+      <div className="page-top">
+        <div>
+          <h2 className="page-title">Budget</h2>
+          <div className="page-sub">Your spending plan by phase</div>
+        </div>
+      </div>
+      <div className="g2">
+        <BudgetCol
+          rows={earlyRows}
+          total={earlyTotal}
+          title="Months 1–3"
+          subtitle="Rent-free · July – September 2026"
+          isActive={activeEarly && !phase.isPreEmployment}
+        />
+        <BudgetCol
+          rows={laterRows}
+          total={laterTotal}
+          title="Month 4–12"
+          subtitle="Paying rent · October 2026 onward"
+          isActive={phase.isFull}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Spending ──────────────────────────────────────────────────────────
+function Spending({ settings, transactions, setTransactions }) {
+  const now   = new Date();
+  const [viewMonth, setViewMonth] = useState({y:now.getFullYear(),m:now.getMonth()});
+  const [showForm, setShowForm]   = useState(false);
+  const [form, setForm]           = useState({
+    date:now.toISOString().split('T')[0], description:'', amount:'', category:'groceries', type:'expense',
+  });
+
+  const monthStr  = `${viewMonth.y}-${String(viewMonth.m+1).padStart(2,'0')}`;
+  const monthTx   = transactions.filter(t=>t.date.startsWith(monthStr));
+  const expenses  = monthTx.filter(t=>t.type==='expense');
+  const totalSpent= expenses.reduce((s,t)=>s+t.amount,0);
+  const phase     = getPhaseInfo(settings.startDate);
+  const budget    = phase.isEarly ? settings.earlyBudget : settings.laterBudget;
+
+  const byCategory={};
+  for(const t of expenses) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
+
+  const catBudget = phase.isEarly ? {
+    housing:   (budget.utilitiesAndFee||0),
+    groceries: budget.groceries, gas:budget.gas, dining:budget.outToEat,
+    shopping:  budget.shopping,  travel:budget.funTravel, utilities:budget.utilitiesAndFee,
+    savings:   (budget.rothIRA||0)+(budget.hysa||0), other:0,
+  } : {
+    housing:   (budget.rentAndFee||0),
+    groceries: budget.groceries, gas:budget.gas, dining:budget.outToEat,
+    shopping:  budget.shopping,  travel:budget.funTravel, utilities:budget.utilities||0,
+    savings:   (budget.rothIRA||0)+(budget.hysa||0), other:0,
+  };
+
+  const handleAdd = e => {
+    e.preventDefault();
+    const amt = parseFloat(form.amount);
+    if(!amt||isNaN(amt)) return;
+    setTransactions(prev=>[{
+      id:String(Date.now()), date:form.date,
+      description:form.description.trim()||form.category,
+      amount:amt, category:form.category, type:form.type,
+    },...prev]);
+    setForm(f=>({...f,description:'',amount:''}));
+    setShowForm(false);
+  };
+
+  const del = id => { if(window.confirm('Delete this transaction?')) setTransactions(p=>p.filter(t=>t.id!==id)); };
+  const sorted = [...monthTx].sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+  return (
+    <div className="page">
+      <div className="page-top">
+        <div>
+          <h2 className="page-title">Spending</h2>
+          <div className="page-sub">{currency(totalSpent)} spent this month</div>
+        </div>
+        <button className="btn btn-primary" onClick={()=>setShowForm(s=>!s)}>
+          {showForm?'Cancel':'+ Add'}
+        </button>
+      </div>
+
+      <div className="month-nav">
+        <button className="month-arrow btn" onClick={()=>setViewMonth(({y,m})=>m===0?{y:y-1,m:11}:{y,m:m-1})}>‹</button>
+        <div className="month-name">{new Date(viewMonth.y,viewMonth.m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'})}</div>
+        <button className="month-arrow btn" onClick={()=>setViewMonth(({y,m})=>m===11?{y:y+1,m:0}:{y,m:m+1})}>›</button>
+      </div>
+
+      {showForm && (
+        <div className="card form-card">
+          <div className="card-label">New Transaction</div>
+          <form onSubmit={handleAdd}>
+            <div className="fgrid">
+              <div className="fg"><label>Date</label><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></div>
+              <div className="fg"><label>Type</label>
+                <select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))}>
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                </select>
+              </div>
+              <div className="fg fspan"><label>Description</label><input type="text" placeholder="What was it?" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} /></div>
+              <div className="fg"><label>Amount</label><input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} required /></div>
+              <div className="fg"><label>Category</label>
+                <select value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
+                  {CATEGORIES.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+              </div>
+              <div className="factions">
+                <button type="button" className="btn btn-ghost" onClick={()=>setShowForm(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div>
+        <div className="slabel">By Category</div>
+        <div className="card" style={{padding:'4px 24px 8px'}}>
+          {CATEGORIES.filter(c=>byCategory[c.id]>0||catBudget[c.id]>0).map(cat=>{
+            const s=byCategory[cat.id]||0, lim=catBudget[cat.id]||0, over=lim>0&&s>lim;
+            return (
+              <div key={cat.id} className="brow-full">
+                <div className="brow-top">
+                  <span style={{color:'var(--t2)',fontSize:'.82rem'}}>{cat.label}</span>
+                  <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums',fontSize:'.82rem',color:over?'var(--red)':'var(--t1)'}}>
+                    {currency(s)}{lim>0&&<span className="c-muted"> / {currency(lim)}</span>}
+                  </span>
+                </div>
+                {lim>0&&<div className="track"><div className="fill" style={{width:`${Math.min((s/lim)*100,100)}%`,background:over?'var(--red)':cat.color}} /></div>}
+              </div>
+            );
+          })}
+          {Object.keys(byCategory).length===0&&<p className="empty">No expenses logged yet.</p>}
+        </div>
+      </div>
+
+      <div>
+        <div className="slabel">Transactions ({sorted.length})</div>
+        <div className="card" style={{padding:'4px 24px 8px'}}>
+          {sorted.length===0?<p className="empty">No transactions this month.</p>:(
+            <div className="tx-list">
+              {sorted.map(t=>{
+                const cat=CATEGORIES.find(c=>c.id===t.category);
+                return (
+                  <div key={t.id} className="tx-row">
+                    <div className="tx-icon">{cat?.abbr||'OTH'}</div>
+                    <div className="tx-body">
+                      <div className="tx-desc">{t.description}</div>
+                      <div className="tx-meta">{cat?.label} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+                    </div>
+                    <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
+                      {t.type==='income'?'+':'-'}{currency(t.amount)}
+                    </div>
+                    <button className="tx-del btn-icon-del" onClick={()=>del(t.id)}>×</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Goals ─────────────────────────────────────────────────────────────
+function Goals({ settings, goals, setGoals, commissions }) {
+  const now   = new Date();
+  const phase = getPhaseInfo(settings.startDate);
+
+  const hysaBal    = goals.hysaBalance||0;
+  const hysaPct_   = Math.min((hysaBal/settings.hysaGoal)*100,100);
+  const hysaRem    = Math.max(settings.hysaGoal-hysaBal,0);
+  const futureRate = phase.isEarly||phase.isPreEmployment ? settings.earlyBudget.hysa : settings.laterBudget.hysa;
+  const hysaMonths = futureRate>0&&hysaRem>0 ? Math.ceil(hysaRem/futureRate) : 0;
+  const hysaDate   = hysaMonths ? (()=>{const d=new Date(now);d.setMonth(d.getMonth()+hysaMonths);return d.toLocaleDateString('en-US',{month:'long',year:'numeric'});})() : null;
+
+  const yearStart  = new Date(now.getFullYear(),0,1);
+  const finStart   = parseLocalDate(settings.startDate);
+  const rothStart  = finStart>yearStart?finStart:yearStart;
+  const rothMonths = Math.max((now.getFullYear()-rothStart.getFullYear())*12+(now.getMonth()-rothStart.getMonth()),0);
+  const rothAuto   = Math.min(rothMonths*settings.earlyBudget.rothIRA,settings.rothIRAYearlyLimit);
+  const rothBal    = goals.rothIRAOverride!=null?goals.rothIRAOverride:rothAuto;
+  const rothPct_   = Math.min((rothBal/settings.rothIRAYearlyLimit)*100,100);
+  const rothRem    = Math.max(settings.rothIRAYearlyLimit-rothBal,0);
+
+  const k401Bal  = goals.ira401kBalance||0;
+  const k401Pct_ = Math.min((k401Bal/settings.ira401kYearlyMax)*100,100);
+  const k401Rem  = Math.max(settings.ira401kYearlyMax-k401Bal,0);
+
+  const assets      = goals.netWorthAssets||{};
+  const debts       = goals.netWorthDebts||{};
+  const totalAssets = Object.values(assets).reduce((s,v)=>s+(v||0),0);
+  const totalDebts  = Object.values(debts).reduce((s,v)=>s+(v||0),0);
+  const netWorth    = totalAssets-totalDebts;
+  const totalComm   = commissions.reduce((s,c)=>s+c.amount,0);
+
+  const monthlyContrib = futureRate+(settings.earlyBudget.rothIRA||0)+(settings.contribution401k||0);
+  const savingsRate    = settings.takeHome>0?(monthlyContrib/settings.takeHome)*100:0;
+
+  const [hysaIn,setHysaIn]=useState('');
+  const [k401In,setK401In]=useState('');
+  const [rothIn,setRothIn]=useState('');
+  const [assetKey,setAssetKey]=useState('');
+  const [assetVal,setAssetVal]=useState('');
+  const [debtKey,setDebtKey]=useState('');
+  const [debtVal,setDebtVal]=useState('');
+
+  const updHYSA=e=>{e.preventDefault();const v=parseFloat(hysaIn);if(!isNaN(v))setGoals(g=>({...g,hysaBalance:v}));setHysaIn('');};
+  const upd401k=e=>{e.preventDefault();const v=parseFloat(k401In);if(!isNaN(v))setGoals(g=>({...g,ira401kBalance:v}));setK401In('');};
+  const updRoth=e=>{e.preventDefault();const v=parseFloat(rothIn);setGoals(g=>({...g,rothIRAOverride:isNaN(v)?null:v}));setRothIn('');};
+  const addAsset=e=>{e.preventDefault();const v=parseFloat(assetVal);if(!assetKey||isNaN(v))return;setGoals(g=>({...g,netWorthAssets:{...g.netWorthAssets,[assetKey]:v}}));setAssetKey('');setAssetVal('');};
+  const addDebt=e=>{e.preventDefault();const v=parseFloat(debtVal);if(!debtKey||isNaN(v))return;setGoals(g=>({...g,netWorthDebts:{...g.netWorthDebts,[debtKey]:v}}));setDebtKey('');setDebtVal('');};
+  const delAsset=k=>setGoals(g=>{const a={...g.netWorthAssets};delete a[k];return{...g,netWorthAssets:a};});
+  const delDebt=k=>setGoals(g=>{const d={...g.netWorthDebts};delete d[k];return{...g,netWorthDebts:d};});
+
+  const inputStyle={flex:1,background:'var(--s2)',border:'1px solid var(--border2)',borderRadius:'var(--r-s)',padding:'6px 10px',fontSize:'.76rem',outline:'none',fontFamily:'Inter,sans-serif',color:'var(--t1)'};
+  const numInputStyle={...inputStyle,flex:'none',width:88,fontVariantNumeric:'tabular-nums'};
+
+  return (
+    <div className="page">
+      <div className="page-top">
+        <div>
+          <h2 className="page-title">Goals</h2>
+          <div className="page-sub">Tracking your targets</div>
+        </div>
+      </div>
+
+      <div className="g3">
+        <div className="stat stat-green">
+          <div className="stat-label">Savings Rate</div>
+          <div className="stat-val">{pct(savingsRate)}</div>
+          <div className="stat-sub">{currency(monthlyContrib)} / mo</div>
+        </div>
+        <div className="stat stat-blue">
+          <div className="stat-label">Net Worth</div>
+          <div className="stat-val" style={{color:netWorth>=0?'var(--blue)':'var(--red)'}}>{currency(netWorth)}</div>
+          <div className="stat-sub">{currency(totalAssets)} assets</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Commission Earned</div>
+          <div className="stat-val">{currency(totalComm)}</div>
+          <div className="stat-sub">To date</div>
+        </div>
+      </div>
+
+      {/* HYSA */}
+      <div className="card">
+        <div className="goal-header">
+          <div>
+            <div className="goal-title">Emergency Fund / HYSA</div>
+            <div className="goal-sub">{phase.isEarly?'Accelerated savings phase':'Standard savings phase'}</div>
+          </div>
+          <div className="goal-amounts">
+            <div className="goal-curr" style={{color:'var(--green)'}}>{currency(hysaBal)}</div>
+            <div className="goal-max">of {currency(settings.hysaGoal)}</div>
+          </div>
+        </div>
+        <Bar value={hysaBal} max={settings.hysaGoal} color="var(--green)" lg />
+        <div className="goal-stats"><span>{pct(hysaPct_)} complete</span><span>{currency(hysaRem)} remaining</span></div>
+        {hysaDate?<div className="goal-proj">At {currency(futureRate)}/mo — on track for <strong style={{color:'var(--t1)'}}>{hysaDate}</strong> ({hysaMonths} months)</div>
+          :hysaBal>=settings.hysaGoal?<div className="goal-proj" style={{color:'var(--green)'}}>Goal reached.</div>:null}
+        <form onSubmit={updHYSA} className="goal-update">
+          <input type="number" step="0.01" min="0" placeholder={`Current balance (${currency(hysaBal)})`} value={hysaIn} onChange={e=>setHysaIn(e.target.value)} />
+          <button type="submit" className="btn btn-primary btn-sm">Update</button>
+        </form>
+      </div>
+
+      {/* Roth IRA */}
+      <div className="card">
+        <div className="goal-header">
+          <div>
+            <div className="goal-title">Roth IRA</div>
+            <div className="goal-sub">{now.getFullYear()} limit — resets January 1</div>
+          </div>
+          <div className="goal-amounts">
+            <div className="goal-curr" style={{color:'var(--purple)'}}>{currency(rothBal)}</div>
+            <div className="goal-max">of {currency(settings.rothIRAYearlyLimit)}</div>
+          </div>
+        </div>
+        <Bar value={rothBal} max={settings.rothIRAYearlyLimit} color="var(--purple)" lg />
+        <div className="goal-stats"><span>{pct(rothPct_)} complete</span><span>{currency(rothRem)} remaining</span></div>
+        <div className="goal-proj">
+          {goals.rothIRAOverride!=null
+            ?<>Manual override — <button className="btn-link" onClick={()=>setGoals(g=>({...g,rothIRAOverride:null}))}>reset to auto</button></>
+            :<>Auto-tracking: {rothMonths} months × {currency(settings.earlyBudget.rothIRA)}/mo</>}
+        </div>
+        <form onSubmit={updRoth} className="goal-update">
+          <input type="number" step="0.01" min="0" placeholder="Override balance (blank = auto)" value={rothIn} onChange={e=>setRothIn(e.target.value)} />
+          <button type="submit" className="btn btn-primary btn-sm">Override</button>
+        </form>
+      </div>
+
+      {/* 401k */}
+      <div className="card">
+        <div className="goal-header">
+          <div>
+            <div className="goal-title">401(k)</div>
+            <div className="goal-sub">IRS max {now.getFullYear()}: {currency(settings.ira401kYearlyMax)} — employer match only</div>
+          </div>
+          <div className="goal-amounts">
+            <div className="goal-curr" style={{color:'var(--yellow)'}}>{currency(k401Bal)}</div>
+            <div className="goal-max">of {currency(settings.ira401kYearlyMax)}</div>
+          </div>
+        </div>
+        <Bar value={k401Bal} max={settings.ira401kYearlyMax} color="var(--yellow)" lg />
+        <div className="goal-stats"><span>{pct(k401Pct_)} of IRS max</span><span>{currency(k401Rem)} to max</span></div>
+        <div className="goal-proj">Contributing {currency(settings.contribution401k)}/mo pre-tax — capturing full employer match. Not maxing out intentionally.</div>
+        <form onSubmit={upd401k} className="goal-update">
+          <input type="number" step="0.01" min="0" placeholder={`Current balance (${currency(k401Bal)})`} value={k401In} onChange={e=>setK401In(e.target.value)} />
+          <button type="submit" className="btn btn-primary btn-sm">Update</button>
+        </form>
+      </div>
+
+      {/* Net Worth */}
+      <div>
+        <div className="slabel">Net Worth</div>
+        <div className="card">
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+            <div>
+              <div style={{fontSize:'.58rem',fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--t3)',marginBottom:6}}>Total</div>
+              <div style={{fontSize:'2rem',fontWeight:700,letterSpacing:'-.05em',fontVariantNumeric:'tabular-nums',color:netWorth>=0?'var(--blue)':'var(--red)',lineHeight:1}}>{currency(netWorth)}</div>
+            </div>
+            <div style={{textAlign:'right',fontSize:'.72rem',color:'var(--t3)'}}>
+              <div>Assets <strong style={{color:'var(--green)'}}>{currency(totalAssets)}</strong></div>
+              <div>Debts <strong style={{color:'var(--red)'}}>{currency(totalDebts)}</strong></div>
+            </div>
+          </div>
+          {totalAssets>0&&(
+            <div className="nw-bar-wrap">
+              <div className="nw-bar">
+                <div className="nw-seg" style={{width:`${totalAssets-totalDebts<=0?0:Math.min(((totalAssets-totalDebts)/totalAssets)*100,100)}%`,background:'var(--green)'}} />
+                <div className="nw-seg" style={{width:`${Math.min((totalDebts/totalAssets)*100,100)}%`,background:'var(--red)'}} />
+              </div>
+            </div>
+          )}
+          <div className="g2" style={{gap:20,marginTop:12}}>
+            <div>
+              <div className="card-label" style={{color:'var(--green)',marginBottom:10}}>Assets</div>
+              {Object.entries(assets).map(([k,v])=>(
+                <div key={k} className="brow">
+                  <span className="brow-label">{k}</span>
+                  <span style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums',color:'var(--green)'}}>{currency(v)}</span>
+                    <button className="btn-icon btn-icon-del" onClick={()=>delAsset(k)}>×</button>
+                  </span>
+                </div>
+              ))}
+              <form onSubmit={addAsset} style={{display:'flex',gap:6,marginTop:10}}>
+                <input style={inputStyle} placeholder="Account name" value={assetKey} onChange={e=>setAssetKey(e.target.value)} />
+                <input style={numInputStyle} type="number" step="0.01" min="0" placeholder="$0" value={assetVal} onChange={e=>setAssetVal(e.target.value)} />
+                <button type="submit" className="btn btn-primary btn-sm">+</button>
+              </form>
+            </div>
+            <div>
+              <div className="card-label" style={{color:'var(--red)',marginBottom:10}}>Debts</div>
+              {Object.entries(debts).map(([k,v])=>(
+                <div key={k} className="brow">
+                  <span className="brow-label">{k}</span>
+                  <span style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums',color:'var(--red)'}}>{currency(v)}</span>
+                    <button className="btn-icon btn-icon-del" onClick={()=>delDebt(k)}>×</button>
+                  </span>
+                </div>
+              ))}
+              <form onSubmit={addDebt} style={{display:'flex',gap:6,marginTop:10}}>
+                <input style={inputStyle} placeholder="Debt name" value={debtKey} onChange={e=>setDebtKey(e.target.value)} />
+                <input style={numInputStyle} type="number" step="0.01" min="0" placeholder="$0" value={debtVal} onChange={e=>setDebtVal(e.target.value)} />
+                <button type="submit" className="btn btn-primary btn-sm">+</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Commission ─────────────────────────────────────────────────────────
+function Commission({ settings, commissions, setCommissions }) {
+  const [showForm,setShowForm]=useState(false);
+  const [form,setForm]=useState({date:new Date().toISOString().split('T')[0],amount:'',note:''});
+  const hysaPct=settings.commissionHYSAPct/100;
+  const personalPct=settings.commissionPersonalPct/100;
+  const preview=form.amount&&!isNaN(parseFloat(form.amount))?{hysa:parseFloat(form.amount)*hysaPct,personal:parseFloat(form.amount)*personalPct}:null;
+
+  const handleAdd=e=>{
+    e.preventDefault();const amt=parseFloat(form.amount);
+    setCommissions(prev=>[{id:String(Date.now()),date:form.date,amount:amt,note:form.note.trim(),hysaPortion:+(amt*hysaPct).toFixed(2),personalPortion:+(amt*personalPct).toFixed(2)},...prev]);
+    setForm(f=>({...f,amount:'',note:''}));setShowForm(false);
+  };
+  const del=id=>{if(window.confirm('Delete this commission?'))setCommissions(p=>p.filter(c=>c.id!==id));};
+  const sorted=[...commissions].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const total=commissions.reduce((s,c)=>s+c.amount,0);
+  const totHYSA=commissions.reduce((s,c)=>s+c.hysaPortion,0);
+  const totPers=commissions.reduce((s,c)=>s+c.personalPortion,0);
+
+  return (
+    <div className="page">
+      <div className="page-top">
+        <div>
+          <h2 className="page-title">Commission</h2>
+          <div className="page-sub">Log and split your commissions</div>
+        </div>
+        <button className="btn btn-primary" onClick={()=>setShowForm(s=>!s)}>{showForm?'Cancel':'+ Log'}</button>
+      </div>
+
+      <div className="split-banner">
+        <div className="split-pill split-hysa">{settings.commissionHYSAPct}% HYSA</div>
+        <div className="split-div">+</div>
+        <div className="split-pill split-personal">{settings.commissionPersonalPct}% Personal</div>
+        <div style={{marginLeft:'auto',fontSize:'.68rem',color:'var(--t3)'}}>Auto-split on every payment</div>
+      </div>
+
+      <div className="g3">
+        <div className="stat">
+          <div className="stat-label">Total Earned</div>
+          <div className="stat-val">{currency(total)}</div>
+          <div className="stat-sub">{commissions.length} payments</div>
+        </div>
+        <div className="stat stat-green">
+          <div className="stat-label">To HYSA</div>
+          <div className="stat-val">{currency(totHYSA)}</div>
+          <div className="stat-sub">{settings.commissionHYSAPct}%</div>
+        </div>
+        <div className="stat stat-blue">
+          <div className="stat-label">Personal</div>
+          <div className="stat-val">{currency(totPers)}</div>
+          <div className="stat-sub">{settings.commissionPersonalPct}%</div>
+        </div>
+      </div>
+
+      {showForm&&(
+        <div className="card form-card">
+          <div className="card-label">New Payment</div>
+          <form onSubmit={handleAdd}>
+            <div className="fgrid">
+              <div className="fg"><label>Date</label><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></div>
+              <div className="fg"><label>Gross Amount</label><input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} required /></div>
+              <div className="fg fspan"><label>Note</label><input type="text" placeholder="Deal name, pay period…" value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))} /></div>
+              {preview&&(
+                <div className="fspan" style={{display:'flex',gap:8}}>
+                  <span className="badge badge-green">HYSA +{currency(preview.hysa,2)}</span>
+                  <span className="badge badge-blue">Personal +{currency(preview.personal,2)}</span>
+                </div>
+              )}
+              <div className="factions">
+                <button type="button" className="btn btn-ghost" onClick={()=>setShowForm(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div>
+        <div className="slabel">History ({commissions.length})</div>
+        <div className="card" style={{padding:'4px 24px 8px'}}>
+          {sorted.length===0?<p className="empty">No commissions logged yet.</p>:sorted.map(c=>(
+            <div key={c.id} className="comm-row">
+              <div style={{flex:1}}>
+                <div className="comm-amt">{currency(c.amount,2)}</div>
+                {c.note?<div className="comm-note">{c.note}</div>:<div className="comm-note" style={{color:'var(--t4)'}}>No note</div>}
+                <div className="comm-date">{new Date(c.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+              </div>
+              <div className="comm-splits">
+                <span className="comm-s comm-s-green">+{currency(c.hysaPortion,2)} HYSA</span>
+                <span className="comm-s comm-s-blue">+{currency(c.personalPortion,2)} Personal</span>
+              </div>
+              <button className="btn-icon btn-icon-del" onClick={()=>del(c.id)}>×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Settings ───────────────────────────────────────────────────────────
+function Settings({ settings, setSettings }) {
+  const [local,setLocal]=useState(settings);
+  const [saved,setSaved]=useState(false);
+  useEffect(()=>{setLocal(settings);},[settings]);
+
+  const set   =(k,v)=>setLocal(s=>({...s,[k]:typeof v==='string'?parseFloat(v)||0:v}));
+  const setStr=(k,v)=>setLocal(s=>({...s,[k]:v}));
+  const setBud=(p,k,v)=>setLocal(s=>({...s,[p]:{...s[p],[k]:parseFloat(v)||0}}));
+
+  const handleSave=e=>{e.preventDefault();setSettings(local);setSaved(true);setTimeout(()=>setSaved(false),2500);};
+  const handleReset=()=>{if(window.confirm('Reset all settings to defaults?'))setLocal(DEFAULT_SETTINGS);};
+
+  const eb=local.earlyBudget||{};
+  const lb=local.laterBudget||{};
+  const earlyTotal=(eb.utilitiesAndFee||0)+(eb.rentersInsurance||0)+(eb.rothIRA||0)+(eb.hysa||0)+(eb.groceries||0)+(eb.gas||0)+(eb.funTravel||0)+(eb.outToEat||0)+(eb.shopping||0);
+  const laterTotal=(lb.rentAndFee||0)+(lb.utilities||0)+(lb.rentersInsurance||0)+(lb.rothIRA||0)+(lb.hysa||0)+(lb.groceries||0)+(lb.gas||0)+(lb.funTravel||0)+(lb.outToEat||0)+(lb.shopping||0);
+  const earlyRem=(local.takeHome||0)-earlyTotal;
+  const laterRem=(local.takeHome||0)-laterTotal;
+
+  const F=({label,sk,phase,val,type='number',prefix='$'})=>(
+    <div className="settings-group">
+      <label>{label}</label>
+      <div style={{position:'relative'}}>
+        {prefix&&<span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'var(--t3)',fontSize:'.78rem',pointerEvents:'none'}}>{prefix}</span>}
+        <input type={type} value={val} step={type==='number'?'any':undefined} min={type==='number'?'0':undefined}
+          style={prefix?{paddingLeft:22}:{}}
+          onChange={e=>phase?setBud(phase,sk,e.target.value):type==='date'?setStr(sk,e.target.value):set(sk,e.target.value)} />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="page">
+      <div className="page-top">
+        <div>
+          <h2 className="page-title">Settings</h2>
+          <div className="page-sub">Income, budgets, and limits</div>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {saved&&<span className="badge badge-green">Saved</span>}
+          <button type="button" className="btn btn-ghost" onClick={handleReset}>Reset</button>
+        </div>
+      </div>
+
+      <form onSubmit={handleSave} style={{display:'flex',flexDirection:'column',gap:14}}>
+        <div className="card">
+          <div className="card-label">Income & Taxes</div>
+          <div className="settings-grid">
+            <F label="Base Monthly" sk="grossBase" val={local.grossBase} />
+            <F label="OTE Monthly" sk="grossOTE" val={local.grossOTE} />
+            <F label="Tax + FICA / mo" sk="federalTax" val={local.federalTax} />
+            <F label="401(k) Pre-Tax / mo" sk="contribution401k" val={local.contribution401k} />
+            <F label="Monthly Take-Home (Base)" sk="takeHome" val={local.takeHome} />
+            <F label="Start Date" sk="startDate" val={local.startDate} type="date" prefix="" />
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-label">Commission Split</div>
+          <div className="settings-grid">
+            <F label="HYSA %" sk="commissionHYSAPct" val={local.commissionHYSAPct} prefix="%" />
+            <F label="Personal %" sk="commissionPersonalPct" val={local.commissionPersonalPct} prefix="%" />
+          </div>
+        </div>
+
+        <div className="card">
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+            <div className="card-label" style={{margin:0}}>Months 1–3 (Rent-Free)</div>
+            <span className={'settings-remaining '+(earlyRem>=0?'rem-ok':'rem-over')}>{currency(earlyRem)} {earlyRem>=0?'remaining':'over'}</span>
+          </div>
+          <div className="settings-grid">
+            <F label="Utilities & Fee" sk="utilitiesAndFee" phase="earlyBudget" val={eb.utilitiesAndFee} />
+            <F label="Renters Insurance" sk="rentersInsurance" phase="earlyBudget" val={eb.rentersInsurance} />
+            <F label="Roth IRA" sk="rothIRA" phase="earlyBudget" val={eb.rothIRA} />
+            <F label="HYSA" sk="hysa" phase="earlyBudget" val={eb.hysa} />
+            <F label="Groceries" sk="groceries" phase="earlyBudget" val={eb.groceries} />
+            <F label="Gas" sk="gas" phase="earlyBudget" val={eb.gas} />
+            <F label="Travel" sk="funTravel" phase="earlyBudget" val={eb.funTravel} />
+            <F label="Dining" sk="outToEat" phase="earlyBudget" val={eb.outToEat} />
+            <F label="Shopping" sk="shopping" phase="earlyBudget" val={eb.shopping} />
+          </div>
+        </div>
+
+        <div className="card">
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+            <div className="card-label" style={{margin:0}}>Month 4–12 (With Rent)</div>
+            <span className={'settings-remaining '+(laterRem>=0?'rem-ok':'rem-over')}>{currency(laterRem)} {laterRem>=0?'remaining':'over'}</span>
+          </div>
+          <div className="settings-grid">
+            <F label="Rent & Fee" sk="rentAndFee" phase="laterBudget" val={lb.rentAndFee} />
+            <F label="Utilities" sk="utilities" phase="laterBudget" val={lb.utilities} />
+            <F label="Renters Insurance" sk="rentersInsurance" phase="laterBudget" val={lb.rentersInsurance} />
+            <F label="Roth IRA" sk="rothIRA" phase="laterBudget" val={lb.rothIRA} />
+            <F label="HYSA" sk="hysa" phase="laterBudget" val={lb.hysa} />
+            <F label="Groceries" sk="groceries" phase="laterBudget" val={lb.groceries} />
+            <F label="Gas" sk="gas" phase="laterBudget" val={lb.gas} />
+            <F label="Travel" sk="funTravel" phase="laterBudget" val={lb.funTravel} />
+            <F label="Dining" sk="outToEat" phase="laterBudget" val={lb.outToEat} />
+            <F label="Shopping" sk="shopping" phase="laterBudget" val={lb.shopping} />
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-label">Goals & IRS Limits</div>
+          <div className="settings-grid">
+            <F label="HYSA Goal" sk="hysaGoal" val={local.hysaGoal} />
+            <F label="Roth IRA Yearly Limit" sk="rothIRAYearlyLimit" val={local.rothIRAYearlyLimit} />
+            <F label="401(k) IRS Yearly Max" sk="ira401kYearlyMax" val={local.ira401kYearlyMax} />
+            <F label="Employer Match %" sk="employerMatchPct" val={local.employerMatchPct} prefix="%" />
+          </div>
+        </div>
+
+        <button type="submit" className="btn btn-primary btn-full">Save Settings</button>
+      </form>
+    </div>
+  );
+}
+
+// ── App ────────────────────────────────────────────────────────────────
+function App() {
+  const [tab,setTab]           = useState('dashboard');
+  const [settings,setSettings] = usePersist('fd_settings',    DEFAULT_SETTINGS);
+  const [transactions,setTx]   = usePersist('fd_transactions', []);
+  const [goals,setGoals]       = usePersist('fd_goals',        DEFAULT_GOALS);
+  const [commissions,setComm]  = usePersist('fd_commissions',  []);
+
+  const pages = {
+    dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} />,
+    budget:     <Budget     settings={settings} transactions={transactions} />,
+    spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} />,
+    goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} />,
+    commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} />,
+    settings:   <Settings   settings={settings} setSettings={useCallback(s=>setSettings(s),[])} />,
+  };
+
+  return (
+    <div className="app">
+      <header className="header">
+        <div className="header-inner">
+          <div className="logo"><div className="logo-dot" />Finance</div>
+          <nav className="nav">
+            {TABS.map(t=>(
+              <button key={t.id} className={'nav-btn'+(tab===t.id?' active':'')} onClick={()=>setTab(t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </header>
+      <main className="main">{pages[tab]}</main>
+      <nav className="mobile-nav">
+        {TABS.map(t=>(
+          <button key={t.id} className={'mnav-btn'+(tab===t.id?' active':'')} onClick={()=>setTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+<script>
+(function(){
+  function run(){
+    var src=document.getElementById('app-src').textContent;
+    var compiled=Babel.transform(src,{presets:['react']}).code;
+    eval(compiled);
+  }
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',run);}
+  else{run();}
+})();
+// Register service worker for PWA / offline support
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('/sw.js').catch(function(){});
+  });
+}
+</script>
+</body>
+</html>
