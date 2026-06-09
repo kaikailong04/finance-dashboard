@@ -423,10 +423,12 @@ html{-webkit-text-size-adjust:100%}
   .nav{display:none}
   .mobile-nav{display:flex}
   .page{
-    padding:20px 18px 88px;gap:18px;
-    /* Respect left/right safe areas in landscape */
+    gap:18px;
+    padding-top:20px;
     padding-left:max(18px,env(safe-area-inset-left));
     padding-right:max(18px,env(safe-area-inset-right));
+    /* Nav bar (~60px) + safe area inset so last item clears the bar */
+    padding-bottom:calc(80px + env(safe-area-inset-bottom));
   }
   .g3{grid-template-columns:repeat(2,1fr)}
   .g2{grid-template-columns:1fr}
