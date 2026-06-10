@@ -1675,6 +1675,33 @@ function Commission({ settings, commissions, setCommissions }) {
 }
 
 // ── Settings ───────────────────────────────────────────────────────────
+
+// Isolated input: holds its own string state so typing never re-renders
+// the parent Settings component (stops mobile keyboard from dismissing).
+function SettingsInput({ value, onCommit, type='number', prefix, extraStyle }) {
+  const [str, setStr] = useState(String(value ?? ''));
+  // Sync if parent resets (e.g. Reset button)
+  useEffect(() => { setStr(String(value ?? '')); }, [value]);
+  const commit = () => onCommit(str);
+  return (
+    <div style={{position:'relative'}}>
+      {prefix && (
+        <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',
+          color:'var(--t3)',fontSize:'.78rem',pointerEvents:'none'}}>{prefix}</span>
+      )}
+      <input
+        type={type==='number' ? 'text' : type}
+        inputMode={type==='number' ? 'decimal' : undefined}
+        value={str}
+        style={{...(prefix ? {paddingLeft:22} : {}), ...extraStyle}}
+        onChange={e => setStr(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => e.key==='Enter' && e.target.blur()}
+      />
+    </div>
+  );
+}
+
 function Settings({ settings, setSettings }) {
   const [local,setLocal]=useState(settings);
   const [saved,setSaved]=useState(false);
@@ -1697,12 +1724,12 @@ function Settings({ settings, setSettings }) {
   const F=({label,sk,phase,val,type='number',prefix='$'})=>(
     <div className="settings-group">
       <label>{label}</label>
-      <div style={{position:'relative'}}>
-        {prefix&&<span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',color:'var(--t3)',fontSize:'.78rem',pointerEvents:'none'}}>{prefix}</span>}
-        <input type={type} value={val} step={type==='number'?'any':undefined} min={type==='number'?'0':undefined}
-          style={prefix?{paddingLeft:22}:{}}
-          onChange={e=>phase?setBud(phase,sk,e.target.value):type==='date'?setStr(sk,e.target.value):set(sk,e.target.value)} />
-      </div>
+      <SettingsInput
+        value={val}
+        type={type}
+        prefix={prefix}
+        onCommit={v=>phase?setBud(phase,sk,v):type==='date'?setStr(sk,v):set(sk,v)}
+      />
     </div>
   );
 
