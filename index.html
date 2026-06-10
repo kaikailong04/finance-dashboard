@@ -1532,32 +1532,28 @@ function Goals({ settings, goals, setGoals, commissions }) {
       </div>
 
       {/* ── 401(k) Card ── */}
-      <div className="gc" style={{opacity: k401Bal === 0 ? 0.55 : 1}}>
+      <div className="gc">
         <div className="gc-head">
           <div>
             <div className="gc-name">401(k)</div>
-            <div className="gc-sub">Pre-tax · IRS max {now.getFullYear()}</div>
+            <div className="gc-sub">Pre-tax · IRS max {now.getFullYear()}: {currency(settings.ira401kYearlyMax)}</div>
           </div>
           <div>
             <div className="gc-pct" style={{color:'var(--yellow)'}}>
-              {k401Bal > 0 ? pct(k401Pct_, 0) : '—'}
+              {pct(k401Pct_, 0)}
             </div>
-            <div className="gc-of">
-              {k401Bal > 0 ? `${currency(k401Bal)} of ${currency(settings.ira401kYearlyMax)}` : `${currency(settings.contribution401k)}/mo`}
-            </div>
+            <div className="gc-of">{currency(k401Bal)} of {currency(settings.ira401kYearlyMax)}</div>
           </div>
         </div>
-        {k401Bal > 0 && (
-          <>
-            <div className="gc-bar">
-              <div className="gc-fill" style={{width:`${k401Pct_}%`, background:'linear-gradient(90deg,#F5A623,#FFD27A)'}}/>
-            </div>
-            <div className="gc-foot">
-              <span className="gc-rate">{currency(k401Rem)} to IRS max</span>
-              <span className="gc-date">Not maxing — capturing match</span>
-            </div>
-          </>
-        )}
+        <div className="gc-bar">
+          <div className="gc-fill" style={{width:`${k401Pct_}%`, background:'linear-gradient(90deg,#F5A623,#FFD27A)'}}/>
+        </div>
+        <div className="gc-foot">
+          <span className="gc-rate">{currency(settings.contribution401k)}/mo pre-tax</span>
+          <span className="gc-date">
+            {k401Bal > 0 ? `${currency(k401Rem)} to IRS max` : 'Capturing employer match'}
+          </span>
+        </div>
         <form onSubmit={upd401k} className="goal-update" style={{marginTop:14}}>
           <input type="number" step="0.01" min="0"
             placeholder={`Balance (${currency(k401Bal)})`}
