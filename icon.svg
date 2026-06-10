@@ -1,8 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="114" fill="#060606"/>
-  <rect x="60" y="160" width="392" height="192" rx="96" fill="#00C805"/>
-  <text x="256" y="318"
+  <defs>
+    <linearGradient id="arcGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#0d4d0d"/>
+      <stop offset="50%"  stop-color="#00C805"/>
+      <stop offset="100%" stop-color="#5eff3a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="110" fill="#1a2030"/>
+
+  <!-- Arc ring — nearly full circle, gap at top-right -->
+  <circle cx="256" cy="256" r="182"
+    fill="none"
+    stroke="url(#arcGrad)"
+    stroke-width="40"
+    stroke-linecap="round"
+    stroke-dasharray="1010 134"
+    stroke-dashoffset="67"
+    transform="rotate(-105 256 256)"/>
+
+  <!-- Dollar sign -->
+  <text x="256" y="322"
     font-family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif"
-    font-weight="800" font-size="200" fill="#060606"
+    font-weight="900" font-size="240" fill="#ffffff"
     text-anchor="middle">$</text>
+
+  <!-- 4-pointed sparkle at ~1 o'clock on the arc -->
+  <path d="M384,122 L388,137 L403,141 L388,145 L384,160 L380,145 L365,141 L380,137 Z"
+    fill="#7dff50"/>
 </svg>
