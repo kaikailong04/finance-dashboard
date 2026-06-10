@@ -1,7 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="114" fill="#111111"/>
-  <text x="256" y="338"
+  <rect width="512" height="512" rx="114" fill="#060606"/>
+  <rect x="60" y="160" width="392" height="192" rx="96" fill="#00C805"/>
+  <text x="256" y="318"
     font-family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif"
-    font-weight="700" font-size="300" fill="#3b82f6"
+    font-weight="800" font-size="200" fill="#060606"
     text-anchor="middle">$</text>
 </svg>
