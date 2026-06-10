@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
   <!-- PWA / theme -->
-  <meta name="theme-color" content="#0a0a0a" />
+  <meta name="theme-color" content="#060606" />
   <meta name="color-scheme" content="dark" />
   <link rel="manifest" href="/manifest.json" />
 
@@ -35,7 +35,7 @@
       x.quadraticCurveTo(0,0,r,0);
       x.closePath();
       x.fill();
-      x.fillStyle = '#3b82f6';
+      x.fillStyle = '#00C805';
       x.font = 'bold 112px -apple-system,Helvetica Neue,sans-serif';
       x.textAlign = 'center';
       x.textBaseline = 'middle';
@@ -57,32 +57,39 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..900;1,14..32,300..900&display=swap" rel="stylesheet">
   <style>
 :root {
-  --bg:      #0a0a0a;
-  --s1:      #111111;
-  --s2:      #161616;
-  --s3:      #1c1c1c;
-  --border:  #222222;
-  --border2: #2a2a2a;
+  --bg:      #060606;
+  --s1:      #0d0d0d;
+  --s2:      #111111;
+  --s3:      #171717;
+  --border:  rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
 
+  /* Primary accent — Robinhood green */
+  --accent:    #00C805;
+  --accent-dk: #00a004;
+  --accent-lt: rgba(0,200,5,.08);
+
+  /* Blue kept only for form focus rings */
   --blue:    #3b82f6;
   --blue-dk: #2563eb;
   --blue-lt: rgba(59,130,246,.1);
-  --green:   #22c55e;
-  --green-lt:rgba(34,197,94,.1);
-  --red:     #ef4444;
-  --red-lt:  rgba(239,68,68,.1);
-  --yellow:  #eab308;
-  --yellow-lt:rgba(234,179,8,.08);
-  --purple:  #a78bfa;
-  --purple-lt:rgba(167,139,250,.1);
+
+  --green:    #00C805;
+  --green-lt: rgba(0,200,5,.08);
+  --red:      #FF5000;
+  --red-lt:   rgba(255,80,0,.1);
+  --yellow:   #F5A623;
+  --yellow-lt:rgba(245,166,35,.1);
+  --purple:   #7B74FF;
+  --purple-lt:rgba(123,116,255,.12);
 
   --t1: #ffffff;
-  --t2: #a1a1aa;
-  --t3: #52525b;
-  --t4: #3f3f46;
+  --t2: #c0c0c0;
+  --t3: #484848;
+  --t4: #2a2a2a;
 
-  --r:   6px;
-  --r-s: 4px;
+  --r:   14px;
+  --r-s: 10px;
 
   --shadow: 0 0 0 1px var(--border);
 }
@@ -109,7 +116,7 @@ html{-webkit-text-size-adjust:100%}
 
 .header{
   position:sticky;top:0;z-index:100;
-  background:rgba(10,10,10,.94);
+  background:rgba(6,6,6,.96);
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   border-bottom:1px solid var(--border);
   /* Extend into the notch / Dynamic Island area */
@@ -125,7 +132,7 @@ html{-webkit-text-size-adjust:100%}
 }
 .logo-dot{
   width:8px;height:8px;border-radius:50%;
-  background:var(--blue);flex-shrink:0;
+  background:var(--accent);flex-shrink:0;
 }
 
 /* Nav — underline style like Robinhood */
@@ -140,23 +147,23 @@ html{-webkit-text-size-adjust:100%}
   position:relative;top:1px;
 }
 .nav-btn:hover{color:var(--t2)}
-.nav-btn.active{color:var(--t1);font-weight:600;border-bottom-color:var(--blue)}
+.nav-btn.active{color:var(--t1);font-weight:600;border-bottom-color:var(--accent)}
 
 .main{flex:1;padding-bottom:64px}
 
 .mobile-nav{
   display:none;position:fixed;bottom:0;left:0;right:0;
-  background:rgba(10,10,10,.97);
+  background:rgba(6,6,6,.98);
   border-top:1px solid var(--border);z-index:100;
   padding-bottom:env(safe-area-inset-bottom);
 }
 .mnav-btn{
   flex:1;background:none;border:none;padding:10px 4px;
-  display:flex;flex-direction:column;align-items:center;gap:3px;
-  color:var(--t3);transition:color .12s;font-size:.58rem;font-weight:600;
-  letter-spacing:.06em;text-transform:uppercase;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  color:var(--t3);transition:color .12s;
 }
-.mnav-btn.active{color:var(--blue)}
+.mnav-btn.active{color:var(--accent)}
+.nav-pip{width:4px;height:4px;border-radius:50%;background:var(--accent)}
 
 /* ── Page ───────────────────────────────────────────────────────────── */
 .page{
@@ -226,7 +233,7 @@ html{-webkit-text-size-adjust:100%}
   background:var(--s1);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;
 }
 .eq-item{flex:1;padding:20px 20px 18px;border-right:1px solid var(--border)}
-.eq-item:last-child{border-right:none;background:var(--blue-lt)}
+.eq-item:last-child{border-right:none;background:var(--accent-lt)}
 .eq-label{font-size:.58rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin-bottom:8px}
 .eq-num{font-size:1.5rem;font-weight:700;letter-spacing:-.04em;font-variant-numeric:tabular-nums;line-height:1}
 .eq-note{font-size:.62rem;color:var(--t3);margin-top:5px;line-height:1.4}
@@ -277,8 +284,8 @@ html{-webkit-text-size-adjust:100%}
   font-size:.775rem;font-weight:600;letter-spacing:.01em;
   border:1px solid transparent;white-space:nowrap;
 }
-.btn-primary{background:var(--blue);color:#fff}
-.btn-primary:hover{background:var(--blue-dk)}
+.btn-primary{background:var(--accent);color:#000}
+.btn-primary:hover{background:var(--accent-dk)}
 .btn-primary:active{transform:scale(.97);opacity:.9}
 .btn-sm{padding:5px 11px;font-size:.72rem}
 .btn-full{width:100%;padding:11px;font-size:.85rem;justify-content:center;margin-top:6px}
@@ -487,6 +494,122 @@ html{-webkit-text-size-adjust:100%}
   .mnav-btn{min-height:48px}
   .month-arrow{width:40px;height:40px}
 }
+
+/* ── V3 Typography ───────────────────────────────────────────────── */
+.eyebrow{
+  font-size:.7rem;font-weight:600;color:var(--t3);
+  text-transform:uppercase;letter-spacing:.09em;
+}
+.mega{
+  font-size:3.2rem;font-weight:800;letter-spacing:-.05em;
+  line-height:1;font-variant-numeric:tabular-nums;
+}
+.large-num{
+  font-size:2rem;font-weight:800;letter-spacing:-.04em;
+  font-variant-numeric:tabular-nums;line-height:1;
+}
+.section-head{
+  font-size:1.15rem;font-weight:700;letter-spacing:-.03em;
+  padding:20px 0 8px;
+}
+
+/* ── Generic list rows (paycheck breakdown, etc.) ────────────────── */
+.v-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:13px 0;border-bottom:1px solid var(--border);
+}
+.v-row:last-child{border-bottom:none}
+.v-row-left{display:flex;align-items:center;gap:13px}
+.v-row-icon{
+  width:38px;height:38px;border-radius:11px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.v-row-name{font-size:.9rem;font-weight:500;color:var(--t2)}
+.v-row-sub{font-size:.72rem;color:var(--t3);margin-top:2px}
+.v-row-val{
+  font-size:.9rem;font-weight:700;
+  font-variant-numeric:tabular-nums;text-align:right;
+}
+
+/* ── Flush card (no inner padding, rows self-pad) ────────────────── */
+.card-flush{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--r);overflow:hidden;
+}
+
+/* ── Budget rows (V3 style) ──────────────────────────────────────── */
+.b-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:13px 20px;border-bottom:1px solid var(--border);
+}
+.b-row:last-of-type{border-bottom:none}
+.b-left{display:flex;align-items:center;gap:12px}
+.b-icon{
+  width:36px;height:36px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.b-name{font-size:.9rem;color:var(--t2);font-weight:400}
+.b-amt{font-size:.9rem;font-weight:600;font-variant-numeric:tabular-nums;color:var(--t1)}
+.b-total-row{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  padding:16px 20px;
+  background:var(--accent-lt);
+  border-top:1px solid rgba(0,200,5,.15);
+}
+.b-total-lbl{font-size:.6rem;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.b-surplus{font-size:.78rem;color:var(--accent);font-weight:600}
+
+/* ── Spending category bars (V3 style) ───────────────────────────── */
+.sp-cat{padding:14px 20px;border-bottom:1px solid var(--border)}
+.sp-cat:last-child{border-bottom:none}
+.sp-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.sp-name{font-size:.85rem;color:var(--t2)}
+.sp-nums{font-size:.78rem;font-variant-numeric:tabular-nums}
+.sp-spent{color:var(--t1);font-weight:600}
+.sp-bgt{color:var(--t4)}
+.bar{height:2px;background:rgba(255,255,255,.05);border-radius:99px;overflow:hidden}
+.bar-in{height:100%;border-radius:99px;background:var(--accent);transition:width .5s cubic-bezier(.4,0,.2,1)}
+.bar-in.warn{background:var(--yellow)}
+.bar-in.over{background:var(--red)}
+
+/* ── Goal cards (V3 style) ───────────────────────────────────────── */
+.gc{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--r);padding:20px;
+}
+.gc-head{display:flex;justify-content:space-between;margin-bottom:14px}
+.gc-name{font-size:.95rem;font-weight:700;color:var(--t1)}
+.gc-sub{font-size:.72rem;color:var(--t3);margin-top:3px}
+.gc-pct{font-size:1.6rem;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums;text-align:right;line-height:1}
+.gc-of{font-size:.68rem;color:var(--t3);text-align:right;margin-top:3px}
+.gc-bar{height:3px;background:rgba(255,255,255,.05);border-radius:99px;overflow:hidden;margin-bottom:12px}
+.gc-fill{height:100%;border-radius:99px}
+.gc-foot{display:flex;justify-content:space-between;align-items:center}
+.gc-rate{font-size:.72rem;color:var(--t3)}
+.gc-date{font-size:.72rem;color:var(--t2);font-weight:600}
+
+/* ── Phase pills ─────────────────────────────────────────────────── */
+.phase-pill-row{display:flex;gap:8px}
+.phase-pill{
+  flex:1;padding:11px;border-radius:10px;text-align:center;
+  font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s;
+  border:none;font-family:inherit;
+}
+.phase-pill-on{background:var(--accent);color:#000}
+.phase-pill-off{background:rgba(255,255,255,.05);color:var(--t3)}
+.phase-pill-off:hover{background:rgba(255,255,255,.09);color:var(--t2)}
+
+/* ── Add button (green pill) ─────────────────────────────────────── */
+.add-btn{
+  background:var(--accent);color:#000;border:none;
+  border-radius:99px;padding:9px 20px;
+  font-size:.82rem;font-weight:800;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:inherit;white-space:nowrap;
+  transition:background .1s,transform .08s;
+}
+.add-btn:hover{background:var(--accent-dk)}
+.add-btn:active{transform:scale(.96)}
   </style>
 </head>
 <body>
@@ -611,14 +734,127 @@ function Bar({ value, max, color='var(--blue)', lg=false }) {
   );
 }
 
+// ── SVG Icon System ────────────────────────────────────────────────
+function Icon({ name, size=20, color='currentColor', strokeWidth=1.6 }) {
+  const s = { width:size, height:size, display:'block', flexShrink:0 };
+  const p = { fill:'none', stroke:color, strokeWidth, strokeLinecap:'round', strokeLinejoin:'round' };
+  const icons = {
+    home:      <svg style={s} viewBox="0 0 24 24" {...p}><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg>,
+    chart:     <svg style={s} viewBox="0 0 24 24" {...p}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+    wallet:    <svg style={s} viewBox="0 0 24 24" {...p}><rect x="2" y="5" width="20" height="15" rx="2"/><path d="M16 13a1 1 0 100-2 1 1 0 000 2z" fill={color} stroke="none"/><path d="M2 10h20"/></svg>,
+    target:    <svg style={s} viewBox="0 0 24 24" {...p}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
+    trending:  <svg style={s} viewBox="0 0 24 24" {...p}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
+    plus:      <svg style={s} viewBox="0 0 24 24" {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+    chevronLeft: <svg style={s} viewBox="0 0 24 24" {...p}><polyline points="15 18 9 12 15 6"/></svg>,
+    chevronRight:<svg style={s} viewBox="0 0 24 24" {...p}><polyline points="9 18 15 12 9 6"/></svg>,
+    zap:       <svg style={s} viewBox="0 0 24 24" {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+    shield:    <svg style={s} viewBox="0 0 24 24" {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+    trendUp:   <svg style={s} viewBox="0 0 24 24" {...p}><polyline points="17 7 12 12 9 9 4 14"/><polyline points="14 7 17 7 17 10"/></svg>,
+    piggy:     <svg style={s} viewBox="0 0 24 24" {...p}><path d="M19 9c0-3.31-3.13-6-7-6S5 5.69 5 9c-1.1 0-2 .9-2 2v2c0 1.1.9 2 2 2h.26C6.25 17.24 8.93 19 12 19s5.75-1.76 6.74-4H19c1.1 0 2-.9 2-2v-2c0-1.1-.9-2-2-2z"/><circle cx="9" cy="11" r="1" fill={color} stroke="none"/><line x1="16" y1="8" x2="16" y2="10"/></svg>,
+    cart:      <svg style={s} viewBox="0 0 24 24" {...p}><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>,
+    fuel:      <svg style={s} viewBox="0 0 24 24" {...p}><path d="M3 22V6a2 2 0 012-2h8a2 2 0 012 2v16"/><path d="M3 22h12"/><path d="M15 8h2a2 2 0 012 2v4a2 2 0 002 2h0a2 2 0 002-2V9l-3-3"/></svg>,
+    plane:     <svg style={s} viewBox="0 0 24 24" {...p}><path d="M21 16v-2l-8-5V3.5A1.5 1.5 0 0011.5 2 1.5 1.5 0 0010 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>,
+    fork:      <svg style={s} viewBox="0 0 24 24" {...p}><line x1="12" y1="2" x2="12" y2="22"/><path d="M8 6v6c0 1.1.9 2 2 2h4a2 2 0 002-2V6"/></svg>,
+    bag:       <svg style={s} viewBox="0 0 24 24" {...p}><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>,
+    dollar:    <svg style={s} viewBox="0 0 24 24" {...p}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>,
+    receipt:   <svg style={s} viewBox="0 0 24 24" {...p}><path d="M4 2v20l3-2 2 2 2-2 2 2 2-2 3 2V2l-3 2-2-2-2 2-2-2-2 2z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/></svg>,
+    bank:      <svg style={s} viewBox="0 0 24 24" {...p}><path d="M3 9l9-7 9 7v11a1 1 0 01-1 1H4a1 1 0 01-1-1z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+    check:     <svg style={s} viewBox="0 0 24 24" {...p}><polyline points="20 6 9 17 4 12"/></svg>,
+  };
+  return icons[name] || null;
+}
+
+// ── Nav Icons (7 tabs) ─────────────────────────────────────────────
+function NavIcon({ name, active }) {
+  const c = active ? '#00C805' : '#3a3a3a';
+  const sw = active ? 2 : 1.6;
+  const base = { fill:'none', stroke:c, strokeWidth:sw, strokeLinecap:'round', strokeLinejoin:'round' };
+  const icons = {
+    dash: (
+      <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
+        <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+        <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+      </svg>
+    ),
+    budget: (
+      <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/>
+      </svg>
+    ),
+    spend: (
+      <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
+        <rect x="2" y="5" width="20" height="14" rx="2"/>
+        <path d="M2 10h20"/>
+        <circle cx="12" cy="15" r="1.2" fill={c} stroke="none"/>
+      </svg>
+    ),
+    goals: (
+      <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
+        <circle cx="12" cy="12" r="10"/>
+        <circle cx="12" cy="12" r="6"/>
+        <circle cx="12" cy="12" r="2" fill={active ? '#00C805' : 'none'}/>
+      </svg>
+    ),
+    comm: (
+      <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
+        <line x1="12" y1="1" x2="12" y2="23"/>
+        <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+      </svg>
+    ),
+    worth: (
+      <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
+        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+        <polyline points="17 6 23 6 23 12"/>
+      </svg>
+    ),
+    more: (
+      <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+      </svg>
+    ),
+  };
+  return icons[name] || null;
+}
+
+// ── Sparkline (decorative upward trend) ───────────────────────────
+function Sparkline() {
+  const pts = [42,40,44,39,46,43,48,44,50,46,54,49,57,52,60,55,62,57,65,60,67,62,70,64,72,67,75,70,78,73,80,76,82];
+  const w = 560, h = 80;
+  const min = Math.min(...pts), max = Math.max(...pts);
+  const coords = pts.map((v,i) => {
+    const x = (i/(pts.length-1))*w;
+    const y = h - ((v-min)/(max-min))*(h*0.72) - h*0.1;
+    return [x,y];
+  });
+  const line = 'M ' + coords.map(([x,y]) => `${x},${y}`).join(' L ');
+  const area = line + ` L ${w},${h} L 0,${h} Z`;
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{display:'block',overflow:'visible'}}>
+      <defs>
+        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#00C805" stopOpacity="0.18"/>
+          <stop offset="100%" stopColor="#00C805" stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d={area} fill="url(#sg)"/>
+      <path d={line} fill="none" stroke="#00C805" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx={coords[coords.length-1][0]} cy={coords[coords.length-1][1]} r="3.5" fill="#00C805"/>
+      <circle cx={coords[coords.length-1][0]} cy={coords[coords.length-1][1]} r="7" fill="#00C805" opacity="0.15"/>
+    </svg>
+  );
+}
+
 const TABS = [
-  { id:'dashboard', label:'Dashboard',  short:'Dash'   },
-  { id:'budget',    label:'Budget',     short:'Budget' },
-  { id:'spending',  label:'Spending',   short:'Spend'  },
-  { id:'goals',     label:'Goals',      short:'Goals'  },
-  { id:'commission',label:'Commission', short:'Comm'   },
-  { id:'networth',  label:'Net Worth',  short:'Worth'  },
-  { id:'settings',  label:'Settings',   short:'More'   },
+  { id:'dashboard', label:'Dashboard',  short:'Dash',   icon:'dash'   },
+  { id:'budget',    label:'Budget',     short:'Budget', icon:'budget' },
+  { id:'spending',  label:'Spending',   short:'Spend',  icon:'spend'  },
+  { id:'goals',     label:'Goals',      short:'Goals',  icon:'goals'  },
+  { id:'commission',label:'Commission', short:'Comm',   icon:'comm'   },
+  { id:'networth',  label:'Net Worth',  short:'Worth',  icon:'worth'  },
+  { id:'settings',  label:'Settings',   short:'More',   icon:'more'   },
 ];
 
 const CATEGORIES = [
@@ -634,141 +870,168 @@ const CATEGORIES = [
 ];
 
 // ── Dashboard ─────────────────────────────────────────────────────────
-function Dashboard({ settings, transactions, goals }) {
+function Dashboard({ settings, transactions, goals, commissions }) {
   const phase = getPhaseInfo(settings.startDate);
   const now   = new Date();
 
-  let phaseLabel, phaseBadge;
-  if (phase.isPreEmployment) {
-    phaseLabel = 'Pre-employment';
-    phaseBadge = <span className="badge badge-purple">Pre-Employment</span>;
-  } else if (phase.isEarly) {
-    phaseLabel = `Month ${phase.idx} of 3 — Rent-Free`;
-    phaseBadge = <span className="badge badge-green">Rent-Free · Month {phase.idx}</span>;
-  } else {
-    phaseLabel = `Month ${phase.idx} — Full Budget`;
-    phaseBadge = <span className="badge badge-blue">Full Budget · Month {phase.idx}</span>;
-  }
+  const budget     = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget : settings.laterBudget;
+  const eb         = settings.earlyBudget;
+  const monthlyContrib = (budget.hysa||0) + (budget.rothIRA||0) + (settings.contribution401k||0);
+  const savingsRate    = settings.takeHome > 0 ? (monthlyContrib / settings.takeHome) * 100 : 0;
 
-  const budget = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget : settings.laterBudget;
+  const totalBudgeted = phase.isEarly || phase.isPreEmployment
+    ? (eb.utilitiesAndFee||0)+(eb.rentersInsurance||0)+(eb.rothIRA||0)+(eb.hysa||0)+(eb.groceries||0)+(eb.gas||0)+(eb.funTravel||0)+(eb.outToEat||0)+(eb.shopping||0)
+    : (budget.rentAndFee||0)+(budget.utilities||0)+(budget.rentersInsurance||0)+(budget.rothIRA||0)+(budget.hysa||0)+(budget.groceries||0)+(budget.gas||0)+(budget.funTravel||0)+(budget.outToEat||0)+(budget.shopping||0);
+  const surplus = settings.takeHome - totalBudgeted;
 
   const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const monthTx  = transactions.filter(t=>t.date.startsWith(monthStr)&&t.type==='expense');
+  const totalSpent = monthTx.reduce((s,t)=>s+t.amount, 0);
   const byCategory = {};
   for (const t of monthTx) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
+  const recentTx = [...transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
 
-  const budgetRows = phase.isEarly || phase.isPreEmployment ? [
-    { label:'Utilities & Fee', val:budget.utilitiesAndFee, cat:'utilities' },
-    { label:'Roth IRA',        val:budget.rothIRA,         cat:'savings'   },
-    { label:'HYSA',            val:budget.hysa,            cat:'savings'   },
-    { label:'Groceries',       val:budget.groceries,       cat:'groceries' },
-    { label:'Gas',             val:budget.gas,             cat:'gas'       },
-    { label:'Travel',          val:budget.funTravel,       cat:'travel'    },
-    { label:'Dining',          val:budget.outToEat,        cat:'dining'    },
-    { label:'Shopping',        val:budget.shopping,        cat:'shopping'  },
-  ] : [
-    { label:'Rent & Fee',  val:budget.rentAndFee,  cat:'housing'   },
-    { label:'Utilities',   val:budget.utilities,   cat:'utilities' },
-    { label:'Roth IRA',    val:budget.rothIRA,     cat:'savings'   },
-    { label:'HYSA',        val:budget.hysa,        cat:'savings'   },
-    { label:'Groceries',   val:budget.groceries,   cat:'groceries' },
-    { label:'Gas',         val:budget.gas,         cat:'gas'       },
-    { label:'Travel',      val:budget.funTravel,   cat:'travel'    },
-    { label:'Dining',      val:budget.outToEat,    cat:'dining'    },
-    { label:'Shopping',    val:budget.shopping,    cat:'shopping'  },
+  // Paycheck breakdown rows
+  const paycheckRows = [
+    { icon:'dollar', iconBg:'rgba(0,200,5,.08)',   iconClr:'#00C805', name:'Gross Monthly',   sub:currency(settings.grossBase*12)+' / yr base',     val:currency(settings.grossBase),          vc:'var(--t1)'    },
+    { icon:'receipt',iconBg:'rgba(255,80,0,.1)',   iconClr:'#FF5000', name:'Tax & FICA',       sub:'Federal + GA + FICA',                             val:'−'+currency(settings.federalTax),     vc:'var(--red)'   },
+    { icon:'bank',   iconBg:'rgba(245,166,35,.1)', iconClr:'#F5A623', name:'401(k) Pre-Tax',   sub:pct(settings.contribution401k/settings.grossBase*100,0)+' contribution',val:'−'+currency(settings.contribution401k),vc:'var(--yellow)'},
+    { icon:'check',  iconBg:'rgba(0,200,5,.08)',   iconClr:'#00C805', name:'Take-Home',        sub:'Hits your account',                               val:currency(settings.takeHome),           vc:'var(--green)' },
   ];
 
-  const totalBudget = budgetRows.reduce((s,r)=>s+r.val, 0);
-  const surplus = settings.takeHome - totalBudget;
-  const recentTx = [...transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
+  // Category bars for "This Month" (only show if transactions exist)
+  const catSpendRows = phase.isEarly || phase.isPreEmployment ? [
+    { label:'Utilities',  cat:'utilities', budget:budget.utilitiesAndFee },
+    { label:'Savings',    cat:'savings',   budget:(budget.rothIRA||0)+(budget.hysa||0) },
+    { label:'Groceries',  cat:'groceries', budget:budget.groceries },
+    { label:'Gas',        cat:'gas',       budget:budget.gas },
+    { label:'Dining',     cat:'dining',    budget:budget.outToEat },
+    { label:'Shopping',   cat:'shopping',  budget:budget.shopping },
+    { label:'Travel',     cat:'travel',    budget:budget.funTravel },
+  ] : [
+    { label:'Housing',    cat:'housing',   budget:budget.rentAndFee },
+    { label:'Utilities',  cat:'utilities', budget:budget.utilities },
+    { label:'Savings',    cat:'savings',   budget:(budget.rothIRA||0)+(budget.hysa||0) },
+    { label:'Groceries',  cat:'groceries', budget:budget.groceries },
+    { label:'Gas',        cat:'gas',       budget:budget.gas },
+    { label:'Dining',     cat:'dining',    budget:budget.outToEat },
+    { label:'Shopping',   cat:'shopping',  budget:budget.shopping },
+    { label:'Travel',     cat:'travel',    budget:budget.funTravel },
+  ];
+
+  let phaseBadge;
+  if (phase.isPreEmployment)   phaseBadge = <span className="badge badge-purple">Pre-Employment</span>;
+  else if (phase.isEarly)      phaseBadge = <span className="badge badge-green">Month {phase.idx} · Rent-Free</span>;
+  else                         phaseBadge = <span className="badge badge-blue">Month {phase.idx} · Full Budget</span>;
 
   return (
     <div className="page">
-      <div className="page-top">
-        <div>
-          <h2 className="page-title">Dashboard</h2>
-          <div className="page-sub">{now.toLocaleDateString('en-US',{month:'long',year:'numeric'})} · {phaseLabel}</div>
-        </div>
-        {phaseBadge}
-      </div>
 
-      {/* Income equation */}
+      {/* Hero ─ take-home */}
       <div>
-        <div className="slabel">Income</div>
-        <div className="income-eq">
-          <div className="eq-item">
-            <div className="eq-label">Base</div>
-            <div className="eq-num c-green">{currency(settings.grossBase)}</div>
-            <div className="eq-note">$60k / yr</div>
-          </div>
-          <div className="eq-op" style={{opacity:0}}>·</div>
-          <div className="eq-item">
-            <div className="eq-label">OTE</div>
-            <div className="eq-num c-blue">{currency(settings.grossOTE)}</div>
-            <div className="eq-note">$80k / yr</div>
-          </div>
-          <div className="eq-op">−</div>
-          <div className="eq-item">
-            <div className="eq-label">Tax & FICA</div>
-            <div className="eq-num c-red">{currency(settings.federalTax)}</div>
-            <div className="eq-note">Federal, GA</div>
-          </div>
-          <div className="eq-op">−</div>
-          <div className="eq-item">
-            <div className="eq-label">401(k)</div>
-            <div className="eq-num c-yellow">{currency(settings.contribution401k)}</div>
-            <div className="eq-note">Pre-tax</div>
-          </div>
-          <div className="eq-op">=</div>
-          <div className="eq-item">
-            <div className="eq-label">Take-Home</div>
-            <div className="eq-num c-blue">{currency(settings.takeHome)}</div>
-            <div className="eq-note">Per month</div>
-          </div>
+        <div className="eyebrow" style={{marginBottom:8}}>Monthly Take-Home</div>
+        <div className="mega" style={{color:'var(--t1)'}}>{currency(settings.takeHome)}</div>
+        <div style={{fontSize:'.85rem',color:'var(--accent)',marginTop:10,fontWeight:500,display:'flex',alignItems:'center',gap:5}}>
+          <Icon name="trendUp" size={14} color="var(--accent)" strokeWidth={2}/>
+          {currency(settings.grossOTE*12-settings.grossBase*12)} OTE upside / yr
         </div>
       </div>
 
-      {/* Surplus */}
-      {!phase.isPreEmployment && (
-        <div className={'surplus '+(surplus>=0?'surplus-ok':'surplus-over')}>
-          <div>
-            <div className="surplus-label">Monthly Surplus</div>
-            <div className="surplus-num" style={{color:surplus>=0?'var(--green)':'var(--red)'}}>
-              {currency(surplus)}
-            </div>
-            <div className="surplus-eq">{currency(settings.takeHome)} − {currency(totalBudget)} budgeted</div>
+      {/* Sparkline */}
+      <div style={{marginTop:4,marginBottom:4}}>
+        <Sparkline />
+      </div>
+
+      {/* Stat strip */}
+      <div style={{display:'flex',gap:0}}>
+        {[
+          { lbl:'Base',         val:currency(settings.grossBase), sub:currency(settings.grossBase*12)+'/yr', c:'var(--t1)' },
+          { lbl:'OTE',          val:currency(settings.grossOTE),  sub:currency(settings.grossOTE*12)+'/yr',  c:'var(--accent)' },
+          { lbl:'Savings Rate', val:pct(savingsRate,0),           sub:currency(monthlyContrib)+'/mo',         c:'var(--accent)' },
+        ].map((s,i,arr) => (
+          <div key={s.lbl} style={{
+            flex:1, paddingRight:i<arr.length-1?16:0, marginRight:i<arr.length-1?16:0,
+            borderRight: i<arr.length-1 ? '1px solid var(--border)' : 'none',
+          }}>
+            <div style={{fontSize:'.6rem',fontWeight:600,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.09em',marginBottom:5}}>{s.lbl}</div>
+            <div style={{fontSize:'1.1rem',fontWeight:700,letterSpacing:'-.02em',fontVariantNumeric:'tabular-nums',color:s.c}}>{s.val}</div>
+            <div style={{fontSize:'.68rem',color:'var(--t3)',marginTop:2}}>{s.sub}</div>
           </div>
-          <div className="surplus-right">
-            {phase.isEarly
-              ? <span className="badge badge-green">Rent-Free Phase</span>
-              : <span className="badge badge-blue">Full Budget Phase</span>}
-            <div className="surplus-phase">
-              {phase.isEarly ? 'No rent through Month 3' : 'Rent active from Month 4'}
+        ))}
+      </div>
+
+      {/* Paycheck Breakdown */}
+      <div>
+        <div className="section-head">Paycheck Breakdown</div>
+        <div className="card-flush">
+          {paycheckRows.map(r => (
+            <div key={r.name} className="v-row">
+              <div className="v-row-left">
+                <div className="v-row-icon" style={{background:r.iconBg}}>
+                  <Icon name={r.icon} size={16} color={r.iconClr} strokeWidth={1.7}/>
+                </div>
+                <div>
+                  <div className="v-row-name">{r.name}</div>
+                  <div className="v-row-sub">{r.sub}</div>
+                </div>
+              </div>
+              <div className="v-row-val" style={{color:r.vc}}>{r.val}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Monthly surplus */}
+      {!phase.isPreEmployment && (
+        <div style={{
+          background:surplus>=0?'var(--accent-lt)':'rgba(255,80,0,.08)',
+          border:'1px solid '+(surplus>=0?'rgba(0,200,5,.2)':'rgba(255,80,0,.2)'),
+          borderRadius:'var(--r)', padding:'18px 20px',
+          display:'flex', alignItems:'center', justifyContent:'space-between',
+        }}>
+          <div>
+            <div className="eyebrow" style={{marginBottom:6}}>Monthly Surplus</div>
+            <div style={{fontSize:'1.75rem',fontWeight:800,letterSpacing:'-.04em',fontVariantNumeric:'tabular-nums',
+              color:surplus>=0?'var(--green)':'var(--red)',lineHeight:1}}>
+              {surplus>=0?'+':''}{currency(surplus)}
+            </div>
+            <div style={{fontSize:'.72rem',color:'var(--t3)',marginTop:5}}>
+              {currency(settings.takeHome)} − {currency(totalBudgeted)} budgeted
+            </div>
+          </div>
+          <div style={{textAlign:'right'}}>
+            {phaseBadge}
+            <div style={{fontSize:'.68rem',color:'var(--t3)',marginTop:6}}>
+              {phase.isEarly ? 'Rent-free thru Month 3' : 'Full budget active'}
             </div>
           </div>
         </div>
       )}
 
-      {/* Budget progress */}
+      {/* This Month spending bars */}
       {!phase.isPreEmployment && (
         <div>
-          <div className="slabel">This Month</div>
-          <div className="card" style={{padding:'4px 24px 8px'}}>
-            {budgetRows.map(row => {
-              const cat   = CATEGORIES.find(c=>c.id===row.cat);
-              const spent = byCategory[row.cat]||0;
-              const over  = spent > row.val;
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}}>
+            <div className="section-head" style={{padding:0,marginBottom:0}}>This Month</div>
+            <div style={{fontSize:'.78rem',color:'var(--t3)',fontVariantNumeric:'tabular-nums'}}>
+              {currency(totalSpent)} spent
+            </div>
+          </div>
+          <div className="card-flush">
+            {catSpendRows.filter(r=>r.budget>0).map(r => {
+              const s = byCategory[r.cat]||0;
+              const p_ = r.budget>0 ? Math.min((s/r.budget)*100,100) : 0;
+              const cls = p_>=100?'over':p_>=80?'warn':'';
               return (
-                <div key={row.label} className="brow-full">
-                  <div className="brow-top">
-                    <span style={{color:'var(--t2)',fontSize:'.82rem'}}>{row.label}</span>
-                    <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums',fontSize:'.82rem',color:over?'var(--red)':'var(--t1)'}}>
-                      {spent>0?<>{currency(spent)} <span className="c-muted">/ {currency(row.val)}</span></>:currency(row.val)}
+                <div key={r.cat} className="sp-cat">
+                  <div className="sp-top">
+                    <span className="sp-name">{r.label}</span>
+                    <span className="sp-nums">
+                      <span className="sp-spent">{currency(s)}</span>
+                      <span className="sp-bgt"> / {currency(r.budget)}</span>
                     </span>
                   </div>
-                  <div className="track">
-                    <div className="fill" style={{width:`${Math.min((spent/row.val)*100,100)||0}%`,background:over?'var(--red)':(cat?.color||'var(--blue)')}} />
-                  </div>
+                  <div className="bar"><div className={`bar-in ${cls}`} style={{width:`${p_||0}%`}}/></div>
                 </div>
               );
             })}
@@ -776,6 +1039,7 @@ function Dashboard({ settings, transactions, goals }) {
         </div>
       )}
 
+      {/* Pre-employment placeholder */}
       {phase.isPreEmployment && (
         <div className="card" style={{textAlign:'center',padding:'48px 24px'}}>
           <div style={{fontSize:'1.1rem',fontWeight:700,color:'var(--t1)',marginBottom:8}}>Pre-Employment Setup</div>
@@ -788,8 +1052,8 @@ function Dashboard({ settings, transactions, goals }) {
       {/* Recent activity */}
       {recentTx.length > 0 && (
         <div>
-          <div className="slabel">Recent Activity</div>
-          <div className="card" style={{padding:'4px 24px 8px'}}>
+          <div className="section-head">Recent Activity</div>
+          <div className="card-flush">
             <div className="tx-list">
               {recentTx.map(t => {
                 const cat = CATEGORIES.find(c=>c.id===t.category);
@@ -816,111 +1080,123 @@ function Dashboard({ settings, transactions, goals }) {
 
 // ── Budget Tab ─────────────────────────────────────────────────────────
 function Budget({ settings, transactions }) {
+  const phase = getPhaseInfo(settings.startDate);
+  // Default the toggle to whichever phase is currently active
+  const [sel, setSel] = useState(phase.isFull ? 1 : 0);
+
   const now      = new Date();
   const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const monthTx  = transactions.filter(t=>t.date.startsWith(monthStr)&&t.type==='expense');
-
-  // Aggregate spending by category
   const spent = {};
   for (const t of monthTx) spent[t.category]=(spent[t.category]||0)+t.amount;
 
-  // Category → spending lookup for each budget column
   const eb = settings.earlyBudget;
   const lb = settings.laterBudget;
 
   const earlyRows = [
-    { label:'Utilities & Fee',    limit:eb.utilitiesAndFee,  cat:'utilities' },
-    { label:'Renters Insurance',  limit:eb.rentersInsurance, cat:'other'     },
-    { label:'Roth IRA',           limit:eb.rothIRA,          cat:'savings'   },
-    { label:'HYSA',               limit:eb.hysa,             cat:'savings'   },
-    { label:'Groceries',          limit:eb.groceries,        cat:'groceries' },
-    { label:'Gas',                limit:eb.gas,              cat:'gas'       },
-    { label:'Travel',             limit:eb.funTravel,        cat:'travel'    },
-    { label:'Dining',             limit:eb.outToEat,         cat:'dining'    },
-    { label:'Shopping',           limit:eb.shopping,         cat:'shopping'  },
+    { label:'Utilities & Fee',   limit:eb.utilitiesAndFee,  cat:'utilities', icon:'zap',     iconBg:'rgba(245,166,35,.1)',  iconClr:'#F5A623'         },
+    { label:'Renters Insurance', limit:eb.rentersInsurance, cat:'other',     icon:'shield',  iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
+    { label:'Roth IRA',          limit:eb.rothIRA,          cat:'savings',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
+    { label:'HYSA',              limit:eb.hysa,             cat:'savings',   icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
+    { label:'Groceries',         limit:eb.groceries,        cat:'groceries', icon:'cart',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
+    { label:'Gas',               limit:eb.gas,              cat:'gas',       icon:'fuel',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
+    { label:'Travel',            limit:eb.funTravel,        cat:'travel',    icon:'plane',   iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
+    { label:'Dining',            limit:eb.outToEat,         cat:'dining',    icon:'fork',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
+    { label:'Shopping',          limit:eb.shopping,         cat:'shopping',  icon:'bag',     iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
   ];
   const laterRows = [
-    { label:'Rent & Fee',         limit:lb.rentAndFee,       cat:'housing'   },
-    { label:'Utilities',          limit:lb.utilities,        cat:'utilities' },
-    { label:'Renters Insurance',  limit:lb.rentersInsurance, cat:'other'     },
-    { label:'Roth IRA',           limit:lb.rothIRA,          cat:'savings'   },
-    { label:'HYSA',               limit:lb.hysa,             cat:'savings'   },
-    { label:'Groceries',          limit:lb.groceries,        cat:'groceries' },
-    { label:'Gas',                limit:lb.gas,              cat:'gas'       },
-    { label:'Travel',             limit:lb.funTravel,        cat:'travel'    },
-    { label:'Dining',             limit:lb.outToEat,         cat:'dining'    },
-    { label:'Shopping',           limit:lb.shopping,         cat:'shopping'  },
+    { label:'Rent & Fee',        limit:lb.rentAndFee,       cat:'housing',   icon:'home',    iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
+    { label:'Utilities',         limit:lb.utilities,        cat:'utilities', icon:'zap',     iconBg:'rgba(245,166,35,.1)',  iconClr:'#F5A623'         },
+    { label:'Renters Insurance', limit:lb.rentersInsurance, cat:'other',     icon:'shield',  iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
+    { label:'Roth IRA',          limit:lb.rothIRA,          cat:'savings',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
+    { label:'HYSA',              limit:lb.hysa,             cat:'savings',   icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
+    { label:'Groceries',         limit:lb.groceries,        cat:'groceries', icon:'cart',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
+    { label:'Gas',               limit:lb.gas,              cat:'gas',       icon:'fuel',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
+    { label:'Travel',            limit:lb.funTravel,        cat:'travel',    icon:'plane',   iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
+    { label:'Dining',            limit:lb.outToEat,         cat:'dining',    icon:'fork',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
+    { label:'Shopping',          limit:lb.shopping,         cat:'shopping',  icon:'bag',     iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
   ];
 
-  const earlyTotal = earlyRows.reduce((s,r)=>s+r.limit,0);
-  const laterTotal = laterRows.reduce((s,r)=>s+r.limit,0);
+  const rows    = sel === 0 ? earlyRows : laterRows;
+  const total   = rows.reduce((s,r)=>s+r.limit, 0);
+  const surplus = settings.takeHome - total;
 
-  const phase = getPhaseInfo(settings.startDate);
-  const activeEarly = phase.isEarly || phase.isPreEmployment;
-
-  function BudgetCol({ rows, total, title, subtitle, isActive }) {
-    return (
-      <div className="card" style={{border: isActive ? '1px solid rgba(59,130,246,.3)' : '1px solid var(--border)',position:'relative'}}>
-        {isActive && (
-          <div style={{position:'absolute',top:16,right:16}}>
-            <span className="badge badge-blue">Active</span>
-          </div>
-        )}
-        <div className="budget-col-header">{title}</div>
-        <div className="budget-col-sub">{subtitle}</div>
-        {rows.map(row => {
-          const s    = spent[row.cat]||0;
-          const rem  = row.limit - s;
-          const over = rem < 0;
-          const cat  = CATEGORIES.find(c=>c.id===row.cat);
-          return (
-            <div key={row.label} className="budget-row">
-              <div className="budget-cat">{row.label}</div>
-              <div className="budget-right">
-                <div className="budget-limit">{currency(row.limit)}</div>
-                {s > 0 && (
-                  <div className={'budget-rem'+(over?' budget-over':'')}>
-                    {over ? `${currency(Math.abs(rem))} over` : `${currency(rem)} left`}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        <div className="budget-total-row">
-          <span className="budget-total-label">Total</span>
-          <span className="budget-total-val">{currency(total)}</span>
-        </div>
-        <div style={{marginTop:6,fontSize:'.68rem',color:'var(--t3)'}}>
-          {currency(settings.takeHome - total)} surplus on {currency(settings.takeHome)} take-home
-        </div>
-      </div>
-    );
-  }
+  const isEarlyActive = phase.isEarly || phase.isPreEmployment;
+  const isLaterActive = phase.isFull;
+  const currentlyActive = sel===0 ? isEarlyActive : isLaterActive;
 
   return (
     <div className="page">
       <div className="page-top">
         <div>
           <h2 className="page-title">Budget</h2>
-          <div className="page-sub">Your spending plan by phase</div>
+          <div className="page-sub">
+            {sel===0 ? 'Rent-free · July – September 2026' : 'Paying rent · October 2026 onward'}
+          </div>
+        </div>
+        {currentlyActive && <span className="badge badge-green">Active</span>}
+      </div>
+
+      {/* Phase toggle */}
+      <div className="phase-pill-row">
+        <button
+          className={'phase-pill '+(sel===0?'phase-pill-on':'phase-pill-off')}
+          onClick={()=>setSel(0)}
+        >
+          Months 1–3
+          {isEarlyActive && sel!==0 && <span style={{marginLeft:6,fontSize:'.65rem',opacity:.7}}>●</span>}
+        </button>
+        <button
+          className={'phase-pill '+(sel===1?'phase-pill-on':'phase-pill-off')}
+          onClick={()=>setSel(1)}
+        >
+          Months 4–12
+          {isLaterActive && sel!==1 && <span style={{marginLeft:6,fontSize:'.65rem',opacity:.7}}>●</span>}
+        </button>
+      </div>
+
+      {/* Budget rows */}
+      <div className="card-flush">
+        {rows.map(row => {
+          const s   = spent[row.cat]||0;
+          const rem = row.limit - s;
+          const over = rem < 0;
+          return (
+            <div key={row.label} className="b-row">
+              <div className="b-left">
+                <div className="b-icon" style={{background:row.iconBg}}>
+                  <Icon name={row.icon} size={16} color={row.iconClr} strokeWidth={1.7}/>
+                </div>
+                <div>
+                  <div className="b-name">{row.label}</div>
+                  {s > 0 && (
+                    <div style={{fontSize:'.68rem',marginTop:2,color:over?'var(--red)':'var(--t3)',fontVariantNumeric:'tabular-nums'}}>
+                      {currency(s)} spent · {over ? currency(Math.abs(rem))+' over' : currency(rem)+' left'}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <span className="b-amt">{currency(row.limit)}</span>
+            </div>
+          );
+        })}
+
+        {/* Total + surplus footer */}
+        <div className="b-total-row">
+          <div>
+            <div className="b-total-lbl">Monthly Total</div>
+            {surplus >= 0
+              ? <div className="b-surplus">+{currency(surplus)} surplus</div>
+              : <div style={{fontSize:'.78rem',color:'var(--red)',fontWeight:600}}>{currency(Math.abs(surplus))} over budget</div>
+            }
+          </div>
+          <div className="large-num" style={{color:'var(--t1)'}}>{currency(total)}</div>
         </div>
       </div>
-      <div className="g2">
-        <BudgetCol
-          rows={earlyRows}
-          total={earlyTotal}
-          title="Months 1–3"
-          subtitle="Rent-free · July – September 2026"
-          isActive={activeEarly && !phase.isPreEmployment}
-        />
-        <BudgetCol
-          rows={laterRows}
-          total={laterTotal}
-          title="Month 4–12"
-          subtitle="Paying rent · October 2026 onward"
-          isActive={phase.isFull}
-        />
+
+      {/* Quick info note */}
+      <div style={{fontSize:'.72rem',color:'var(--t3)',textAlign:'center',marginTop:-8}}>
+        {currency(settings.takeHome)} take-home · edit amounts in Settings
       </div>
     </div>
   );
@@ -938,29 +1214,31 @@ function Spending({ settings, transactions, setTransactions }) {
   const monthStr  = `${viewMonth.y}-${String(viewMonth.m+1).padStart(2,'0')}`;
   const monthTx   = transactions.filter(t=>t.date.startsWith(monthStr));
   const expenses  = monthTx.filter(t=>t.type==='expense');
-  const totalSpent= expenses.reduce((s,t)=>s+t.amount,0);
+  const totalSpent= expenses.reduce((s,t)=>s+t.amount, 0);
   const phase     = getPhaseInfo(settings.startDate);
   const budget    = phase.isEarly ? settings.earlyBudget : settings.laterBudget;
 
-  const byCategory={};
-  for(const t of expenses) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
+  const byCategory = {};
+  for (const t of expenses) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
 
-  const catBudget = phase.isEarly ? {
-    housing:   (budget.utilitiesAndFee||0),
+  const catBudget = phase.isEarly || phase.isPreEmployment ? {
+    housing:   budget.utilitiesAndFee||0,
     groceries: budget.groceries, gas:budget.gas, dining:budget.outToEat,
-    shopping:  budget.shopping,  travel:budget.funTravel, utilities:budget.utilitiesAndFee,
+    shopping:  budget.shopping,  travel:budget.funTravel, utilities:budget.utilitiesAndFee||0,
     savings:   (budget.rothIRA||0)+(budget.hysa||0), other:0,
   } : {
-    housing:   (budget.rentAndFee||0),
+    housing:   budget.rentAndFee||0,
     groceries: budget.groceries, gas:budget.gas, dining:budget.outToEat,
     shopping:  budget.shopping,  travel:budget.funTravel, utilities:budget.utilities||0,
     savings:   (budget.rothIRA||0)+(budget.hysa||0), other:0,
   };
 
+  const totalBudget = Object.values(catBudget).reduce((s,v)=>s+v, 0);
+
   const handleAdd = e => {
     e.preventDefault();
     const amt = parseFloat(form.amount);
-    if(!amt||isNaN(amt)) return;
+    if (!amt||isNaN(amt)) return;
     setTransactions(prev=>[{
       id:String(Date.now()), date:form.date,
       description:form.description.trim()||form.category,
@@ -970,41 +1248,67 @@ function Spending({ settings, transactions, setTransactions }) {
     setShowForm(false);
   };
 
-  const del = id => { if(window.confirm('Delete this transaction?')) setTransactions(p=>p.filter(t=>t.id!==id)); };
+  const del    = id => { if(window.confirm('Delete this transaction?')) setTransactions(p=>p.filter(t=>t.id!==id)); };
   const sorted = [...monthTx].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const monthLabel = new Date(viewMonth.y,viewMonth.m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+
+  // Categories that have either spending or a budget allocation
+  const activeCats = CATEGORIES.filter(c=>byCategory[c.id]>0||catBudget[c.id]>0);
 
   return (
     <div className="page">
-      <div className="page-top">
+
+      {/* Hero header */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
         <div>
-          <h2 className="page-title">Spending</h2>
-          <div className="page-sub">{currency(totalSpent)} spent this month</div>
+          <div className="eyebrow" style={{marginBottom:8}}>Spent This Month</div>
+          <div className="mega" style={{color:totalSpent>totalBudget&&totalBudget>0?'var(--red)':'var(--t1)'}}>
+            {currency(totalSpent)}
+          </div>
+          <div style={{fontSize:'.8rem',color:'var(--t3)',marginTop:8,fontVariantNumeric:'tabular-nums'}}>
+            {totalBudget>0 ? `of ${currency(totalBudget)} budget` : 'no budget yet'}
+          </div>
         </div>
-        <button className="btn btn-primary" onClick={()=>setShowForm(s=>!s)}>
-          {showForm?'Cancel':'+ Add'}
+        <button className="add-btn" onClick={()=>setShowForm(s=>!s)}>
+          {showForm
+            ? <><Icon name="chevronLeft" size={14} color="#000" strokeWidth={2.5}/>Cancel</>
+            : <><Icon name="plus"        size={14} color="#000" strokeWidth={2.5}/>Add</>
+          }
         </button>
       </div>
 
-      <div className="month-nav">
-        <button className="month-arrow btn" onClick={()=>setViewMonth(({y,m})=>m===0?{y:y-1,m:11}:{y,m:m-1})}>‹</button>
-        <div className="month-name">{new Date(viewMonth.y,viewMonth.m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'})}</div>
-        <button className="month-arrow btn" onClick={()=>setViewMonth(({y,m})=>m===11?{y:y+1,m:0}:{y,m:m+1})}>›</button>
+      {/* Month nav */}
+      <div style={{display:'flex',alignItems:'center',gap:10}}>
+        <button className="month-arrow btn" onClick={()=>setViewMonth(({y,m})=>m===0?{y:y-1,m:11}:{y,m:m-1})}>
+          <Icon name="chevronLeft" size={14} color="var(--t2)"/>
+        </button>
+        <div className="month-name">{monthLabel}</div>
+        <button className="month-arrow btn" onClick={()=>setViewMonth(({y,m})=>m===11?{y:y+1,m:0}:{y,m:m+1})}>
+          <Icon name="chevronRight" size={14} color="var(--t2)"/>
+        </button>
       </div>
 
+      {/* Add transaction form */}
       {showForm && (
-        <div className="card form-card">
+        <div className="card" style={{borderColor:'rgba(0,200,5,.2)',background:'rgba(0,200,5,.03)'}}>
           <div className="card-label">New Transaction</div>
           <form onSubmit={handleAdd}>
             <div className="fgrid">
-              <div className="fg"><label>Date</label><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></div>
+              <div className="fg"><label>Date</label>
+                <input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required />
+              </div>
               <div className="fg"><label>Type</label>
                 <select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))}>
                   <option value="expense">Expense</option>
                   <option value="income">Income</option>
                 </select>
               </div>
-              <div className="fg fspan"><label>Description</label><input type="text" placeholder="What was it?" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} /></div>
-              <div className="fg"><label>Amount</label><input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} required /></div>
+              <div className="fg fspan"><label>Description</label>
+                <input type="text" placeholder="What was it?" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} />
+              </div>
+              <div className="fg"><label>Amount</label>
+                <input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} required />
+              </div>
               <div className="fg"><label>Category</label>
                 <select value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
                   {CATEGORIES.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
@@ -1019,52 +1323,66 @@ function Spending({ settings, transactions, setTransactions }) {
         </div>
       )}
 
+      {/* Category bars */}
       <div>
-        <div className="slabel">By Category</div>
-        <div className="card" style={{padding:'4px 24px 8px'}}>
-          {CATEGORIES.filter(c=>byCategory[c.id]>0||catBudget[c.id]>0).map(cat=>{
-            const s=byCategory[cat.id]||0, lim=catBudget[cat.id]||0, over=lim>0&&s>lim;
-            return (
-              <div key={cat.id} className="brow-full">
-                <div className="brow-top">
-                  <span style={{color:'var(--t2)',fontSize:'.82rem'}}>{cat.label}</span>
-                  <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums',fontSize:'.82rem',color:over?'var(--red)':'var(--t1)'}}>
-                    {currency(s)}{lim>0&&<span className="c-muted"> / {currency(lim)}</span>}
-                  </span>
-                </div>
-                {lim>0&&<div className="track"><div className="fill" style={{width:`${Math.min((s/lim)*100,100)}%`,background:over?'var(--red)':cat.color}} /></div>}
-              </div>
-            );
-          })}
-          {Object.keys(byCategory).length===0&&<p className="empty">No expenses logged yet.</p>}
+        <div className="eyebrow" style={{marginBottom:12}}>By Category</div>
+        <div className="card-flush">
+          {activeCats.length === 0
+            ? <p className="empty">No expenses logged yet.</p>
+            : activeCats.map(cat => {
+                const s   = byCategory[cat.id]||0;
+                const lim = catBudget[cat.id]||0;
+                const p_  = lim>0 ? Math.min((s/lim)*100,100) : 0;
+                const cls = p_>=100?'over':p_>=80?'warn':'';
+                return (
+                  <div key={cat.id} className="sp-cat">
+                    <div className="sp-top">
+                      <span className="sp-name">{cat.label}</span>
+                      <span className="sp-nums">
+                        <span className="sp-spent">{currency(s)}</span>
+                        {lim>0 && <span className="sp-bgt"> / {currency(lim)}</span>}
+                      </span>
+                    </div>
+                    {lim>0 && <div className="bar"><div className={`bar-in ${cls}`} style={{width:`${p_||0}%`}}/></div>}
+                  </div>
+                );
+              })
+          }
         </div>
       </div>
 
+      {/* Transaction list */}
       <div>
-        <div className="slabel">Transactions ({sorted.length})</div>
-        <div className="card" style={{padding:'4px 24px 8px'}}>
-          {sorted.length===0?<p className="empty">No transactions this month.</p>:(
-            <div className="tx-list">
-              {sorted.map(t=>{
-                const cat=CATEGORIES.find(c=>c.id===t.category);
-                return (
-                  <div key={t.id} className="tx-row">
-                    <div className="tx-icon">{cat?.abbr||'OTH'}</div>
-                    <div className="tx-body">
-                      <div className="tx-desc">{t.description}</div>
-                      <div className="tx-meta">{cat?.label} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+        <div className="eyebrow" style={{marginBottom:12}}>
+          Transactions {sorted.length>0 && <span style={{color:'var(--t4)',marginLeft:6}}>({sorted.length})</span>}
+        </div>
+        <div className="card-flush">
+          {sorted.length===0
+            ? <p className="empty">No transactions this month.</p>
+            : <div className="tx-list">
+                {sorted.map(t=>{
+                  const cat=CATEGORIES.find(c=>c.id===t.category);
+                  return (
+                    <div key={t.id} className="tx-row">
+                      <div className="tx-icon">{cat?.abbr||'OTH'}</div>
+                      <div className="tx-body">
+                        <div className="tx-desc">{t.description}</div>
+                        <div className="tx-meta">
+                          {cat?.label} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                        </div>
+                      </div>
+                      <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
+                        {t.type==='income'?'+':'-'}{currency(t.amount)}
+                      </div>
+                      <button className="tx-del btn-icon-del" onClick={()=>del(t.id)}>×</button>
                     </div>
-                    <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
-                      {t.type==='income'?'+':'-'}{currency(t.amount)}
-                    </div>
-                    <button className="tx-del btn-icon-del" onClick={()=>del(t.id)}>×</button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+          }
         </div>
       </div>
+
     </div>
   );
 }
@@ -1074,210 +1392,182 @@ function Goals({ settings, goals, setGoals, commissions }) {
   const now   = new Date();
   const phase = getPhaseInfo(settings.startDate);
 
-  const hysaBal    = goals.hysaBalance||0;
-  const hysaPct_   = Math.min((hysaBal/settings.hysaGoal)*100,100);
-  const hysaRem    = Math.max(settings.hysaGoal-hysaBal,0);
-  const futureRate = phase.isEarly||phase.isPreEmployment ? settings.earlyBudget.hysa : settings.laterBudget.hysa;
-  const hysaMonths = futureRate>0&&hysaRem>0 ? Math.ceil(hysaRem/futureRate) : 0;
-  const hysaDate   = hysaMonths ? (()=>{const d=new Date(now);d.setMonth(d.getMonth()+hysaMonths);return d.toLocaleDateString('en-US',{month:'long',year:'numeric'});})() : null;
+  // ── HYSA ──────────────────────────────────────────────────────────────
+  const hysaBal    = goals.hysaBalance || 0;
+  const hysaPct_   = settings.hysaGoal > 0 ? Math.min((hysaBal / settings.hysaGoal) * 100, 100) : 0;
+  const hysaRem    = Math.max(settings.hysaGoal - hysaBal, 0);
+  const hysaRate   = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget.hysa : settings.laterBudget.hysa;
+  const hysaMonths = hysaRate > 0 && hysaRem > 0 ? Math.ceil(hysaRem / hysaRate) : 0;
+  const hysaETA    = hysaMonths ? (() => {
+    const d = new Date(now); d.setMonth(d.getMonth() + hysaMonths);
+    return d.toLocaleDateString('en-US', {month:'short', year:'numeric'});
+  })() : null;
 
-  const yearStart  = new Date(now.getFullYear(),0,1);
+  // ── Roth IRA ──────────────────────────────────────────────────────────
+  const yearStart  = new Date(now.getFullYear(), 0, 1);
   const finStart   = parseLocalDate(settings.startDate);
-  const rothStart  = finStart>yearStart?finStart:yearStart;
-  const rothMonths = Math.max((now.getFullYear()-rothStart.getFullYear())*12+(now.getMonth()-rothStart.getMonth()),0);
-  const rothAuto   = Math.min(rothMonths*settings.earlyBudget.rothIRA,settings.rothIRAYearlyLimit);
-  const rothBal    = goals.rothIRAOverride!=null?goals.rothIRAOverride:rothAuto;
-  const rothPct_   = Math.min((rothBal/settings.rothIRAYearlyLimit)*100,100);
-  const rothRem    = Math.max(settings.rothIRAYearlyLimit-rothBal,0);
+  const rothStart  = finStart > yearStart ? finStart : yearStart;
+  const rothMonths = Math.max(
+    (now.getFullYear()-rothStart.getFullYear())*12 + (now.getMonth()-rothStart.getMonth()), 0
+  );
+  const rothAuto  = Math.min(rothMonths * settings.earlyBudget.rothIRA, settings.rothIRAYearlyLimit);
+  const rothBal   = goals.rothIRAOverride != null ? goals.rothIRAOverride : rothAuto;
+  const rothPct_  = settings.rothIRAYearlyLimit > 0 ? Math.min((rothBal / settings.rothIRAYearlyLimit) * 100, 100) : 0;
+  const rothRem   = Math.max(settings.rothIRAYearlyLimit - rothBal, 0);
+  const rothMonthsLeft = settings.earlyBudget.rothIRA > 0 && rothRem > 0
+    ? Math.ceil(rothRem / settings.earlyBudget.rothIRA) : 0;
+  const rothETA   = rothMonthsLeft ? (() => {
+    const d = new Date(now); d.setMonth(d.getMonth() + rothMonthsLeft);
+    return d.toLocaleDateString('en-US', {month:'short', year:'numeric'});
+  })() : null;
 
-  const k401Bal  = goals.ira401kBalance||0;
-  const k401Pct_ = Math.min((k401Bal/settings.ira401kYearlyMax)*100,100);
-  const k401Rem  = Math.max(settings.ira401kYearlyMax-k401Bal,0);
+  // ── 401(k) ────────────────────────────────────────────────────────────
+  const k401Bal  = goals.ira401kBalance || 0;
+  const k401Pct_ = settings.ira401kYearlyMax > 0 ? Math.min((k401Bal / settings.ira401kYearlyMax) * 100, 100) : 0;
+  const k401Rem  = Math.max(settings.ira401kYearlyMax - k401Bal, 0);
 
-  const assets      = goals.netWorthAssets||{};
-  const debts       = goals.netWorthDebts||{};
-  const totalAssets = Object.values(assets).reduce((s,v)=>s+(v||0),0);
-  const totalDebts  = Object.values(debts).reduce((s,v)=>s+(v||0),0);
-  const netWorth    = totalAssets-totalDebts;
-  const totalComm   = commissions.reduce((s,c)=>s+c.amount,0);
+  // ── Savings rate ──────────────────────────────────────────────────────
+  const activeBudget   = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget : settings.laterBudget;
+  const monthlyContrib = (activeBudget.hysa||0) + (activeBudget.rothIRA||0) + (settings.contribution401k||0);
+  const savingsRate    = settings.takeHome > 0 ? (monthlyContrib / settings.takeHome) * 100 : 0;
+  const totalComm      = commissions.reduce((s,c) => s+c.amount, 0);
 
-  const monthlyContrib = futureRate+(settings.earlyBudget.rothIRA||0)+(settings.contribution401k||0);
-  const savingsRate    = settings.takeHome>0?(monthlyContrib/settings.takeHome)*100:0;
+  // ── Form state ────────────────────────────────────────────────────────
+  const [hysaIn, setHysaIn] = useState('');
+  const [k401In, setK401In] = useState('');
+  const [rothIn, setRothIn] = useState('');
 
-  const [hysaIn,setHysaIn]=useState('');
-  const [k401In,setK401In]=useState('');
-  const [rothIn,setRothIn]=useState('');
-  const [assetKey,setAssetKey]=useState('');
-  const [assetVal,setAssetVal]=useState('');
-  const [debtKey,setDebtKey]=useState('');
-  const [debtVal,setDebtVal]=useState('');
-
-  const updHYSA=e=>{e.preventDefault();const v=parseFloat(hysaIn);if(!isNaN(v))setGoals(g=>({...g,hysaBalance:v}));setHysaIn('');};
-  const upd401k=e=>{e.preventDefault();const v=parseFloat(k401In);if(!isNaN(v))setGoals(g=>({...g,ira401kBalance:v}));setK401In('');};
-  const updRoth=e=>{e.preventDefault();const v=parseFloat(rothIn);setGoals(g=>({...g,rothIRAOverride:isNaN(v)?null:v}));setRothIn('');};
-  const addAsset=e=>{e.preventDefault();const v=parseFloat(assetVal);if(!assetKey||isNaN(v))return;setGoals(g=>({...g,netWorthAssets:{...g.netWorthAssets,[assetKey]:v}}));setAssetKey('');setAssetVal('');};
-  const addDebt=e=>{e.preventDefault();const v=parseFloat(debtVal);if(!debtKey||isNaN(v))return;setGoals(g=>({...g,netWorthDebts:{...g.netWorthDebts,[debtKey]:v}}));setDebtKey('');setDebtVal('');};
-  const delAsset=k=>setGoals(g=>{const a={...g.netWorthAssets};delete a[k];return{...g,netWorthAssets:a};});
-  const delDebt=k=>setGoals(g=>{const d={...g.netWorthDebts};delete d[k];return{...g,netWorthDebts:d};});
-
-  const inputStyle={flex:1,background:'var(--s2)',border:'1px solid var(--border2)',borderRadius:'var(--r-s)',padding:'6px 10px',fontSize:'.76rem',outline:'none',fontFamily:'Inter,sans-serif',color:'var(--t1)'};
-  const numInputStyle={...inputStyle,flex:'none',width:88,fontVariantNumeric:'tabular-nums'};
+  const updHYSA = e => { e.preventDefault(); const v=parseFloat(hysaIn); if(!isNaN(v)) setGoals(g=>({...g,hysaBalance:v})); setHysaIn(''); };
+  const upd401k = e => { e.preventDefault(); const v=parseFloat(k401In); if(!isNaN(v)) setGoals(g=>({...g,ira401kBalance:v})); setK401In(''); };
+  const updRoth = e => { e.preventDefault(); const v=parseFloat(rothIn); setGoals(g=>({...g,rothIRAOverride:isNaN(v)?null:v})); setRothIn(''); };
 
   return (
     <div className="page">
-      <div className="page-top">
-        <div>
-          <h2 className="page-title">Goals</h2>
-          <div className="page-sub">Tracking your targets</div>
+
+      {/* Hero — savings rate */}
+      <div>
+        <div className="eyebrow" style={{marginBottom:8}}>Savings Rate</div>
+        <div className="mega" style={{color:'var(--accent)'}}>{pct(savingsRate, 0)}</div>
+        <div style={{fontSize:'.85rem',color:'var(--t3)',marginTop:10,fontVariantNumeric:'tabular-nums'}}>
+          {currency(monthlyContrib)}/mo
+          {phase.isEarly && <span style={{color:'var(--t4)'}}> · drops to {pct((((settings.laterBudget.hysa||0)+(settings.laterBudget.rothIRA||0)+(settings.contribution401k||0))/settings.takeHome)*100,0)} in Month 4</span>}
         </div>
       </div>
 
-      <div className="g3">
-        <div className="stat stat-green">
-          <div className="stat-label">Savings Rate</div>
-          <div className="stat-val">{pct(savingsRate)}</div>
-          <div className="stat-sub">{currency(monthlyContrib)} / mo</div>
+      {/* Commission earned pill */}
+      {totalComm > 0 && (
+        <div style={{display:'inline-flex',alignItems:'center',gap:8,background:'var(--accent-lt)',border:'1px solid rgba(0,200,5,.2)',borderRadius:'var(--r-s)',padding:'8px 14px'}}>
+          <Icon name="dollar" size={14} color="var(--accent)" strokeWidth={2}/>
+          <span style={{fontSize:'.78rem',fontWeight:600,color:'var(--accent)'}}>{currency(totalComm)} commission earned</span>
         </div>
-        <div className="stat stat-blue">
-          <div className="stat-label">Net Worth</div>
-          <div className="stat-val" style={{color:netWorth>=0?'var(--blue)':'var(--red)'}}>{currency(netWorth)}</div>
-          <div className="stat-sub">{currency(totalAssets)} assets</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Commission Earned</div>
-          <div className="stat-val">{currency(totalComm)}</div>
-          <div className="stat-sub">To date</div>
-        </div>
-      </div>
+      )}
 
-      {/* HYSA */}
-      <div className="card">
-        <div className="goal-header">
+      <div className="eyebrow" style={{marginBottom:4}}>Active Goals</div>
+
+      {/* ── HYSA Card ── */}
+      <div className="gc">
+        <div className="gc-head">
           <div>
-            <div className="goal-title">Emergency Fund / HYSA</div>
-            <div className="goal-sub">{phase.isEarly?'Accelerated savings phase':'Standard savings phase'}</div>
+            <div className="gc-name">Emergency Fund</div>
+            <div className="gc-sub">HYSA · {hysaRate > 800 ? 'Accelerated' : 'Standard'} · {currency(hysaRate)}/mo</div>
           </div>
-          <div className="goal-amounts">
-            <div className="goal-curr" style={{color:'var(--green)'}}>{currency(hysaBal)}</div>
-            <div className="goal-max">of {currency(settings.hysaGoal)}</div>
+          <div>
+            <div className="gc-pct" style={{color:'var(--accent)'}}>{pct(hysaPct_, 0)}</div>
+            <div className="gc-of">{currency(hysaBal)} of {currency(settings.hysaGoal)}</div>
           </div>
         </div>
-        <Bar value={hysaBal} max={settings.hysaGoal} color="var(--green)" lg />
-        <div className="goal-stats"><span>{pct(hysaPct_)} complete</span><span>{currency(hysaRem)} remaining</span></div>
-        {hysaDate?<div className="goal-proj">At {currency(futureRate)}/mo — on track for <strong style={{color:'var(--t1)'}}>{hysaDate}</strong> ({hysaMonths} months)</div>
-          :hysaBal>=settings.hysaGoal?<div className="goal-proj" style={{color:'var(--green)'}}>Goal reached.</div>:null}
-        <form onSubmit={updHYSA} className="goal-update">
-          <input type="number" step="0.01" min="0" placeholder={`Current balance (${currency(hysaBal)})`} value={hysaIn} onChange={e=>setHysaIn(e.target.value)} />
+        <div className="gc-bar">
+          <div className="gc-fill" style={{width:`${hysaPct_}%`, background:'linear-gradient(90deg,#00C805,#00ff08)'}}/>
+        </div>
+        <div className="gc-foot">
+          <span className="gc-rate">{currency(hysaRem)} remaining</span>
+          <span className="gc-date">
+            {hysaBal >= settings.hysaGoal ? '🎉 Goal reached!'
+              : hysaETA ? `${hysaETA} · ${hysaMonths}mo` : '—'}
+          </span>
+        </div>
+        <form onSubmit={updHYSA} className="goal-update" style={{marginTop:14}}>
+          <input type="number" step="0.01" min="0"
+            placeholder={`Balance (${currency(hysaBal)})`}
+            value={hysaIn} onChange={e=>setHysaIn(e.target.value)} />
           <button type="submit" className="btn btn-primary btn-sm">Update</button>
         </form>
       </div>
 
-      {/* Roth IRA */}
-      <div className="card">
-        <div className="goal-header">
+      {/* ── Roth IRA Card ── */}
+      <div className="gc">
+        <div className="gc-head">
           <div>
-            <div className="goal-title">Roth IRA</div>
-            <div className="goal-sub">{now.getFullYear()} limit — resets January 1</div>
+            <div className="gc-name">Roth IRA</div>
+            <div className="gc-sub">{now.getFullYear()} limit · resets Jan 1</div>
           </div>
-          <div className="goal-amounts">
-            <div className="goal-curr" style={{color:'var(--purple)'}}>{currency(rothBal)}</div>
-            <div className="goal-max">of {currency(settings.rothIRAYearlyLimit)}</div>
+          <div>
+            <div className="gc-pct" style={{color:'var(--purple)'}}>{pct(rothPct_, 0)}</div>
+            <div className="gc-of">{currency(rothBal)} of {currency(settings.rothIRAYearlyLimit)}</div>
           </div>
         </div>
-        <Bar value={rothBal} max={settings.rothIRAYearlyLimit} color="var(--purple)" lg />
-        <div className="goal-stats"><span>{pct(rothPct_)} complete</span><span>{currency(rothRem)} remaining</span></div>
-        <div className="goal-proj">
-          {goals.rothIRAOverride!=null
-            ?<>Manual override — <button className="btn-link" onClick={()=>setGoals(g=>({...g,rothIRAOverride:null}))}>reset to auto</button></>
-            :<>Auto-tracking: {rothMonths} months × {currency(settings.earlyBudget.rothIRA)}/mo</>}
+        <div className="gc-bar">
+          <div className="gc-fill" style={{width:`${rothPct_}%`, background:'linear-gradient(90deg,#7B74FF,#9C94FF)'}}/>
         </div>
-        <form onSubmit={updRoth} className="goal-update">
-          <input type="number" step="0.01" min="0" placeholder="Override balance (blank = auto)" value={rothIn} onChange={e=>setRothIn(e.target.value)} />
+        <div className="gc-foot">
+          <span className="gc-rate">
+            {goals.rothIRAOverride != null
+              ? <button className="btn-link" style={{fontSize:'.72rem'}} onClick={()=>setGoals(g=>({...g,rothIRAOverride:null}))}>reset to auto-track</button>
+              : `${currency(settings.earlyBudget.rothIRA)}/mo · auto`
+            }
+          </span>
+          <span className="gc-date">
+            {rothBal >= settings.rothIRAYearlyLimit ? '🎉 Maxed out!'
+              : rothETA ? `${rothETA} · ${rothMonthsLeft}mo` : '—'}
+          </span>
+        </div>
+        <form onSubmit={updRoth} className="goal-update" style={{marginTop:14}}>
+          <input type="number" step="0.01" min="0"
+            placeholder="Override balance (blank = auto)"
+            value={rothIn} onChange={e=>setRothIn(e.target.value)} />
           <button type="submit" className="btn btn-primary btn-sm">Override</button>
         </form>
       </div>
 
-      {/* 401k */}
-      <div className="card">
-        <div className="goal-header">
+      {/* ── 401(k) Card ── */}
+      <div className="gc" style={{opacity: k401Bal === 0 ? 0.55 : 1}}>
+        <div className="gc-head">
           <div>
-            <div className="goal-title">401(k)</div>
-            <div className="goal-sub">IRS max {now.getFullYear()}: {currency(settings.ira401kYearlyMax)} — employer match only</div>
+            <div className="gc-name">401(k)</div>
+            <div className="gc-sub">Pre-tax · IRS max {now.getFullYear()}</div>
           </div>
-          <div className="goal-amounts">
-            <div className="goal-curr" style={{color:'var(--yellow)'}}>{currency(k401Bal)}</div>
-            <div className="goal-max">of {currency(settings.ira401kYearlyMax)}</div>
+          <div>
+            <div className="gc-pct" style={{color:'var(--yellow)'}}>
+              {k401Bal > 0 ? pct(k401Pct_, 0) : '—'}
+            </div>
+            <div className="gc-of">
+              {k401Bal > 0 ? `${currency(k401Bal)} of ${currency(settings.ira401kYearlyMax)}` : `${currency(settings.contribution401k)}/mo`}
+            </div>
           </div>
         </div>
-        <Bar value={k401Bal} max={settings.ira401kYearlyMax} color="var(--yellow)" lg />
-        <div className="goal-stats"><span>{pct(k401Pct_)} of IRS max</span><span>{currency(k401Rem)} to max</span></div>
-        <div className="goal-proj">Contributing {currency(settings.contribution401k)}/mo pre-tax — capturing full employer match. Not maxing out intentionally.</div>
-        <form onSubmit={upd401k} className="goal-update">
-          <input type="number" step="0.01" min="0" placeholder={`Current balance (${currency(k401Bal)})`} value={k401In} onChange={e=>setK401In(e.target.value)} />
+        {k401Bal > 0 && (
+          <>
+            <div className="gc-bar">
+              <div className="gc-fill" style={{width:`${k401Pct_}%`, background:'linear-gradient(90deg,#F5A623,#FFD27A)'}}/>
+            </div>
+            <div className="gc-foot">
+              <span className="gc-rate">{currency(k401Rem)} to IRS max</span>
+              <span className="gc-date">Not maxing — capturing match</span>
+            </div>
+          </>
+        )}
+        <form onSubmit={upd401k} className="goal-update" style={{marginTop:14}}>
+          <input type="number" step="0.01" min="0"
+            placeholder={`Balance (${currency(k401Bal)})`}
+            value={k401In} onChange={e=>setK401In(e.target.value)} />
           <button type="submit" className="btn btn-primary btn-sm">Update</button>
         </form>
       </div>
 
-      {/* Net Worth */}
-      <div>
-        <div className="slabel">Net Worth</div>
-        <div className="card">
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-            <div>
-              <div style={{fontSize:'.58rem',fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:'var(--t3)',marginBottom:6}}>Total</div>
-              <div style={{fontSize:'2rem',fontWeight:700,letterSpacing:'-.05em',fontVariantNumeric:'tabular-nums',color:netWorth>=0?'var(--blue)':'var(--red)',lineHeight:1}}>{currency(netWorth)}</div>
-            </div>
-            <div style={{textAlign:'right',fontSize:'.72rem',color:'var(--t3)'}}>
-              <div>Assets <strong style={{color:'var(--green)'}}>{currency(totalAssets)}</strong></div>
-              <div>Debts <strong style={{color:'var(--red)'}}>{currency(totalDebts)}</strong></div>
-            </div>
-          </div>
-          {totalAssets>0&&(
-            <div className="nw-bar-wrap">
-              <div className="nw-bar">
-                <div className="nw-seg" style={{width:`${totalAssets-totalDebts<=0?0:Math.min(((totalAssets-totalDebts)/totalAssets)*100,100)}%`,background:'var(--green)'}} />
-                <div className="nw-seg" style={{width:`${Math.min((totalDebts/totalAssets)*100,100)}%`,background:'var(--red)'}} />
-              </div>
-            </div>
-          )}
-          <div className="g2" style={{gap:20,marginTop:12}}>
-            <div>
-              <div className="card-label" style={{color:'var(--green)',marginBottom:10}}>Assets</div>
-              {Object.entries(assets).map(([k,v])=>(
-                <div key={k} className="brow">
-                  <span className="brow-label">{k}</span>
-                  <span style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums',color:'var(--green)'}}>{currency(v)}</span>
-                    <button className="btn-icon btn-icon-del" onClick={()=>delAsset(k)}>×</button>
-                  </span>
-                </div>
-              ))}
-              <form onSubmit={addAsset} style={{display:'flex',gap:6,marginTop:10}}>
-                <input style={inputStyle} placeholder="Account name" value={assetKey} onChange={e=>setAssetKey(e.target.value)} />
-                <input style={numInputStyle} type="number" step="0.01" min="0" placeholder="$0" value={assetVal} onChange={e=>setAssetVal(e.target.value)} />
-                <button type="submit" className="btn btn-primary btn-sm">+</button>
-              </form>
-            </div>
-            <div>
-              <div className="card-label" style={{color:'var(--red)',marginBottom:10}}>Debts</div>
-              {Object.entries(debts).map(([k,v])=>(
-                <div key={k} className="brow">
-                  <span className="brow-label">{k}</span>
-                  <span style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontWeight:600,fontVariantNumeric:'tabular-nums',color:'var(--red)'}}>{currency(v)}</span>
-                    <button className="btn-icon btn-icon-del" onClick={()=>delDebt(k)}>×</button>
-                  </span>
-                </div>
-              ))}
-              <form onSubmit={addDebt} style={{display:'flex',gap:6,marginTop:10}}>
-                <input style={inputStyle} placeholder="Debt name" value={debtKey} onChange={e=>setDebtKey(e.target.value)} />
-                <input style={numInputStyle} type="number" step="0.01" min="0" placeholder="$0" value={debtVal} onChange={e=>setDebtVal(e.target.value)} />
-                <button type="submit" className="btn btn-primary btn-sm">+</button>
-              </form>
-            </div>
-          </div>
-        </div>
+      <div style={{fontSize:'.68rem',color:'var(--t4)',textAlign:'center'}}>
+        HYSA &amp; Roth IRA balances sync with Net Worth page
       </div>
+
     </div>
   );
 }
@@ -1503,26 +1793,6 @@ function Settings({ settings, setSettings }) {
 
 // ── App ────────────────────────────────────────────────────────────────
 // ── Net Worth helpers ─────────────────────────────────────────────────────
-function AccountRow({ label, color, value, onChange }) {
-  const [local, setLocal] = useState(String(value || ''));
-  useEffect(() => { setLocal(String(value || '')); }, [value]);
-  const commit = () => onChange(parseFloat(local) || 0);
-  return (
-    <div className="nw-row">
-      <div className="nw-row-left">
-        <div className="nw-dot" style={{background:color}} />
-        <span className="nw-label">{label}</span>
-      </div>
-      <input className="nw-input" type="number" min="0" step="0.01"
-        value={local}
-        onChange={e => setLocal(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => e.key==='Enter' && e.target.blur()}
-      />
-    </div>
-  );
-}
-
 function HBar({ label, value, max, color }) {
   const w = max > 0 ? Math.min((value/max)*100,100) : 0;
   return (
@@ -1632,25 +1902,22 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
   const acc  = netWorth.accounts || {};
   const hist = netWorth.history  || [];
 
-  // ── Balances: HYSA / Roth / 401k come from fd_goals (single source of truth)
-  const hysaBal  = goals.hysaBalance   || 0;
-  const rothBal  = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
-  const k401Bal  = goals.ira401kBalance || 0;
+  // Balances — HYSA / Roth / 401k come from fd_goals (single source of truth)
+  const hysaBal = goals.hysaBalance   || 0;
+  const rothBal = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
+  const k401Bal = goals.ira401kBalance || 0;
 
-  // Setters that write back to fd_goals
-  const setHYSA  = v => setGoals(g => ({ ...g, hysaBalance:   v }));
-  const setRoth  = v => setGoals(g => ({ ...g, rothIRAOverride: v }));
-  const set401k  = v => setGoals(g => ({ ...g, ira401kBalance: v }));
-
-  // Remaining accounts live in fd_networth
-  const setAcc   = (key, val) => setNetWorth(s => ({ ...s, accounts: { ...s.accounts, [key]: val } }));
+  const setHYSA = v => setGoals(g => ({ ...g, hysaBalance:    v }));
+  const setRoth = v => setGoals(g => ({ ...g, rothIRAOverride: v }));
+  const set401k = v => setGoals(g => ({ ...g, ira401kBalance:  v }));
+  const setAcc  = (key, val) => setNetWorth(s => ({ ...s, accounts: { ...s.accounts, [key]: val } }));
 
   const totalAssets = (acc.checking||0) + hysaBal + rothBal + k401Bal + (acc.brokerage||0);
   const totalLiab   = (acc.creditCard||0) + (acc.loans||0);
   const nw          = totalAssets - totalLiab;
   const isPos       = nw >= 0;
 
-  // ── Snapshot
+  // Snapshot logic
   const now      = new Date();
   const monthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const hasMonth = hist.some(h => h.month === monthKey);
@@ -1663,40 +1930,25 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
         .sort((a,b) => a.month.localeCompare(b.month)),
     }));
   };
-
   const delSnapshot = m => setNetWorth(s => ({ ...s, history: s.history.filter(h=>h.month!==m) }));
 
-  // ── Spending by category (all time)
+  // Spending by category (all-time)
   const catSpend = {};
   for (const t of transactions.filter(t=>t.type==='expense'))
     catSpend[t.category] = (catSpend[t.category]||0) + t.amount;
   const topCats     = Object.entries(catSpend).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const maxCatSpend = topCats[0]?.[1] || 1;
-  const CAT_COLOR   = {housing:'var(--blue)',groceries:'var(--green)',gas:'var(--yellow)',
-    dining:'#f97316',shopping:'var(--purple)',travel:'#06b6d4',utilities:'var(--yellow)',
-    savings:'var(--green)',other:'var(--t3)'};
+  const CAT_COLOR   = {
+    housing:'var(--accent)',groceries:'var(--accent)',gas:'var(--yellow)',
+    dining:'#f97316',shopping:'var(--purple)',travel:'#06b6d4',
+    utilities:'var(--yellow)',savings:'var(--accent)',other:'var(--t3)',
+  };
 
-  // ── Asset breakdown bars (non-zero only)
-  const assetBars = [
-    {label:'Checking',  val:acc.checking||0, color:'var(--blue)'  },
-    {label:'HYSA',      val:hysaBal,          color:'var(--green)' },
-    {label:'Roth IRA',  val:rothBal,          color:'var(--purple)'},
-    {label:'401(k)',    val:k401Bal,          color:'var(--yellow)'},
-    {label:'Brokerage', val:acc.brokerage||0, color:'#06b6d4'      },
-  ].filter(a => a.val > 0);
-
-  // ── Goal progress rows
-  const goalRows = [
-    {label:`HYSA — ${currency(hysaBal)} / ${currency(settings.hysaGoal)}`,                                     val:hysaBal,  max:settings.hysaGoal,           color:'var(--green)' },
-    {label:`Roth IRA — ${currency(rothBal)} / ${currency(settings.rothIRAYearlyLimit)}`,                        val:rothBal,  max:settings.rothIRAYearlyLimit,  color:'var(--purple)'},
-    {label:`401(k) — ${currency(k401Bal)} / ${currency(settings.ira401kYearlyMax)}`,                            val:k401Bal,  max:settings.ira401kYearlyMax,    color:'var(--yellow)'},
-  ];
-
-  // ── History with deltas
+  // History deltas
   const histWithDelta = hist.map((h,i) => {
-    const prev      = hist[i-1];
-    const delta     = prev ? h.netWorth - prev.netWorth : null;
-    const deltaPct  = prev && prev.netWorth !== 0 ? (delta/Math.abs(prev.netWorth))*100 : null;
+    const prev     = hist[i-1];
+    const delta    = prev ? h.netWorth - prev.netWorth : null;
+    const deltaPct = prev && prev.netWorth !== 0 ? (delta/Math.abs(prev.netWorth))*100 : null;
     return { ...h, delta, deltaPct };
   });
 
@@ -1705,60 +1957,101 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
     return new Date(+y,+mo-1,1).toLocaleDateString('en-US',{month:'short',year:'2-digit'});
   };
 
+  // Asset rows for display
+  const assetRows = [
+    { label:'Checking',              color:'var(--accent)', val:acc.checking||0,   onChange:v=>setAcc('checking',v),   synced:false },
+    { label:'HYSA / Emergency Fund', color:'var(--accent)', val:hysaBal,            onChange:setHYSA,                   synced:true  },
+    { label:'Roth IRA',              color:'var(--purple)', val:rothBal,            onChange:setRoth,                   synced:true  },
+    { label:'401(k)',                color:'var(--yellow)', val:k401Bal,            onChange:set401k,                   synced:true  },
+    { label:'Taxable Brokerage',     color:'#06b6d4',       val:acc.brokerage||0,  onChange:v=>setAcc('brokerage',v),  synced:false },
+  ];
+  const liabRows = [
+    { label:'Credit Card',        color:'var(--red)',  val:acc.creditCard||0, onChange:v=>setAcc('creditCard',v) },
+    { label:'Loans / Other Debt', color:'#f97316',    val:acc.loans||0,      onChange:v=>setAcc('loans',v)      },
+  ];
+
   return (
     <div className="page">
 
-      {/* Header */}
-      <div className="page-top">
+      {/* Hero */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
         <div>
-          <div className="page-title">Net Worth</div>
-          <div className="page-sub">{now.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</div>
+          <div className="eyebrow" style={{marginBottom:8}}>
+            Net Worth · {now.toLocaleDateString('en-US',{month:'long',year:'numeric'})}
+          </div>
+          <div className="mega" style={{color:isPos?'var(--accent)':'var(--red)'}}>{currency(nw)}</div>
+          <div style={{fontSize:'.8rem',color:'var(--t3)',marginTop:8,fontVariantNumeric:'tabular-nums'}}>
+            {currency(totalAssets)} assets — {currency(totalLiab)} liabilities
+          </div>
         </div>
         <button className="btn btn-primary btn-sm" onClick={saveSnapshot}>
-          {hasMonth ? 'Update Snapshot' : 'Save Snapshot'}
+          {hasMonth ? 'Update' : 'Snapshot'}
         </button>
       </div>
 
-      {/* Hero */}
-      <div className="stat" style={{
-        borderColor: isPos?'rgba(34,197,94,.25)':'rgba(239,68,68,.25)',
-        background:  isPos?'rgba(34,197,94,.04)':'rgba(239,68,68,.04)',
-      }}>
-        <div className="stat-label">Net Worth</div>
-        <div className="stat-val" style={{color:isPos?'var(--green)':'var(--red)',fontSize:'2.6rem'}}>{currency(nw)}</div>
-        <div className="stat-sub">{currency(totalAssets)} assets − {currency(totalLiab)} liabilities</div>
+      {/* Assets vs liabilities stat strip */}
+      <div style={{display:'flex',gap:0}}>
+        {[
+          { lbl:'Assets',      val:currency(totalAssets), c:'var(--accent)' },
+          { lbl:'Liabilities', val:currency(totalLiab),   c:totalLiab>0?'var(--red)':'var(--t3)' },
+          { lbl:'Net',         val:currency(nw),           c:isPos?'var(--accent)':'var(--red)' },
+        ].map((s,i,arr) => (
+          <div key={s.lbl} style={{
+            flex:1, paddingRight:i<arr.length-1?16:0, marginRight:i<arr.length-1?16:0,
+            borderRight:i<arr.length-1?'1px solid var(--border)':'none',
+          }}>
+            <div style={{fontSize:'.6rem',fontWeight:600,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.09em',marginBottom:5}}>{s.lbl}</div>
+            <div style={{fontSize:'1.1rem',fontWeight:700,letterSpacing:'-.02em',fontVariantNumeric:'tabular-nums',color:s.c}}>{s.val}</div>
+          </div>
+        ))}
       </div>
 
-      {/* Assets / Liabilities */}
-      <div className="g2">
-        <div className="stat stat-green">
-          <div className="stat-label">Total Assets</div>
-          <div className="stat-val">{currency(totalAssets)}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Liabilities</div>
-          <div className="stat-val" style={{color:'var(--red)'}}>{currency(totalLiab)}</div>
+      {/* Assets */}
+      <div>
+        <div className="eyebrow" style={{marginBottom:10}}>Assets</div>
+        <div className="card-flush">
+          {assetRows.map(row => (
+            <div key={row.label} className="nw-row">
+              <div className="nw-row-left">
+                <div className="nw-dot" style={{background:row.color, opacity:row.val>0?1:0.3}}/>
+                <div>
+                  <span className="nw-label">{row.label}</span>
+                  {row.synced && <span style={{fontSize:'.6rem',color:'var(--t4)',marginLeft:6}}>synced</span>}
+                </div>
+              </div>
+              <input className="nw-input" type="number" min="0" step="0.01"
+                value={row.val||''}
+                onChange={e => row.onChange(parseFloat(e.target.value)||0)}
+                onBlur={e  => row.onChange(parseFloat(e.target.value)||0)}
+                onKeyDown={e => e.key==='Enter' && e.target.blur()}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Account balances — Assets */}
-      <div className="card">
-        <div className="card-label">Assets</div>
-        <AccountRow label="Checking"              color="var(--blue)"   value={acc.checking||0} onChange={v=>setAcc('checking',v)} />
-        <AccountRow label="HYSA / Emergency Fund" color="var(--green)"  value={hysaBal}         onChange={setHYSA} />
-        <AccountRow label="Roth IRA"              color="var(--purple)" value={rothBal}          onChange={setRoth} />
-        <AccountRow label="401(k)"                color="var(--yellow)" value={k401Bal}          onChange={set401k} />
-        <AccountRow label="Taxable Brokerage"     color="#06b6d4"       value={acc.brokerage||0} onChange={v=>setAcc('brokerage',v)} />
-        <div style={{paddingTop:10,fontSize:'.65rem',color:'var(--t3)'}}>
-          HYSA, Roth IRA, and 401(k) are synced with the Goals page.
+      {/* Liabilities */}
+      <div>
+        <div className="eyebrow" style={{marginBottom:10}}>Liabilities</div>
+        <div className="card-flush">
+          {liabRows.map(row => (
+            <div key={row.label} className="nw-row">
+              <div className="nw-row-left">
+                <div className="nw-dot" style={{background:row.color, opacity:row.val>0?1:0.3}}/>
+                <span className="nw-label">{row.label}</span>
+              </div>
+              <input className="nw-input" type="number" min="0" step="0.01"
+                value={row.val||''}
+                onChange={e => row.onChange(parseFloat(e.target.value)||0)}
+                onBlur={e  => row.onChange(parseFloat(e.target.value)||0)}
+                onKeyDown={e => e.key==='Enter' && e.target.blur()}
+              />
+            </div>
+          ))}
+          {totalLiab === 0 && (
+            <div style={{padding:'14px 20px',fontSize:'.8rem',color:'var(--t4)'}}>Zero debt. 🎉</div>
+          )}
         </div>
-      </div>
-
-      {/* Account balances — Liabilities */}
-      <div className="card">
-        <div className="card-label">Liabilities</div>
-        <AccountRow label="Credit Card"           color="var(--red)"  value={acc.creditCard||0} onChange={v=>setAcc('creditCard',v)} />
-        <AccountRow label="Loans / Other Debt"    color="#f97316"     value={acc.loans||0}      onChange={v=>setAcc('loans',v)} />
       </div>
 
       {/* Net Worth Over Time chart */}
@@ -1770,19 +2063,18 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
           )}
         </div>
         <SvgLine history={hist} />
-        {/* Latest snapshots below chart */}
         {hist.length > 0 && (
           <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:14}}>
             {[...hist].reverse().slice(0,6).map(h => (
               <div key={h.month} style={{
                 background:'var(--s2)',border:'1px solid var(--border)',borderRadius:'var(--r-s)',
-                padding:'7px 12px',flex:'1',minWidth:80,
+                padding:'7px 12px',flex:'1',minWidth:72,
               }}>
-                <div style={{fontSize:'.6rem',color:'var(--t3)',fontWeight:600,letterSpacing:'.08em',textTransform:'uppercase',marginBottom:3}}>
+                <div style={{fontSize:'.58rem',color:'var(--t3)',fontWeight:600,letterSpacing:'.08em',textTransform:'uppercase',marginBottom:3}}>
                   {fmtMonth(h.month)}
                 </div>
-                <div style={{fontSize:'.9rem',fontWeight:700,fontVariantNumeric:'tabular-nums',
-                  color:h.netWorth>=0?'var(--green)':'var(--red)'}}>
+                <div style={{fontSize:'.88rem',fontWeight:700,fontVariantNumeric:'tabular-nums',
+                  color:h.netWorth>=0?'var(--accent)':'var(--red)'}}>
                   {currency(h.netWorth)}
                 </div>
               </div>
@@ -1791,21 +2083,12 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
         )}
       </div>
 
-      {/* Assets breakdown */}
-      {assetBars.length > 0 && (
+      {/* Asset breakdown (bar chart) */}
+      {totalAssets > 0 && (
         <div className="card">
-          <div className="card-label">Assets Breakdown</div>
-          {assetBars.map(a => <HBar key={a.label} label={a.label} value={a.val} max={totalAssets} color={a.color} />)}
-        </div>
-      )}
-
-      {/* Spending by category */}
-      {topCats.length > 0 && (
-        <div className="card">
-          <div className="card-label">Spending by Category</div>
-          {topCats.map(([cat,amt]) => (
-            <HBar key={cat} label={cat.charAt(0).toUpperCase()+cat.slice(1)}
-              value={amt} max={maxCatSpend} color={CAT_COLOR[cat]||'var(--t3)'} />
+          <div className="card-label">Asset Breakdown</div>
+          {assetRows.filter(a=>a.val>0).map(a => (
+            <HBar key={a.label} label={a.label} value={a.val} max={totalAssets} color={a.color}/>
           ))}
         </div>
       )}
@@ -1814,7 +2097,11 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
       <div className="card">
         <div className="card-label">Goal Progress</div>
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
-          {goalRows.map(g => (
+          {[
+            { label:`HYSA — ${currency(hysaBal)} / ${currency(settings.hysaGoal)}`,              val:hysaBal, max:settings.hysaGoal,          color:'var(--accent)' },
+            { label:`Roth IRA — ${currency(rothBal)} / ${currency(settings.rothIRAYearlyLimit)}`, val:rothBal, max:settings.rothIRAYearlyLimit, color:'var(--purple)' },
+            { label:`401(k) — ${currency(k401Bal)} / ${currency(settings.ira401kYearlyMax)}`,     val:k401Bal, max:settings.ira401kYearlyMax,   color:'var(--yellow)' },
+          ].map(g => (
             <div key={g.label}>
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:7}}>
                 <span style={{fontSize:'.78rem',color:'var(--t2)'}}>{g.label}</span>
@@ -1822,13 +2109,24 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
                   {g.max>0 ? pct(Math.min((g.val/g.max)*100,100)) : '0.0%'}
                 </span>
               </div>
-              <Bar value={g.val} max={g.max} color={g.color} lg />
+              <Bar value={g.val} max={g.max} color={g.color} lg/>
             </div>
           ))}
         </div>
       </div>
 
-      {/* History table */}
+      {/* Spending by category */}
+      {topCats.length > 0 && (
+        <div className="card">
+          <div className="card-label">All-Time Spending</div>
+          {topCats.map(([cat,amt]) => (
+            <HBar key={cat} label={cat.charAt(0).toUpperCase()+cat.slice(1)}
+              value={amt} max={maxCatSpend} color={CAT_COLOR[cat]||'var(--t3)'}/>
+          ))}
+        </div>
+      )}
+
+      {/* Monthly history table */}
       {histWithDelta.length > 0 && (
         <div className="card">
           <div className="card-label">Monthly History</div>
@@ -1836,21 +2134,22 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
             <span className="hist-head">Month</span>
             <span className="hist-head" style={{textAlign:'right'}}>Net Worth</span>
             <span className="hist-head" style={{textAlign:'right'}}>Change</span>
-            <span />
+            <span/>
           </div>
           {[...histWithDelta].reverse().map(h => (
             <div key={h.month} className="hist-row">
               <span style={{fontSize:'.8rem',fontWeight:500,color:'var(--t1)'}}>{fmtMonth(h.month)}</span>
-              <span className="hist-mono" style={{textAlign:'right',
-                color:h.netWorth>=0?'var(--green)':'var(--red)'}}>
+              <span className="hist-mono" style={{textAlign:'right',color:h.netWorth>=0?'var(--accent)':'var(--red)'}}>
                 {currency(h.netWorth)}
               </span>
               <span className="hist-mono" style={{textAlign:'right',fontSize:'.72rem',
-                color:h.delta==null?'var(--t3)':h.delta>=0?'var(--green)':'var(--red)'}}>
+                color:h.delta==null?'var(--t3)':h.delta>=0?'var(--accent)':'var(--red)'}}>
                 {h.delta==null ? '—' : `${h.delta>=0?'+':''}${currency(h.delta)}`}
-                {h.deltaPct!=null && <span style={{color:'var(--t3)',marginLeft:3}}>
-                  ({h.deltaPct>=0?'+':''}{h.deltaPct.toFixed(1)}%)
-                </span>}
+                {h.deltaPct!=null && (
+                  <span style={{color:'var(--t3)',marginLeft:3}}>
+                    ({h.deltaPct>=0?'+':''}{h.deltaPct.toFixed(1)}%)
+                  </span>
+                )}
               </span>
               <button className="btn-icon btn-icon-del" style={{justifySelf:'end'}}
                 onClick={()=>delSnapshot(h.month)} title="Delete">✕</button>
@@ -1858,6 +2157,7 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
           ))}
         </div>
       )}
+
     </div>
   );
 }
@@ -1898,7 +2198,8 @@ function App() {
       <nav className="mobile-nav">
         {TABS.map(t=>(
           <button key={t.id} className={'mnav-btn'+(tab===t.id?' active':'')} onClick={()=>setTab(t.id)}>
-            {t.short}
+            <NavIcon name={t.icon} active={tab===t.id} />
+            {tab===t.id && <div className="nav-pip" />}
           </button>
         ))}
       </nav>

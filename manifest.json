@@ -4,8 +4,8 @@
   "description": "Personal finance tracker — budget, goals, spending",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
+  "background_color": "#060606",
+  "theme_color": "#060606",
   "orientation": "portrait-primary",
   "icons": [
     {
