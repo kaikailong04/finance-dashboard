@@ -385,7 +385,7 @@ html{-webkit-text-size-adjust:100%}
 .nw-seg{height:100%;transition:width .5s cubic-bezier(.4,0,.2,1)}
 
 /* Account input rows */
-.nw-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.nw-row{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border)}
 .nw-row:last-child{border-bottom:none}
 .nw-row-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
 .nw-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
@@ -516,7 +516,7 @@ html{-webkit-text-size-adjust:100%}
 /* ── Generic list rows (paycheck breakdown, etc.) ────────────────── */
 .v-row{
   display:flex;justify-content:space-between;align-items:center;
-  padding:13px 0;border-bottom:1px solid var(--border);
+  padding:13px 20px;border-bottom:1px solid var(--border);
 }
 .v-row:last-child{border-bottom:none}
 .v-row-left{display:flex;align-items:center;gap:13px}
@@ -876,7 +876,8 @@ function Dashboard({ settings, transactions, goals, commissions }) {
 
   const budget     = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget : settings.laterBudget;
   const eb         = settings.earlyBudget;
-  const monthlyContrib = (budget.hysa||0) + (budget.rothIRA||0) + (settings.contribution401k||0);
+  // Savings rate = HYSA + Roth IRA from take-home (401k already deducted pre-tax before take-home)
+  const monthlyContrib = (budget.hysa||0) + (budget.rothIRA||0);
   const savingsRate    = settings.takeHome > 0 ? (monthlyContrib / settings.takeHome) * 100 : 0;
 
   const totalBudgeted = phase.isEarly || phase.isPreEmployment
@@ -947,7 +948,7 @@ function Dashboard({ settings, transactions, goals, commissions }) {
         {[
           { lbl:'Base',         val:currency(settings.grossBase), sub:currency(settings.grossBase*12)+'/yr', c:'var(--t1)' },
           { lbl:'OTE',          val:currency(settings.grossOTE),  sub:currency(settings.grossOTE*12)+'/yr',  c:'var(--accent)' },
-          { lbl:'Savings Rate', val:pct(savingsRate,0),           sub:currency(monthlyContrib)+'/mo',         c:'var(--accent)' },
+          { lbl:'Savings Rate', val:pct(savingsRate,0),           sub:currency(monthlyContrib)+'/mo saved',   c:'var(--accent)' },
         ].map((s,i,arr) => (
           <div key={s.lbl} style={{
             flex:1, paddingRight:i<arr.length-1?16:0, marginRight:i<arr.length-1?16:0,
@@ -1427,8 +1428,9 @@ function Goals({ settings, goals, setGoals, commissions }) {
   const k401Rem  = Math.max(settings.ira401kYearlyMax - k401Bal, 0);
 
   // ── Savings rate ──────────────────────────────────────────────────────
+  // Only HYSA + Roth IRA count — 401k is pre-tax and deducted before take-home
   const activeBudget   = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget : settings.laterBudget;
-  const monthlyContrib = (activeBudget.hysa||0) + (activeBudget.rothIRA||0) + (settings.contribution401k||0);
+  const monthlyContrib = (activeBudget.hysa||0) + (activeBudget.rothIRA||0);
   const savingsRate    = settings.takeHome > 0 ? (monthlyContrib / settings.takeHome) * 100 : 0;
   const totalComm      = commissions.reduce((s,c) => s+c.amount, 0);
 
@@ -1450,7 +1452,7 @@ function Goals({ settings, goals, setGoals, commissions }) {
         <div className="mega" style={{color:'var(--accent)'}}>{pct(savingsRate, 0)}</div>
         <div style={{fontSize:'.85rem',color:'var(--t3)',marginTop:10,fontVariantNumeric:'tabular-nums'}}>
           {currency(monthlyContrib)}/mo
-          {phase.isEarly && <span style={{color:'var(--t4)'}}> · drops to {pct((((settings.laterBudget.hysa||0)+(settings.laterBudget.rothIRA||0)+(settings.contribution401k||0))/settings.takeHome)*100,0)} in Month 4</span>}
+          {phase.isEarly && <span style={{color:'var(--t4)'}}> · drops to {pct((((settings.laterBudget.hysa||0)+(settings.laterBudget.rothIRA||0))/settings.takeHome)*100,0)} in Month 4</span>}
         </div>
       </div>
 
