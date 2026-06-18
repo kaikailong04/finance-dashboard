@@ -2,14 +2,15 @@
   "name": "Finance Dashboard",
   "short_name": "Finance",
   "description": "Personal finance tracker — budget, goals, spending",
-  "start_url": "/",
+  "start_url": ".",
+  "scope": ".",
   "display": "standalone",
   "background_color": "#060606",
   "theme_color": "#060606",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

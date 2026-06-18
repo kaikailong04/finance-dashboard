@@ -7,7 +7,7 @@
   <!-- PWA / theme -->
   <meta name="theme-color" content="#060606" />
   <meta name="color-scheme" content="dark" />
-  <link rel="manifest" href="/manifest.json" />
+  <link rel="manifest" href="manifest.json" />
 
   <!-- iOS Safari PWA -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -2378,7 +2378,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 // Register service worker for PWA / offline support
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
-    navigator.serviceWorker.register('/sw.js').catch(function(){});
+    navigator.serviceWorker.register('sw.js').catch(function(){});
   });
 }
 </script>
