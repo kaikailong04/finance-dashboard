@@ -627,9 +627,9 @@ const currency = (n, dec=0) =>
   new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:dec}).format(n||0);
 const pct = (n,d=1) => (n||0).toFixed(d)+'%';
 
-function getPhaseInfo(startDateStr) {
+function getPhaseInfo(startDateStr, ref) {
   const start = parseLocalDate(startDateStr);
-  const now   = new Date();
+  const now   = ref || new Date();
   const idx   = (now.getFullYear()-start.getFullYear())*12+(now.getMonth()-start.getMonth())+1;
   return {
     idx,
@@ -1343,13 +1343,17 @@ function Spending({ settings, transactions, setTransactions }) {
   const monthTx   = transactions.filter(t=>t.date.startsWith(monthStr));
   const expenses  = monthTx.filter(t=>t.type==='expense');
   const totalSpent= expenses.reduce((s,t)=>s+t.amount, 0);
-  const phase     = getPhaseInfo(settings.startDate);
-  const budget    = phase.isEarly ? settings.earlyBudget : settings.laterBudget;
+  // Phase is based on the MONTH BEING VIEWED, not today — so each month is
+  // compared against the right budget. Rent-free = pre-employment + Months 1-3
+  // (with Start Date = Jul 1 2026 that is Jun/Jul/Aug/Sep 2026); rest = Month 4-12.
+  const phase     = getPhaseInfo(settings.startDate, new Date(viewMonth.y, viewMonth.m, 1));
+  const isRentFree= phase.isEarly || phase.isPreEmployment;
+  const budget    = isRentFree ? settings.earlyBudget : settings.laterBudget;
 
   const byCategory = {};
   for (const t of expenses) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
 
-  const catBudget = phase.isEarly || phase.isPreEmployment ? {
+  const catBudget = isRentFree ? {
     housing:   budget.utilitiesAndFee||0,
     groceries: budget.groceries, gas:budget.gas, dining:budget.outToEat,
     shopping:  budget.shopping,  travel:budget.funTravel, utilities:budget.utilitiesAndFee||0,
@@ -2365,7 +2369,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 (function(){
   function run(){
     var src=document.getElementById('app-src').textContent;
-    var compiled=Babel.transform(src,{presets:['react']}).code;
+    var compiled=Babel.transform(src,{presets:[['react',{runtime:'classic'}]]}).code;
     eval(compiled);
   }
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',run);}

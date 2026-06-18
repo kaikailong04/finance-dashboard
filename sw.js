@@ -1,4 +1,4 @@
-const CACHE = 'finance-v1';
+const CACHE = 'finance-v2';
 const PRECACHE = ['/', '/index.html', '/icon.svg', '/manifest.json'];
 
 // ── Install: pre-cache local assets ───────────────────────────────────────
