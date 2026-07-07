@@ -610,6 +610,43 @@ html{-webkit-text-size-adjust:100%}
 }
 .add-btn:hover{background:var(--accent-dk)}
 .add-btn:active{transform:scale(.96)}
+
+/* ── Paycheck modal ──────────────────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;z-index:200;
+  background:rgba(0,0,0,.62);
+  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;
+  padding:20px;animation:modal-fade .15s ease;
+}
+.modal-card{
+  background:var(--s1);border:1px solid var(--border2);
+  border-radius:var(--r);width:100%;max-width:420px;
+  max-height:88vh;overflow-y:auto;
+  box-shadow:0 24px 64px rgba(0,0,0,.6);
+  animation:modal-pop .18s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes modal-fade{from{opacity:0}to{opacity:1}}
+@keyframes modal-pop{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){
+  .modal-overlay,.modal-card{animation:none}
+}
+.alloc-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:9px 0;border-bottom:1px solid var(--border);font-size:.82rem;
+}
+.alloc-row:last-child{border-bottom:none}
+.alloc-name{color:var(--t2)}
+.alloc-val{font-weight:600;font-variant-numeric:tabular-nums;color:var(--t1)}
+
+/* ── ETA "moved up" highlight ────────────────────────────────────── */
+.eta-up{
+  display:inline-flex;align-items:center;gap:2px;
+  color:var(--accent);font-size:.6rem;font-weight:700;
+  background:var(--accent-lt);border:1px solid rgba(0,200,5,.3);
+  border-radius:99px;padding:2px 7px;margin-right:8px;
+  vertical-align:middle;white-space:nowrap;
+}
   </style>
 </head>
 <body>
@@ -631,11 +668,20 @@ function getPhaseInfo(startDateStr, ref) {
   const start = parseLocalDate(startDateStr);
   const now   = ref || new Date();
   const idx   = (now.getFullYear()-start.getFullYear())*12+(now.getMonth()-start.getMonth())+1;
+  // Rent alternates every other month, anchored to the start month.
+  // Start month (Jul) = rent; then Aug rent-free, Sep rent, Oct free, …
+  // Rent months use the with-rent budget (rent + HYSA $500); rent-free months
+  // use the no-rent budget (accelerated HYSA $1,800).
+  const rentMonth = idx >= 1 && ((idx - 1) % 2 === 0);   // Jul, Sep, Nov, …
+  const rentFree  = idx >= 1 && ((idx - 1) % 2 === 1);   // Aug, Oct, Dec, …
   return {
     idx,
     isPreEmployment: idx <= 0,
-    isEarly:         idx >= 1 && idx <= 3,
-    isFull:          idx >= 4,
+    isRentMonth:     rentMonth,
+    isRentFree:      rentFree,
+    // Back-compat aliases: "early" = rent-free (earlyBudget), "full" = rent month (laterBudget)
+    isEarly:         rentFree,
+    isFull:          rentMonth,
   };
 }
 
@@ -646,6 +692,7 @@ const DEFAULT_SETTINGS = {
   grossOTE:             6667,
   federalTax:           946,
   contribution401k:     300,
+  contribution401kStart:'2026-08-01',   // 401(k) contributions begin this month
   takeHome:             3755,
   commissionHYSAPct:    60,
   commissionPersonalPct:40,
@@ -723,6 +770,59 @@ function usePersist(key, def) {
   });
   useEffect(() => { localStorage.setItem(key, JSON.stringify(val)); }, [key, val]);
   return [val, setVal];
+}
+
+// ── Paycheck + goal-ETA helpers ───────────────────────────────────────
+// Which monthly budget is active right now (rent-free early vs full later)
+function activeBudgetFor(settings) {
+  const ph = getPhaseInfo(settings.startDate);
+  return (ph.isEarly || ph.isPreEmployment) ? settings.earlyBudget : settings.laterBudget;
+}
+// Roth auto-tracked balance = months elapsed this year × monthly rate, capped at limit
+function rothAutoBalance(settings) {
+  const now = new Date();
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const finStart  = parseLocalDate(settings.startDate);
+  const rothStart = finStart > yearStart ? finStart : yearStart;
+  const months = Math.max((now.getFullYear()-rothStart.getFullYear())*12 + (now.getMonth()-rothStart.getMonth()), 0);
+  return Math.min(months * (settings.earlyBudget.rothIRA||0), settings.rothIRAYearlyLimit);
+}
+// Current Roth balance: only what's actually been logged (no month-based auto-fill)
+function currentRothBal(settings, goals) {
+  return goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
+}
+// One semi-monthly check = half of each line in the ACTIVE month's budget.
+// Returns an ordered array [{key,label,amount}] — rent months include Rent and
+// the lower HYSA; rent-free months drop Rent and use the accelerated HYSA.
+function perCheckAllocations(settings, ref) {
+  const ph = getPhaseInfo(settings.startDate, ref);
+  const rentMonth = ph.isRentMonth;
+  const b = rentMonth ? settings.laterBudget : settings.earlyBudget;
+  const half = x => +(((x||0)/2)).toFixed(2);
+  const rows = [];
+  if (rentMonth) rows.push({ key:'rentAndFee', label:'Rent & Fee', amount:half(b.rentAndFee) });
+  rows.push({ key:'hysa',             label:'HYSA',             amount:half(b.hysa) });
+  rows.push({ key:'rothIRA',          label:'Roth IRA',         amount:half(b.rothIRA) });
+  rows.push({ key:'groceries',        label:'Groceries',        amount:half(b.groceries) });
+  rows.push({ key:'gas',              label:'Gas',              amount:half(b.gas) });
+  rows.push({ key:'funTravel',        label:'Travel',           amount:half(b.funTravel) });
+  rows.push({ key:'outToEat',         label:'Dining',           amount:half(b.outToEat) });
+  rows.push({ key:'shopping',         label:'Shopping',         amount:half(b.shopping) });
+  rows.push({ key:'utilities',        label:'Utilities',        amount:half(rentMonth ? b.utilities : b.utilitiesAndFee) });
+  rows.push({ key:'rentersInsurance', label:'Renters Insurance',amount:half(b.rentersInsurance) });
+  return rows;
+}
+// Session-scoped store for "ETA improved" highlights — clears on next app session
+function loadSess(k, d) { try { const r = sessionStorage.getItem(k); return r ? JSON.parse(r) : d; } catch { return d; } }
+function saveSess(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch {} }
+// Format an ETA improvement (in days) as a short human phrase
+function fmtImprove(days) {
+  days = Math.max(0, Math.round(days));
+  if (days >= 45) return Math.round(days/30.44)+' months';
+  if (days >= 25) return '1 month';
+  if (days >= 11) return Math.round(days/7)+' weeks';
+  if (days >= 6)  return '1 week';
+  return Math.max(1, days)+' days';
 }
 
 function Bar({ value, max, color='var(--blue)', lg=false }) {
@@ -831,16 +931,21 @@ function ProjectedChart({ settings }) {
   points.push({ date: d0, nw: 0 });
 
   let hysa = 0, roth = 0, k401 = 0, checking = 0;
+  const k401Start = settings.contribution401kStart ? parseLocalDate(settings.contribution401kStart) : start;
 
   for (let i = 1; i <= 12; i++) {
     const eb = settings.earlyBudget;
     const lb = settings.laterBudget;
-    const isEarly = i <= 3;
+    const d  = new Date(start.getFullYear(), start.getMonth() + i - 1, 1);
+    // Rent alternates: start month (i=1) is a rent month, then every other month.
+    const isEarly = ((i - 1) % 2 === 1);   // rent-free months (Aug, Oct, …)
     const b = isEarly ? eb : lb;
 
     hysa    += b.hysa    || 0;
     roth    += b.rothIRA || 0;
-    k401    += settings.contribution401k || 0;
+    // 401(k) starts in August; before then that $300 stays as discretionary cash
+    if (d >= k401Start) k401 += settings.contribution401k || 0;
+    else                checking += settings.contribution401k || 0;
 
     // Surplus = take-home minus all budget line items (HYSA & Roth already included in total)
     const totalBudget = isEarly
@@ -851,7 +956,6 @@ function ProjectedChart({ settings }) {
     const surplus = Math.max((settings.takeHome || 0) - totalBudget, 0);
     checking += surplus;
 
-    const d = new Date(start.getFullYear(), start.getMonth() + i - 1, 1);
     points.push({ date: d, nw: hysa + roth + k401 + checking });
   }
 
@@ -880,9 +984,6 @@ function ProjectedChart({ settings }) {
 
   // X-axis: label every other point to avoid crowding
   const fmtX = d => d.toLocaleDateString('en-US', { month:'short' }) + " '" + String(d.getFullYear()).slice(2);
-
-  // Phase divider: after index 3 (Sept→Oct transition)
-  const phaseX = toX(3);
 
   const [fx, fy] = coords[coords.length - 1];
   const finalNW  = points[points.length - 1].nw;
@@ -915,14 +1016,6 @@ function ProjectedChart({ settings }) {
             stroke="rgba(255,255,255,0.05)" strokeWidth="1"
             strokeDasharray={v === 0 ? 'none' : '3,6'}/>
         ))}
-
-        {/* Phase-change vertical dashed line */}
-        <line x1={phaseX} y1={PT} x2={phaseX} y2={PT + IH}
-          stroke="rgba(255,255,255,0.09)" strokeWidth="1" strokeDasharray="2,4"/>
-        <text x={phaseX - 6} y={PT + 11} textAnchor="end"
-          fill="#484848" fontSize="11" fontFamily="Inter,system-ui,sans-serif">Rent-free</text>
-        <text x={phaseX + 6} y={PT + 11} textAnchor="start"
-          fill="#484848" fontSize="11" fontFamily="Inter,system-ui,sans-serif">With rent</text>
 
         {/* Y-axis labels */}
         {yTicks.map((v, i) => (
@@ -999,7 +1092,7 @@ const CATEGORIES = [
 ];
 
 // ── Dashboard ─────────────────────────────────────────────────────────
-function Dashboard({ settings, transactions, goals, commissions }) {
+function Dashboard({ settings, transactions, goals, commissions, setGoals, setTransactions }) {
   const phase = getPhaseInfo(settings.startDate);
   const now   = new Date();
 
@@ -1020,6 +1113,39 @@ function Dashboard({ settings, transactions, goals, commissions }) {
   const byCategory = {};
   for (const t of monthTx) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
   const recentTx = [...transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
+
+  // ── Semi-monthly paycheck logging ──────────────────────────────────
+  const paychecksThisMonth = transactions.filter(t=>t.kind==='paycheck' && t.date && t.date.startsWith(monthStr));
+  const checkCount  = Math.min(paychecksThisMonth.length, 2);
+  const monthName   = now.toLocaleDateString('en-US',{month:'long', year:'numeric'});
+  const baseDeposit = +((settings.takeHome||0)/2).toFixed(2);
+  const [payOpen, setPayOpen] = useState(false);
+  const [payAmt,  setPayAmt]  = useState(baseDeposit);
+  const baseAlloc   = perCheckAllocations(settings);   // ordered [{key,label,amount}] for this month
+  const payScale    = baseDeposit>0 ? (parseFloat(payAmt)||0)/baseDeposit : 1;
+  const scaledAlloc = baseAlloc.map(a => ({ ...a, amount: +(a.amount*payScale).toFixed(2) }));
+  const allocOf     = key => (scaledAlloc.find(a=>a.key===key)||{}).amount || 0;
+  const allocSum    = +scaledAlloc.reduce((s,a)=>s+a.amount,0).toFixed(2);
+  const openPay = () => { setPayAmt(baseDeposit); setPayOpen(true); };
+  const confirmPay = () => {
+    const amt = +(parseFloat(payAmt)||0).toFixed(2);
+    if (!(amt>0)) return;
+    const checkNo = checkCount+1;
+    const day = checkNo===1 ? 10 : 20;   // paid on the 10th and 20th
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const allocObj = Object.fromEntries(scaledAlloc.map(a=>[a.key,a.amount]));
+    setTransactions(prev=>[{
+      id:String(Date.now()), date:dateStr, type:'income', kind:'paycheck', category:'income',
+      description:`Paycheck ${checkNo} of 2`, amount:amt, allocations:allocObj, month:monthStr,
+    }, ...prev]);
+    // Add this check's savings to the goals (auto-syncs to Net Worth)
+    setGoals(g=>({
+      ...g,
+      hysaBalance:     +(((g.hysaBalance||0) + allocOf('hysa'))).toFixed(2),
+      rothIRAOverride: +((currentRothBal(settings,g) + allocOf('rothIRA'))).toFixed(2),
+    }));
+    setPayOpen(false);
+  };
 
   // Paycheck breakdown rows
   const paycheckRows = [
@@ -1051,8 +1177,8 @@ function Dashboard({ settings, transactions, goals, commissions }) {
 
   let phaseBadge;
   if (phase.isPreEmployment)   phaseBadge = <span className="badge badge-purple">Pre-Employment</span>;
-  else if (phase.isEarly)      phaseBadge = <span className="badge badge-green">Month {phase.idx} · Rent-Free</span>;
-  else                         phaseBadge = <span className="badge badge-blue">Month {phase.idx} · Full Budget</span>;
+  else if (phase.isRentFree)   phaseBadge = <span className="badge badge-green">Rent-Free Month</span>;
+  else                         phaseBadge = <span className="badge badge-blue">Rent Month</span>;
 
   return (
     <div className="page">
@@ -1130,11 +1256,27 @@ function Dashboard({ settings, transactions, goals, commissions }) {
           <div style={{textAlign:'right'}}>
             {phaseBadge}
             <div style={{fontSize:'.68rem',color:'var(--t3)',marginTop:6}}>
-              {phase.isEarly ? 'Rent-free thru Month 3' : 'Full budget active'}
+              {phase.isEarly ? 'No rent — HYSA accelerated' : 'Rent due this month'}
             </div>
           </div>
         </div>
       )}
+
+      {/* Log Paycheck */}
+      <div>
+        {checkCount>=2
+          ? <button className="btn btn-ghost btn-full" disabled style={{opacity:.55,cursor:'default'}}>
+              ✓ Paychecks logged for {monthName}
+            </button>
+          : <button className="btn btn-primary btn-full" onClick={openPay}>
+              Log Paycheck {checkCount+1} of 2
+            </button>}
+        {checkCount===1 && (
+          <div style={{fontSize:'.68rem',color:'var(--t3)',textAlign:'center',marginTop:6}}>
+            Check 1 logged · {currency(paychecksThisMonth[0].amount,2)} deposited · 1 more to fully fund {now.toLocaleDateString('en-US',{month:'long'})}
+          </div>
+        )}
+      </div>
 
       {/* This Month spending bars */}
       {!phase.isPreEmployment && (
@@ -1187,10 +1329,10 @@ function Dashboard({ settings, transactions, goals, commissions }) {
                 const cat = CATEGORIES.find(c=>c.id===t.category);
                 return (
                   <div key={t.id} className="tx-row">
-                    <div className="tx-icon">{cat?.abbr||'OTH'}</div>
+                    <div className="tx-icon">{t.kind==='paycheck' ? 'PAY' : (cat?.abbr||'OTH')}</div>
                     <div className="tx-body">
                       <div className="tx-desc">{t.description}</div>
-                      <div className="tx-meta">{cat?.label} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+                      <div className="tx-meta">{(t.kind==='paycheck' ? 'Paycheck' : (cat?.label||'Other'))} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
                     </div>
                     <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
                       {t.type==='income'?'+':'-'}{currency(t.amount)}
@@ -1198,6 +1340,48 @@ function Dashboard({ settings, transactions, goals, commissions }) {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Paycheck confirmation modal */}
+      {payOpen && (
+        <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) setPayOpen(false); }}>
+          <div className="modal-card">
+            <div style={{padding:'20px 22px',borderBottom:'1px solid var(--border)'}}>
+              <div style={{fontSize:'1.05rem',fontWeight:700,color:'var(--t1)'}}>Log Paycheck {checkCount+1} of 2</div>
+              <div style={{fontSize:'.72rem',color:'var(--t3)',marginTop:3}}>{monthName} · semi-monthly deposit</div>
+            </div>
+            <div style={{padding:'18px 22px'}}>
+              <div className="eyebrow" style={{marginBottom:8}}>Deposit Amount</div>
+              <div style={{position:'relative',marginBottom:6}}>
+                <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',color:'var(--t3)',fontSize:'1.15rem',fontWeight:600}}>$</span>
+                <input type="number" step="0.01" min="0" value={payAmt} onChange={e=>setPayAmt(e.target.value)}
+                  style={{width:'100%',background:'var(--s2)',border:'1px solid var(--border2)',borderRadius:'var(--r-s)',color:'var(--t1)',padding:'12px 12px 12px 32px',fontSize:'1.35rem',fontWeight:700,outline:'none',fontVariantNumeric:'tabular-nums'}} />
+              </div>
+              <div style={{fontSize:'.68rem',color:'var(--t4)',marginBottom:16}}>Default {currency(baseDeposit,2)} · edit to scale all allocations proportionally</div>
+
+              <div className="eyebrow" style={{marginBottom:4}}>This Check's Allocation</div>
+              {scaledAlloc.map(a=>(
+                <div key={a.key} className="alloc-row">
+                  <span className="alloc-name">{a.label}</span>
+                  <span className="alloc-val" style={{color:(a.key==='hysa'||a.key==='rothIRA')?'var(--accent)':'var(--t1)'}}>{currency(a.amount,2)}</span>
+                </div>
+              ))}
+              {((parseFloat(payAmt)||0) - allocSum) > 0.005 && (
+                <div className="alloc-row" style={{borderTop:'1px solid var(--border2)'}}>
+                  <span className="alloc-name" style={{color:'var(--t3)'}}>Surplus → Checking</span>
+                  <span className="alloc-val" style={{color:'var(--green)'}}>{currency((parseFloat(payAmt)||0)-allocSum,2)}</span>
+                </div>
+              )}
+              <div style={{display:'flex',justifyContent:'space-between',marginTop:12,fontSize:'.82rem',fontWeight:700}}>
+                <span style={{color:'var(--t2)'}}>Total Deposit</span>
+                <span style={{color:'var(--green)',fontVariantNumeric:'tabular-nums'}}>{currency(parseFloat(payAmt)||0,2)}</span>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:10,padding:'0 22px 20px'}}>
+              <button className="btn btn-ghost" style={{flex:1,justifyContent:'center'}} onClick={()=>setPayOpen(false)}>Cancel</button>
+              <button className="btn btn-primary" style={{flex:1,justifyContent:'center'}} onClick={confirmPay}>Confirm Deposit</button>
             </div>
           </div>
         </div>
@@ -1259,7 +1443,7 @@ function Budget({ settings, transactions }) {
         <div>
           <h2 className="page-title">Budget</h2>
           <div className="page-sub">
-            {sel===0 ? 'Rent-free · July – September 2026' : 'Paying rent · October 2026 onward'}
+            {sel===0 ? 'Rent-free months · Aug, Oct, Dec — HYSA accelerated' : 'Rent months · Jul, Sep, Nov'}
           </div>
         </div>
         {currentlyActive && <span className="badge badge-green">Active</span>}
@@ -1271,14 +1455,14 @@ function Budget({ settings, transactions }) {
           className={'phase-pill '+(sel===0?'phase-pill-on':'phase-pill-off')}
           onClick={()=>setSel(0)}
         >
-          Months 1–3
+          Rent-Free
           {isEarlyActive && sel!==0 && <span style={{marginLeft:6,fontSize:'.65rem',opacity:.7}}>●</span>}
         </button>
         <button
           className={'phase-pill '+(sel===1?'phase-pill-on':'phase-pill-off')}
           onClick={()=>setSel(1)}
         >
-          Months 4–12
+          With Rent
           {isLaterActive && sel!==1 && <span style={{marginLeft:6,fontSize:'.65rem',opacity:.7}}>●</span>}
         </button>
       </div>
@@ -1528,26 +1712,21 @@ function Goals({ settings, goals, setGoals, commissions }) {
   const hysaBal    = goals.hysaBalance || 0;
   const hysaPct_   = settings.hysaGoal > 0 ? Math.min((hysaBal / settings.hysaGoal) * 100, 100) : 0;
   const hysaRem    = Math.max(settings.hysaGoal - hysaBal, 0);
-  const hysaRate   = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget.hysa : settings.laterBudget.hysa;
+  // HYSA alternates ($1,800 rent-free months, $500 rent months) — blended avg for the ETA
+  const hysaRate   = ((settings.earlyBudget.hysa||0) + (settings.laterBudget.hysa||0)) / 2;
   const hysaMonths = hysaRate > 0 && hysaRem > 0 ? Math.ceil(hysaRem / hysaRate) : 0;
   const hysaETA    = hysaMonths ? (() => {
     const d = new Date(now); d.setMonth(d.getMonth() + hysaMonths);
     return d.toLocaleDateString('en-US', {month:'short', year:'numeric'});
   })() : null;
 
-  // ── Roth IRA ──────────────────────────────────────────────────────────
-  const yearStart  = new Date(now.getFullYear(), 0, 1);
-  const finStart   = parseLocalDate(settings.startDate);
-  const rothStart  = finStart > yearStart ? finStart : yearStart;
-  const rothMonths = Math.max(
-    (now.getFullYear()-rothStart.getFullYear())*12 + (now.getMonth()-rothStart.getMonth()), 0
-  );
-  const rothAuto  = Math.min(rothMonths * settings.earlyBudget.rothIRA, settings.rothIRAYearlyLimit);
-  const rothBal   = goals.rothIRAOverride != null ? goals.rothIRAOverride : rothAuto;
+  // ── Roth IRA (counts only logged contributions — no month-based auto-fill) ──
+  const rothRate  = settings.earlyBudget.rothIRA || 0;   // $625/mo, same in both budgets
+  const rothBal   = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
   const rothPct_  = settings.rothIRAYearlyLimit > 0 ? Math.min((rothBal / settings.rothIRAYearlyLimit) * 100, 100) : 0;
   const rothRem   = Math.max(settings.rothIRAYearlyLimit - rothBal, 0);
-  const rothMonthsLeft = settings.earlyBudget.rothIRA > 0 && rothRem > 0
-    ? Math.ceil(rothRem / settings.earlyBudget.rothIRA) : 0;
+  const rothMonthsLeft = rothRate > 0 && rothRem > 0
+    ? Math.ceil(rothRem / rothRate) : 0;
   const rothETA   = rothMonthsLeft ? (() => {
     const d = new Date(now); d.setMonth(d.getMonth() + rothMonthsLeft);
     return d.toLocaleDateString('en-US', {month:'short', year:'numeric'});
@@ -1557,6 +1736,9 @@ function Goals({ settings, goals, setGoals, commissions }) {
   const k401Bal  = goals.ira401kBalance || 0;
   const k401Pct_ = settings.ira401kYearlyMax > 0 ? Math.min((k401Bal / settings.ira401kYearlyMax) * 100, 100) : 0;
   const k401Rem  = Math.max(settings.ira401kYearlyMax - k401Bal, 0);
+  const k401Started   = !settings.contribution401kStart || new Date() >= parseLocalDate(settings.contribution401kStart);
+  const k401StartLabel = settings.contribution401kStart
+    ? parseLocalDate(settings.contribution401kStart).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '';
 
   // ── Savings rate ──────────────────────────────────────────────────────
   // Only HYSA + Roth IRA count — 401k is pre-tax and deducted before take-home
@@ -1574,6 +1756,9 @@ function Goals({ settings, goals, setGoals, commissions }) {
   const upd401k = e => { e.preventDefault(); const v=parseFloat(k401In); if(!isNaN(v)) setGoals(g=>({...g,ira401kBalance:v})); setK401In(''); };
   const updRoth = e => { e.preventDefault(); const v=parseFloat(rothIn); setGoals(g=>({...g,rothIRAOverride:isNaN(v)?null:v})); setRothIn(''); };
 
+  // "Moved up" highlights are detected app-wide (see App); just read them here.
+  const [etaHl] = useState(() => loadSess('fd_eta_hl', {}));
+
   return (
     <div className="page">
 
@@ -1582,8 +1767,9 @@ function Goals({ settings, goals, setGoals, commissions }) {
         <div className="eyebrow" style={{marginBottom:8}}>Savings Rate</div>
         <div className="mega" style={{color:'var(--accent)'}}>{pct(savingsRate, 0)}</div>
         <div style={{fontSize:'.85rem',color:'var(--t3)',marginTop:10,fontVariantNumeric:'tabular-nums'}}>
-          {currency(monthlyContrib)}/mo
-          {phase.isEarly && <span style={{color:'var(--t4)'}}> · drops to {pct((((settings.laterBudget.hysa||0)+(settings.laterBudget.rothIRA||0))/settings.takeHome)*100,0)} in Month 4</span>}
+          {currency(monthlyContrib)}/mo this month
+          {phase.isRentFree && <span style={{color:'var(--t4)'}}> · rent-free, HYSA accelerated</span>}
+          {phase.isRentMonth && <span style={{color:'var(--t4)'}}> · rent month</span>}
         </div>
       </div>
 
@@ -1602,7 +1788,7 @@ function Goals({ settings, goals, setGoals, commissions }) {
         <div className="gc-head">
           <div>
             <div className="gc-name">Emergency Fund</div>
-            <div className="gc-sub">HYSA · {hysaRate > 800 ? 'Accelerated' : 'Standard'} · {currency(hysaRate)}/mo</div>
+            <div className="gc-sub">HYSA · alternating · ~{currency(hysaRate)}/mo avg</div>
           </div>
           <div>
             <div className="gc-pct" style={{color:'var(--accent)'}}>{pct(hysaPct_, 0)}</div>
@@ -1615,6 +1801,9 @@ function Goals({ settings, goals, setGoals, commissions }) {
         <div className="gc-foot">
           <span className="gc-rate">{currency(hysaRem)} remaining</span>
           <span className="gc-date">
+            {etaHl.hysa && hysaBal < settings.hysaGoal && (
+              <span className="eta-up">↑ Moved up {fmtImprove(etaHl.hysa.days)}</span>
+            )}
             {hysaBal >= settings.hysaGoal ? '🎉 Goal reached!'
               : hysaETA ? `${hysaETA} · ${hysaMonths}mo` : '—'}
           </span>
@@ -1643,22 +1832,20 @@ function Goals({ settings, goals, setGoals, commissions }) {
           <div className="gc-fill" style={{width:`${rothPct_}%`, background:'linear-gradient(90deg,#7B74FF,#9C94FF)'}}/>
         </div>
         <div className="gc-foot">
-          <span className="gc-rate">
-            {goals.rothIRAOverride != null
-              ? <button className="btn-link" style={{fontSize:'.72rem'}} onClick={()=>setGoals(g=>({...g,rothIRAOverride:null}))}>reset to auto-track</button>
-              : `${currency(settings.earlyBudget.rothIRA)}/mo · auto`
-            }
-          </span>
+          <span className="gc-rate">{currency(rothRate)}/mo · from paychecks</span>
           <span className="gc-date">
+            {etaHl.roth && rothBal < settings.rothIRAYearlyLimit && (
+              <span className="eta-up">↑ Moved up {fmtImprove(etaHl.roth.days)}</span>
+            )}
             {rothBal >= settings.rothIRAYearlyLimit ? '🎉 Maxed out!'
               : rothETA ? `${rothETA} · ${rothMonthsLeft}mo` : '—'}
           </span>
         </div>
         <form onSubmit={updRoth} className="goal-update" style={{marginTop:14}}>
           <input type="number" step="0.01" min="0"
-            placeholder="Override balance (blank = auto)"
+            placeholder={`Balance (${currency(rothBal)})`}
             value={rothIn} onChange={e=>setRothIn(e.target.value)} />
-          <button type="submit" className="btn btn-primary btn-sm">Override</button>
+          <button type="submit" className="btn btn-primary btn-sm">Update</button>
         </form>
       </div>
 
@@ -1682,7 +1869,8 @@ function Goals({ settings, goals, setGoals, commissions }) {
         <div className="gc-foot">
           <span className="gc-rate">{currency(settings.contribution401k)}/mo pre-tax</span>
           <span className="gc-date">
-            {k401Bal > 0 ? `${currency(k401Rem)} to IRS max` : 'Capturing employer match'}
+            {!k401Started ? `Starts ${k401StartLabel}`
+              : k401Bal > 0 ? `${currency(k401Rem)} to IRS max` : 'Capturing employer match'}
           </span>
         </div>
         <form onSubmit={upd401k} className="goal-update" style={{marginTop:14}}>
@@ -1702,7 +1890,7 @@ function Goals({ settings, goals, setGoals, commissions }) {
 }
 
 // ── Commission ─────────────────────────────────────────────────────────
-function Commission({ settings, commissions, setCommissions }) {
+function Commission({ settings, commissions, setCommissions, setGoals }) {
   const [showForm,setShowForm]=useState(false);
   const [form,setForm]=useState({date:new Date().toISOString().split('T')[0],amount:'',note:''});
   const hysaPct=settings.commissionHYSAPct/100;
@@ -1711,10 +1899,19 @@ function Commission({ settings, commissions, setCommissions }) {
 
   const handleAdd=e=>{
     e.preventDefault();const amt=parseFloat(form.amount);
-    setCommissions(prev=>[{id:String(Date.now()),date:form.date,amount:amt,note:form.note.trim(),hysaPortion:+(amt*hysaPct).toFixed(2),personalPortion:+(amt*personalPct).toFixed(2)},...prev]);
+    if(!amt||isNaN(amt))return;
+    const hysaAdd=+(amt*hysaPct).toFixed(2);
+    setCommissions(prev=>[{id:String(Date.now()),date:form.date,amount:amt,note:form.note.trim(),hysaPortion:hysaAdd,personalPortion:+(amt*personalPct).toFixed(2)},...prev]);
+    // 60% HYSA split flows into the Emergency Fund balance (syncs Goals + Net Worth)
+    setGoals(g=>({...g,hysaBalance:+(((g.hysaBalance||0)+hysaAdd)).toFixed(2)}));
     setForm(f=>({...f,amount:'',note:''}));setShowForm(false);
   };
-  const del=id=>{if(window.confirm('Delete this commission?'))setCommissions(p=>p.filter(c=>c.id!==id));};
+  const del=id=>{
+    if(!window.confirm('Delete this commission?'))return;
+    const c=commissions.find(x=>x.id===id);
+    setCommissions(p=>p.filter(t=>t.id!==id));
+    if(c) setGoals(g=>({...g,hysaBalance:+(Math.max((g.hysaBalance||0)-(c.hysaPortion||0),0)).toFixed(2)}));
+  };
   const sorted=[...commissions].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const total=commissions.reduce((s,c)=>s+c.amount,0);
   const totHYSA=commissions.reduce((s,c)=>s+c.hysaPortion,0);
@@ -2326,12 +2523,37 @@ function App() {
   const [commissions,setComm]  = usePersist('fd_commissions',  []);
   const [nwData,setNwData]     = usePersist('fd_networth',     DEFAULT_NETWORTH);
 
+  // ── App-wide goal-ETA tracking ────────────────────────────────────────
+  // Runs on ANY balance change (paycheck, commission split, manual update).
+  // Records each goal's precise days-to-target and, when the ETA moves sooner,
+  // writes a session-scoped "moved up X" highlight the Goals tab reads.
+  useEffect(() => {
+    let prev = {}; try { prev = JSON.parse(localStorage.getItem('fd_eta_prev')||'{}'); } catch {}
+    let hl = {};   try { hl   = JSON.parse(sessionStorage.getItem('fd_eta_hl')||'{}'); } catch {}
+    const next = { ...prev };
+    const hysaRate = ((settings.earlyBudget.hysa||0) + (settings.laterBudget.hysa||0)) / 2;  // blended (alternating)
+    const hysaBal  = goals.hysaBalance || 0;
+    const rothBal  = currentRothBal(settings, goals);
+    const track = (key, rem, rate, done) => {
+      if (done) { next[key] = 0; delete hl[key]; return; }
+      if (!(rate > 0)) return;
+      const days = rem > 0 ? (rem / rate) * 30.44 : 0;
+      if (prev[key] == null) { next[key] = days; return; }          // baseline only
+      if (days < prev[key] - 2) { hl[key] = { days: prev[key]-days }; next[key] = days; }
+      else if (days > prev[key] + 2) { next[key] = days; delete hl[key]; }
+    };
+    track('hysa', Math.max(settings.hysaGoal - hysaBal, 0), hysaRate, hysaBal >= settings.hysaGoal);
+    track('roth', Math.max(settings.rothIRAYearlyLimit - rothBal, 0), settings.earlyBudget.rothIRA, rothBal >= settings.rothIRAYearlyLimit);
+    localStorage.setItem('fd_eta_prev', JSON.stringify(next));
+    try { sessionStorage.setItem('fd_eta_hl', JSON.stringify(hl)); } catch {}
+  }, [goals, settings]);
+
   const pages = {
-    dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} />,
+    dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} />,
     budget:     <Budget     settings={settings} transactions={transactions} />,
     spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} />,
     goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} />,
-    commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} />,
+    commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} setGoals={setGoals} />,
     networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} setGoals={setGoals} settings={settings} />,
     settings:   <Settings   settings={settings} setSettings={useCallback(s=>setSettings(s),[])} />,
   };
