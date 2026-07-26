@@ -15,39 +15,14 @@
   <meta name="apple-mobile-web-app-title" content="Finance" />
   <meta name="mobile-web-app-capable" content="yes" />
 
-  <!-- Generate apple-touch-icon as PNG via canvas (iOS requires PNG) -->
-  <script>
-  (function(){
-    try {
-      var sz = 180, r = 40;
-      var c = document.createElement('canvas');
-      c.width = c.height = sz;
-      var x = c.getContext('2d');
-      x.fillStyle = '#111111';
-      x.beginPath();
-      x.moveTo(r,0); x.lineTo(sz-r,0);
-      x.quadraticCurveTo(sz,0,sz,r);
-      x.lineTo(sz,sz-r);
-      x.quadraticCurveTo(sz,sz,sz-r,sz);
-      x.lineTo(r,sz);
-      x.quadraticCurveTo(0,sz,0,sz-r);
-      x.lineTo(0,r);
-      x.quadraticCurveTo(0,0,r,0);
-      x.closePath();
-      x.fill();
-      x.fillStyle = '#00C805';
-      x.font = 'bold 112px -apple-system,Helvetica Neue,sans-serif';
-      x.textAlign = 'center';
-      x.textBaseline = 'middle';
-      x.fillText('$', sz/2, sz/2 + 4);
-      var l = document.createElement('link');
-      l.rel = 'apple-touch-icon';
-      l.sizes = '180x180';
-      l.href = c.toDataURL('image/png');
-      document.head.appendChild(l);
-    } catch(e){}
-  })();
-  </script>
+  <!-- Home-screen icons. These MUST be static files, not canvas-generated data:
+       URLs — iOS reads apple-touch-icon when you tap Add to Home Screen, often
+       before scripts run, and commonly rejects data: URLs, leaving a generic
+       screenshot tile instead of the app icon. Relative paths keep this working
+       from the GitHub Pages subdirectory. -->
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
 
   <title>Finance</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>

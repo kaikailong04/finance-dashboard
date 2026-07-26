@@ -1,5 +1,8 @@
-const CACHE = 'finance-v4';
-const PRECACHE = ['./', './index.html', './icon.svg', './manifest.json'];
+const CACHE = 'finance-v5';
+const PRECACHE = [
+  './', './index.html', './manifest.json',
+  './icon.svg', './apple-touch-icon.png', './icon-192.png', './icon-512.png',
+];
 
 // ── Install: pre-cache local assets ───────────────────────────────────────
 self.addEventListener('install', e => {
