@@ -652,7 +652,7 @@ html{-webkit-text-size-adjust:100%}
 <body>
 <div id="root"></div>
 <script id="app-src" type="text/jsx-source">
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useRef } = React;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 function parseLocalDate(str) {
@@ -668,12 +668,11 @@ function getPhaseInfo(startDateStr, ref) {
   const start = parseLocalDate(startDateStr);
   const now   = ref || new Date();
   const idx   = (now.getFullYear()-start.getFullYear())*12+(now.getMonth()-start.getMonth())+1;
-  // Rent alternates every other month, anchored to the start month.
-  // Start month (Jul) = rent; then Aug rent-free, Sep rent, Oct free, …
-  // Rent months use the with-rent budget (rent + HYSA $500); rent-free months
-  // use the no-rent budget (accelerated HYSA $1,800).
-  const rentMonth = idx >= 1 && ((idx - 1) % 2 === 0);   // Jul, Sep, Nov, …
-  const rentFree  = idx >= 1 && ((idx - 1) % 2 === 1);   // Aug, Oct, Dec, …
+  // Rent alternates every other month during 2026 (Jul=rent, Aug free, Sep rent…).
+  // From Jan 2027 onward every month is a rent month (no rent-free months).
+  const alternating = now.getFullYear() <= 2026;
+  const rentMonth = idx >= 1 && (!alternating || ((idx - 1) % 2 === 0));   // 2026: Jul/Sep/Nov · 2027+: all
+  const rentFree  = idx >= 1 && alternating && ((idx - 1) % 2 === 1);      // 2026 only: Aug/Oct/Dec
   return {
     idx,
     isPreEmployment: idx <= 0,
@@ -687,19 +686,34 @@ function getPhaseInfo(startDateStr, ref) {
 
 // ── Defaults ───────────────────────────────────────────────────────────
 const DEFAULT_SETTINGS = {
+  schemaVersion:        2,
   startDate:            '2026-07-01',
   grossBase:            5000,
   grossOTE:             6667,
   federalTax:           946,
-  contribution401k:     300,
+
+  // ── Income ──────────────────────────────────────────────────────────
+  // Paid on the 1st and 3rd THURSDAY of every month → always exactly
+  // 2 checks/month, 24/year (4th & 5th Thursdays never count).
+  // netPerPaycheck is TAKE-HOME, already net of the 401(k) deduction —
+  // never subtract employee401kPerPaycheck from it again.
+  netPerPaycheck:       1713,       // × 2 = $3,426/mo · × 24 = $41,112/yr
+  paychecksPerMonth:    2,
+  paychecksPerYear:     24,
+  takeHome:             3426,       // derived: netPerPaycheck × paychecksPerMonth
+
+  // ── 401(k) ──────────────────────────────────────────────────────────
+  employee401kPerPaycheck: 138.48,  // × 2 = $276.96/mo · × 24 = $3,323.52/yr
+  employerMatchRate:       0.5,     // employer matches 50% …
+  employerMatchPct:        6,       // … of the first 6% of eligible pay
+  employerMatchAnnualCap:  2400,    // hard cap per CALENDAR year
   contribution401kStart:'2026-08-01',   // 401(k) contributions begin this month
-  takeHome:             3755,
+  contribution401k:     276.96,     // monthly employee contribution (legacy field)
   commissionHYSAPct:    60,
   commissionPersonalPct:40,
   hysaGoal:             11000,
   rothIRAYearlyLimit:   7500,
   ira401kYearlyMax:     24500,
-  employerMatchPct:     4,
   earlyBudget: {
     utilitiesAndFee:   100,
     rentersInsurance:  15,
@@ -726,9 +740,12 @@ const DEFAULT_SETTINGS = {
 };
 
 const DEFAULT_GOALS = {
-  hysaBalance:     0,
-  ira401kBalance:  0,
-  rothIRAOverride: null,
+  schemaVersion:    2,
+  hysaBalance:      0,
+  ira401kBalance:   0,   // combined 401(k) — kept for back-compat / manual override
+  k401Employee:     0,   // employee contributions only
+  k401Employer:     0,   // employer match only (NOT spendable income)
+  rothIRAOverride:  null,
 };
 
 const DEFAULT_NETWORTH = {
@@ -742,50 +759,185 @@ const DEFAULT_NETWORTH = {
   history: [],
 };
 
+// Deep clone — callers must never receive a live reference into DEFAULT_*,
+// otherwise two scenarios (or two sessions) can end up aliasing one object.
+function cloneDeep(v) {
+  if (Array.isArray(v)) return v.map(cloneDeep);
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const k of Object.keys(v)) out[k] = cloneDeep(v[k]);
+    return out;
+  }
+  return v;
+}
+
 function deepMerge(def, stored) {
-  if (Array.isArray(def)) return Array.isArray(stored) ? stored : def;
-  if (!stored || typeof stored !== 'object') return def;
-  const out = { ...def };
+  if (Array.isArray(def)) return cloneDeep(Array.isArray(stored) ? stored : def);
+  if (!stored || typeof stored !== 'object') return cloneDeep(def);
+  const out = {};
   for (const k of Object.keys(def)) {
-    if (k in stored) {
-      if (Array.isArray(def[k])) {
-        out[k] = Array.isArray(stored[k]) ? stored[k] : def[k];
-      } else if (stored[k] && typeof stored[k] === 'object') {
-        out[k] = deepMerge(def[k], stored[k]);
-      } else {
-        out[k] = stored[k];
-      }
+    if (!(k in stored)) {
+      out[k] = cloneDeep(def[k]);                       // fresh copy, never the default itself
+    } else if (Array.isArray(def[k])) {
+      out[k] = cloneDeep(Array.isArray(stored[k]) ? stored[k] : def[k]);
+    } else if (def[k] && typeof def[k] === 'object') {
+      out[k] = deepMerge(def[k], stored[k]);            // recurse → earlyBudget and laterBudget
+    } else {                                            // get independent objects
+      out[k] = stored[k];
     }
   }
+  // Keep any user data the current defaults don't describe.
+  for (const k of Object.keys(stored)) if (!(k in out)) out[k] = cloneDeep(stored[k]);
   return out;
 }
 
-function usePersist(key, def) {
+// ── Schema migrations ─────────────────────────────────────────────────
+// Run ONCE on load, then the record is stamped with its version. They must
+// never re-sync the two budget scenarios on subsequent loads.
+const SETTINGS_SCHEMA_VERSION = 2;
+const GOALS_SCHEMA_VERSION    = 2;
+
+function migrateSettings(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+  const s = { ...raw };
+  if ((s.schemaVersion || 0) >= SETTINGS_SCHEMA_VERSION) return s;
+
+  // v1 → v2 · savings split.
+  // v1 kept ONE shared Roth/HYSA figure (top-level, or inside a single
+  // `budget` object) that both scenarios read. Seed each scenario from it
+  // once so no data is lost, then leave them permanently independent.
+  const early  = { ...(s.earlyBudget || {}) };
+  const later  = { ...(s.laterBudget || {}) };
+  const legacy = (s.budget && typeof s.budget === 'object') ? s.budget : s;
+  for (const key of ['rothIRA', 'hysa']) {
+    const shared = legacy[key];
+    if (typeof shared === 'number') {
+      if (early[key] == null) early[key] = shared;
+      if (later[key] == null) later[key] = shared;
+    }
+  }
+  s.earlyBudget = early;
+  s.laterBudget = later;
+  delete s.rothIRA;                     // drop the shared fields so nothing
+  delete s.hysa;                        // can read them again
+
+  // v1 → v2 · income. v1 stored income as a single monthly lump; re-express
+  // it as a per-paycheck amount so the 2×/month schedule drives everything.
+  if (s.netPerPaycheck == null && typeof s.takeHome === 'number' && s.takeHome > 0)
+    s.netPerPaycheck = round2(s.takeHome / (s.paychecksPerMonth || 2));
+
+  s.schemaVersion = SETTINGS_SCHEMA_VERSION;
+  return s;
+}
+
+function migrateGoals(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+  const g = { ...raw };
+  if ((g.schemaVersion || 0) >= GOALS_SCHEMA_VERSION) return g;
+  // v1 tracked only a combined 401(k) balance. Attribute the existing total to
+  // employee contributions (the employer split was never recorded) so the
+  // combined figure is preserved rather than doubled or zeroed.
+  const combined = +g.ira401kBalance || 0;
+  if (combined > 0 && !g.k401Employee && !g.k401Employer) g.k401Employee = combined;
+  g.schemaVersion = GOALS_SCHEMA_VERSION;
+  return g;
+}
+
+function usePersist(key, def, migrate) {
   const [val, setVal] = useState(() => {
     try {
       const raw = localStorage.getItem(key);
-      if (!raw) return def;
-      return deepMerge(def, JSON.parse(raw));
-    } catch { return def; }
+      if (!raw) return cloneDeep(def);
+      const parsed = JSON.parse(raw);
+      return deepMerge(def, migrate ? migrate(parsed) : parsed);
+    } catch { return cloneDeep(def); }
   });
   useEffect(() => { localStorage.setItem(key, JSON.stringify(val)); }, [key, val]);
   return [val, setVal];
 }
 
-// ── Paycheck + goal-ETA helpers ───────────────────────────────────────
+// ── Income / paycheck-schedule helpers ────────────────────────────────
+const round2 = n => Math.round(((+n||0) + Number.EPSILON) * 100) / 100;
+
+// Nth Thursday of a month (monthIdx 0-based). n=1 → 1st Thursday, n=3 → 3rd.
+function nthThursdayOfMonth(year, monthIdx, n) {
+  const first  = new Date(year, monthIdx, 1);
+  const offset = (4 - first.getDay() + 7) % 7;        // 4 = Thursday
+  return new Date(year, monthIdx, 1 + offset + (n - 1) * 7);
+}
+// Pay dates for a month = 1st and 3rd Thursday. ALWAYS exactly two — a month
+// with 4 or 5 Thursdays never produces an extra paycheck.
+function paycheckDatesForMonth(year, monthIdx) {
+  return [nthThursdayOfMonth(year, monthIdx, 1), nthThursdayOfMonth(year, monthIdx, 3)];
+}
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+function checksPerMonth(s) { return s.paychecksPerMonth || 2; }
+function checksPerYear(s)  { return s.paychecksPerYear  || 24; }
+// Take-home per check — already NET of the 401(k) deduction.
+function netPerCheck(s) {
+  return s.netPerPaycheck != null ? s.netPerPaycheck : round2((s.takeHome || 0) / checksPerMonth(s));
+}
+function monthlyNetIncome(s) { return round2(netPerCheck(s) * checksPerMonth(s)); }   // $3,426
+function annualNetIncome(s)  { return round2(netPerCheck(s) * checksPerYear(s));  }   // $41,112
+
+// ── 401(k) ────────────────────────────────────────────────────────────
+function employee401kPerCheck(s) { return s.employee401kPerPaycheck || 0; }           // $138.48
+// Employer matches 50% of the employee contribution, capped for the CALENDAR year.
+function employerMatchForPaycheck(s, employeeContrib, ytdMatch) {
+  const cap       = s.employerMatchAnnualCap != null ? s.employerMatchAnnualCap : Infinity;
+  const remaining = Math.max(cap - (ytdMatch || 0), 0);
+  const rate      = s.employerMatchRate != null ? s.employerMatchRate : 0.5;
+  return round2(Math.max(Math.min((employeeContrib || 0) * rate, remaining), 0));
+}
+// Employer match already banked in a given calendar year (from logged paychecks).
+function ytdEmployerMatch(transactions, year) {
+  return round2((transactions || [])
+    .filter(t => t.kind === 'paycheck' && t.date && Number(t.date.slice(0,4)) === year)
+    .reduce((s, t) => s + (t.employer401k || 0), 0));
+}
+// Has the 401(k) started as of a given date?
+function k401Active(s, ref) {
+  if (!s.contribution401kStart) return true;
+  return (ref || new Date()) >= parseLocalDate(s.contribution401kStart);
+}
+// Project one month of 401(k) activity. `matchByYear` is a running
+// {year: matchSoFar} ledger the caller carries across months, so the employer
+// allowance is consumed per CALENDAR year and resets automatically each Jan 1.
+function project401kMonth(s, monthDate, matchByYear) {
+  const year = monthDate.getFullYear();
+  let employee = 0, employer = 0;
+  for (const payDate of paycheckDatesForMonth(year, monthDate.getMonth())) {
+    if (!k401Active(s, payDate)) continue;
+    const emp   = employee401kPerCheck(s);
+    const match = employerMatchForPaycheck(s, emp, matchByYear[year] || 0);
+    matchByYear[year] = round2((matchByYear[year] || 0) + match);
+    employee = round2(employee + emp);
+    employer = round2(employer + match);
+  }
+  return { employee, employer };
+}
+
+// ── Budget-scenario helpers ───────────────────────────────────────────
+// "With Rent" (laterBudget) and "Without Rent" (earlyBudget) are INDEPENDENT
+// scenarios. Always resolve the scenario for the month in question — never read
+// one scenario's Roth/HYSA figure while the other scenario is active.
+function budgetForRef(settings, ref) {
+  const ph = getPhaseInfo(settings.startDate, ref);
+  return ph.isRentMonth ? settings.laterBudget : settings.earlyBudget;
+}
+function rothRateFor(settings, ref) { return (budgetForRef(settings, ref) || {}).rothIRA || 0; }
+function hysaRateFor(settings, ref) { return (budgetForRef(settings, ref) || {}).hysa    || 0; }
+// Long-range average across the schedule: 2026 alternates, 2027+ is all rent.
+function blendedRate(settings, key) {
+  const e = (settings.earlyBudget || {})[key] || 0;
+  const l = (settings.laterBudget || {})[key] || 0;
+  return new Date().getFullYear() >= 2027 ? l : (e + l) / 2;
+}
 // Which monthly budget is active right now (rent-free early vs full later)
 function activeBudgetFor(settings) {
   const ph = getPhaseInfo(settings.startDate);
   return (ph.isEarly || ph.isPreEmployment) ? settings.earlyBudget : settings.laterBudget;
-}
-// Roth auto-tracked balance = months elapsed this year × monthly rate, capped at limit
-function rothAutoBalance(settings) {
-  const now = new Date();
-  const yearStart = new Date(now.getFullYear(), 0, 1);
-  const finStart  = parseLocalDate(settings.startDate);
-  const rothStart = finStart > yearStart ? finStart : yearStart;
-  const months = Math.max((now.getFullYear()-rothStart.getFullYear())*12 + (now.getMonth()-rothStart.getMonth()), 0);
-  return Math.min(months * (settings.earlyBudget.rothIRA||0), settings.rothIRAYearlyLimit);
 }
 // Current Roth balance: only what's actually been logged (no month-based auto-fill)
 function currentRothBal(settings, goals) {
@@ -797,8 +949,9 @@ function currentRothBal(settings, goals) {
 function perCheckAllocations(settings, ref) {
   const ph = getPhaseInfo(settings.startDate, ref);
   const rentMonth = ph.isRentMonth;
-  const b = rentMonth ? settings.laterBudget : settings.earlyBudget;
-  const half = x => +(((x||0)/2)).toFixed(2);
+  const b = budgetForRef(settings, ref) || {};
+  const n = checksPerMonth(settings);          // 2 checks per month
+  const half = x => round2((x || 0) / n);
   const rows = [];
   if (rentMonth) rows.push({ key:'rentAndFee', label:'Rent & Fee', amount:half(b.rentAndFee) });
   rows.push({ key:'hysa',             label:'HYSA',             amount:half(b.hysa) });
@@ -930,22 +1083,26 @@ function ProjectedChart({ settings }) {
   const d0 = new Date(start.getFullYear(), start.getMonth() - 1, 1);
   points.push({ date: d0, nw: 0 });
 
-  let hysa = 0, roth = 0, k401 = 0, checking = 0;
-  const k401Start = settings.contribution401kStart ? parseLocalDate(settings.contribution401kStart) : start;
+  let hysa = 0, roth = 0, k401Emp = 0, k401Empr = 0, checking = 0;
+  // Employer allowance consumed per calendar year; resets automatically at Jan 1.
+  const matchByYear = {};
 
   for (let i = 1; i <= 12; i++) {
     const eb = settings.earlyBudget;
     const lb = settings.laterBudget;
     const d  = new Date(start.getFullYear(), start.getMonth() + i - 1, 1);
-    // Rent alternates: start month (i=1) is a rent month, then every other month.
-    const isEarly = ((i - 1) % 2 === 1);   // rent-free months (Aug, Oct, …)
+    // Rent alternates in 2026; every 2027 month is a rent month.
+    const isEarly = d.getFullYear() <= 2026 && ((i - 1) % 2 === 1);   // rent-free (Aug, Oct, …)
     const b = isEarly ? eb : lb;
 
     hysa    += b.hysa    || 0;
     roth    += b.rothIRA || 0;
-    // 401(k) starts in August; before then that $300 stays as discretionary cash
-    if (d >= k401Start) k401 += settings.contribution401k || 0;
-    else                checking += settings.contribution401k || 0;
+    // 401(k) is withheld BEFORE the net paycheck lands, so it never adds to
+    // checking — not even in months before contributions start. The employer
+    // match grows retirement only and is likewise never spendable cash.
+    const k = project401kMonth(settings, d, matchByYear);
+    k401Emp  = round2(k401Emp  + k.employee);
+    k401Empr = round2(k401Empr + k.employer);
 
     // Surplus = take-home minus all budget line items (HYSA & Roth already included in total)
     const totalBudget = isEarly
@@ -953,10 +1110,10 @@ function ProjectedChart({ settings }) {
         +(eb.groceries||0)+(eb.gas||0)+(eb.funTravel||0)+(eb.outToEat||0)+(eb.shopping||0)
       : (lb.rentAndFee||0)+(lb.utilities||0)+(lb.rentersInsurance||0)+(lb.rothIRA||0)+(lb.hysa||0)
         +(lb.groceries||0)+(lb.gas||0)+(lb.funTravel||0)+(lb.outToEat||0)+(lb.shopping||0);
-    const surplus = Math.max((settings.takeHome || 0) - totalBudget, 0);
+    const surplus = Math.max(monthlyNetIncome(settings) - totalBudget, 0);
     checking += surplus;
 
-    points.push({ date: d, nw: hysa + roth + k401 + checking });
+    points.push({ date: d, nw: hysa + roth + k401Emp + k401Empr + checking });
   }
 
   // ── SVG layout ────────────────────────────────────────────────────
@@ -1098,14 +1255,16 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
 
   const budget     = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget : settings.laterBudget;
   const eb         = settings.earlyBudget;
-  // Savings rate = HYSA + Roth IRA from take-home (401k already deducted pre-tax before take-home)
+  const netMonthly = monthlyNetIncome(settings);   // 2 × net paycheck
+  // Savings rate = HYSA + Roth IRA out of take-home. The 401(k) is already
+  // deducted before the paycheck lands, so it is NOT subtracted again here.
   const monthlyContrib = (budget.hysa||0) + (budget.rothIRA||0);
-  const savingsRate    = settings.takeHome > 0 ? (monthlyContrib / settings.takeHome) * 100 : 0;
+  const savingsRate    = netMonthly > 0 ? (monthlyContrib / netMonthly) * 100 : 0;
 
   const totalBudgeted = phase.isEarly || phase.isPreEmployment
     ? (eb.utilitiesAndFee||0)+(eb.rentersInsurance||0)+(eb.rothIRA||0)+(eb.hysa||0)+(eb.groceries||0)+(eb.gas||0)+(eb.funTravel||0)+(eb.outToEat||0)+(eb.shopping||0)
     : (budget.rentAndFee||0)+(budget.utilities||0)+(budget.rentersInsurance||0)+(budget.rothIRA||0)+(budget.hysa||0)+(budget.groceries||0)+(budget.gas||0)+(budget.funTravel||0)+(budget.outToEat||0)+(budget.shopping||0);
-  const surplus = settings.takeHome - totalBudgeted;
+  const surplus = netMonthly - totalBudgeted;
 
   const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const monthTx  = transactions.filter(t=>t.date.startsWith(monthStr)&&t.type==='expense');
@@ -1114,11 +1273,19 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   for (const t of monthTx) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
   const recentTx = [...transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
 
-  // ── Semi-monthly paycheck logging ──────────────────────────────────
+  // ── Paycheck logging — 1st & 3rd Thursday, exactly 2 per month ──────
+  const perMonth    = checksPerMonth(settings);
+  const payDates    = paycheckDatesForMonth(now.getFullYear(), now.getMonth());
   const paychecksThisMonth = transactions.filter(t=>t.kind==='paycheck' && t.date && t.date.startsWith(monthStr));
-  const checkCount  = Math.min(paychecksThisMonth.length, 2);
+  const checkCount  = Math.min(paychecksThisMonth.length, perMonth);
   const monthName   = now.toLocaleDateString('en-US',{month:'long', year:'numeric'});
-  const baseDeposit = +((settings.takeHome||0)/2).toFixed(2);
+  const baseDeposit = netPerCheck(settings);          // $1,713 take-home
+  const nextPayDate = payDates[Math.min(checkCount, perMonth-1)];
+  // 401(k): employee amount is fixed per check; employer match is 50% of it,
+  // capped for the calendar year (never exceeds employerMatchAnnualCap).
+  const empContrib  = k401Active(settings, nextPayDate) ? employee401kPerCheck(settings) : 0;
+  const matchYTD    = ytdEmployerMatch(transactions, now.getFullYear());
+  const emprContrib = employerMatchForPaycheck(settings, empContrib, matchYTD);
   const [payOpen, setPayOpen] = useState(false);
   const [payAmt,  setPayAmt]  = useState(baseDeposit);
   const baseAlloc   = perCheckAllocations(settings);   // ordered [{key,label,amount}] for this month
@@ -1126,33 +1293,54 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   const scaledAlloc = baseAlloc.map(a => ({ ...a, amount: +(a.amount*payScale).toFixed(2) }));
   const allocOf     = key => (scaledAlloc.find(a=>a.key===key)||{}).amount || 0;
   const allocSum    = +scaledAlloc.reduce((s,a)=>s+a.amount,0).toFixed(2);
+  // "Funded this month" — how much of each monthly budget line the logged
+  // paychecks have covered so far (each check funds ~half; two checks = 100%).
+  const fundedByKey = {};
+  for (const p of paychecksThisMonth)
+    for (const [k,v] of Object.entries(p.allocations||{})) fundedByKey[k] = (fundedByKey[k]||0) + v;
+  const fundedRows  = baseAlloc.map(a => ({
+    key:a.key, label:a.label,
+    target: round2(a.amount*perMonth),         // full monthly budget line (per-check × 2)
+    funded: round2(fundedByKey[a.key]||0),
+  }));
+  const fundedTotal = +fundedRows.reduce((s,r)=>s+r.funded,0).toFixed(2);
+  const targetTotal = +fundedRows.reduce((s,r)=>s+r.target,0).toFixed(2);
   const openPay = () => { setPayAmt(baseDeposit); setPayOpen(true); };
   const confirmPay = () => {
-    const amt = +(parseFloat(payAmt)||0).toFixed(2);
+    const amt = round2(parseFloat(payAmt)||0);
     if (!(amt>0)) return;
-    const checkNo = checkCount+1;
-    const day = checkNo===1 ? 10 : 20;   // paid on the 10th and 20th
-    const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const checkNo  = checkCount+1;
+    const payDate  = payDates[Math.min(checkNo-1, perMonth-1)];   // 1st / 3rd Thursday
+    const dateStr  = ymd(payDate);
     const allocObj = Object.fromEntries(scaledAlloc.map(a=>[a.key,a.amount]));
     setTransactions(prev=>[{
       id:String(Date.now()), date:dateStr, type:'income', kind:'paycheck', category:'income',
-      description:`Paycheck ${checkNo} of 2`, amount:amt, allocations:allocObj, month:monthStr,
+      description:`Paycheck ${checkNo} of ${perMonth}`, amount:amt, allocations:allocObj, month:monthStr,
+      // 401(k) is withheld BEFORE this deposit — recorded, never subtracted from `amount`
+      employee401k: empContrib, employer401k: emprContrib,
     }, ...prev]);
-    // Add this check's savings to the goals (auto-syncs to Net Worth)
+    // Add this check's savings to the goals (auto-syncs to Net Worth).
+    // Employer match is retirement-only — never added to cash/checking.
     setGoals(g=>({
       ...g,
-      hysaBalance:     +(((g.hysaBalance||0) + allocOf('hysa'))).toFixed(2),
-      rothIRAOverride: +((currentRothBal(settings,g) + allocOf('rothIRA'))).toFixed(2),
+      hysaBalance:     round2((g.hysaBalance||0) + allocOf('hysa')),
+      rothIRAOverride: round2(currentRothBal(settings,g) + allocOf('rothIRA')),
+      k401Employee:    round2((g.k401Employee||0) + empContrib),
+      k401Employer:    round2((g.k401Employer||0) + emprContrib),
+      ira401kBalance:  round2((g.ira401kBalance||0) + empContrib + emprContrib),
     }));
     setPayOpen(false);
   };
 
-  // Paycheck breakdown rows
+  // Paycheck breakdown — built around the actual net paycheck. The 401(k) rows
+  // are informational (already withheld); they are NOT deducted from take-home.
+  const empMonthly  = round2(empContrib  * perMonth);
+  const emprMonthly = round2(emprContrib * perMonth);
   const paycheckRows = [
-    { icon:'dollar', iconBg:'rgba(0,200,5,.08)',   iconClr:'#00C805', name:'Gross Monthly',   sub:currency(settings.grossBase*12)+' / yr base',     val:currency(settings.grossBase),          vc:'var(--t1)'    },
-    { icon:'receipt',iconBg:'rgba(255,80,0,.1)',   iconClr:'#FF5000', name:'Tax & FICA',       sub:'Federal + GA + FICA',                             val:'−'+currency(settings.federalTax),     vc:'var(--red)'   },
-    { icon:'bank',   iconBg:'rgba(245,166,35,.1)', iconClr:'#F5A623', name:'401(k) Pre-Tax',   sub:pct(settings.contribution401k/settings.grossBase*100,0)+' contribution',val:'−'+currency(settings.contribution401k),vc:'var(--yellow)'},
-    { icon:'check',  iconBg:'rgba(0,200,5,.08)',   iconClr:'#00C805', name:'Take-Home',        sub:'Hits your account',                               val:currency(settings.takeHome),           vc:'var(--green)' },
+    { icon:'check',  iconBg:'rgba(0,200,5,.08)',   iconClr:'#00C805', name:'Net Paycheck',         sub:`1st & 3rd Thursday · ${perMonth}× / mo`,                       val:currency(baseDeposit,2),   vc:'var(--green)' },
+    { icon:'dollar', iconBg:'rgba(0,200,5,.08)',   iconClr:'#00C805', name:'Monthly Take-Home',    sub:currency(annualNetIncome(settings))+' / yr · '+checksPerYear(settings)+' checks', val:currency(netMonthly,2), vc:'var(--t1)' },
+    { icon:'bank',   iconBg:'rgba(245,166,35,.1)', iconClr:'#F5A623', name:'401(k) — You',         sub:`${currency(empContrib,2)}/check · already withheld`,           val:currency(empMonthly,2),    vc:'var(--yellow)'},
+    { icon:'shield', iconBg:'rgba(123,116,255,.12)',iconClr:'#7B74FF',name:'401(k) — Employer',    sub:`${currency(emprContrib,2)}/check · not spendable`,             val:currency(emprMonthly,2),   vc:'var(--purple)'},
   ];
 
   // Category bars for "This Month" (only show if transactions exist)
@@ -1186,7 +1374,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
       {/* Hero ─ take-home */}
       <div>
         <div className="eyebrow" style={{marginBottom:8}}>Monthly Take-Home</div>
-        <div className="mega" style={{color:'var(--t1)'}}>{currency(settings.takeHome)}</div>
+        <div className="mega" style={{color:'var(--t1)'}}>{currency(netMonthly)}</div>
         <div style={{fontSize:'.85rem',color:'var(--accent)',marginTop:10,fontWeight:500,display:'flex',alignItems:'center',gap:5}}>
           <Icon name="trendUp" size={14} color="var(--accent)" strokeWidth={2}/>
           {currency(settings.grossOTE*12-settings.grossBase*12)} OTE upside / yr
@@ -1250,7 +1438,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
               {surplus>=0?'+':''}{currency(surplus)}
             </div>
             <div style={{fontSize:'.72rem',color:'var(--t3)',marginTop:5}}>
-              {currency(settings.takeHome)} − {currency(totalBudgeted)} budgeted
+              {currency(netMonthly)} − {currency(totalBudgeted)} budgeted
             </div>
           </div>
           <div style={{textAlign:'right'}}>
@@ -1277,6 +1465,36 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
           </div>
         )}
       </div>
+
+      {/* Funded This Month — fills as each paycheck half lands */}
+      {!phase.isPreEmployment && (
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}}>
+            <div className="section-head" style={{padding:0,marginBottom:0}}>Funded This Month</div>
+            <div style={{fontSize:'.72rem',color:'var(--t3)',fontVariantNumeric:'tabular-nums'}}>
+              {currency(fundedTotal)} / {currency(targetTotal)} · {checkCount} of 2 checks
+            </div>
+          </div>
+          <div className="card-flush">
+            {fundedRows.map(r => {
+              const p_  = r.target>0 ? Math.min((r.funded/r.target)*100,100) : 0;
+              const done = p_>=100;
+              return (
+                <div key={r.key} className="sp-cat">
+                  <div className="sp-top">
+                    <span className="sp-name">{r.label}{done && <span style={{color:'var(--accent)',marginLeft:6}}>✓</span>}</span>
+                    <span className="sp-nums">
+                      <span className="sp-spent">{currency(r.funded)}</span>
+                      <span className="sp-bgt"> / {currency(r.target)}</span>
+                    </span>
+                  </div>
+                  <div className="bar"><div className="bar-in" style={{width:`${p_}%`}}/></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* This Month spending bars */}
       {!phase.isPreEmployment && (
@@ -1431,7 +1649,7 @@ function Budget({ settings, transactions }) {
 
   const rows    = sel === 0 ? earlyRows : laterRows;
   const total   = rows.reduce((s,r)=>s+r.limit, 0);
-  const surplus = settings.takeHome - total;
+  const surplus = monthlyNetIncome(settings) - total;
 
   const isEarlyActive = phase.isEarly || phase.isPreEmployment;
   const isLaterActive = phase.isFull;
@@ -1508,7 +1726,7 @@ function Budget({ settings, transactions }) {
 
       {/* Quick info note */}
       <div style={{fontSize:'.72rem',color:'var(--t3)',textAlign:'center',marginTop:-8}}>
-        {currency(settings.takeHome)} take-home · edit amounts in Settings
+        {currency(monthlyNetIncome(settings))} take-home ({checksPerMonth(settings)} × {currency(netPerCheck(settings),2)}) · edit amounts in Settings
       </div>
     </div>
   );
@@ -1704,7 +1922,7 @@ function Spending({ settings, transactions, setTransactions }) {
 }
 
 // ── Goals ─────────────────────────────────────────────────────────────
-function Goals({ settings, goals, setGoals, commissions }) {
+function Goals({ settings, goals, setGoals, commissions, transactions }) {
   const now   = new Date();
   const phase = getPhaseInfo(settings.startDate);
 
@@ -1713,7 +1931,7 @@ function Goals({ settings, goals, setGoals, commissions }) {
   const hysaPct_   = settings.hysaGoal > 0 ? Math.min((hysaBal / settings.hysaGoal) * 100, 100) : 0;
   const hysaRem    = Math.max(settings.hysaGoal - hysaBal, 0);
   // HYSA alternates ($1,800 rent-free months, $500 rent months) — blended avg for the ETA
-  const hysaRate   = ((settings.earlyBudget.hysa||0) + (settings.laterBudget.hysa||0)) / 2;
+  const hysaRate   = blendedRate(settings, 'hysa');
   const hysaMonths = hysaRate > 0 && hysaRem > 0 ? Math.ceil(hysaRem / hysaRate) : 0;
   const hysaETA    = hysaMonths ? (() => {
     const d = new Date(now); d.setMonth(d.getMonth() + hysaMonths);
@@ -1721,7 +1939,9 @@ function Goals({ settings, goals, setGoals, commissions }) {
   })() : null;
 
   // ── Roth IRA (counts only logged contributions — no month-based auto-fill) ──
-  const rothRate  = settings.earlyBudget.rothIRA || 0;   // $625/mo, same in both budgets
+  // Blended across both scenarios for the long-range ETA. With Rent and
+  // Without Rent hold their own rothIRA value — neither is read as the other's.
+  const rothRate    = blendedRate(settings, 'rothIRA');
   const rothBal   = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
   const rothPct_  = settings.rothIRAYearlyLimit > 0 ? Math.min((rothBal / settings.rothIRAYearlyLimit) * 100, 100) : 0;
   const rothRem   = Math.max(settings.rothIRAYearlyLimit - rothBal, 0);
@@ -1732,10 +1952,19 @@ function Goals({ settings, goals, setGoals, commissions }) {
     return d.toLocaleDateString('en-US', {month:'short', year:'numeric'});
   })() : null;
 
-  // ── 401(k) ────────────────────────────────────────────────────────────
-  const k401Bal  = goals.ira401kBalance || 0;
+  // ── 401(k) — employee and employer tracked separately ─────────────────
+  const k401Emp   = goals.k401Employee || 0;
+  const k401Empr  = goals.k401Employer || 0;
+  // Combined is DERIVED from the two sources — never an independently editable
+  // number, so the split and the total can never disagree.
+  const k401Bal   = round2(k401Emp + k401Empr);
   const k401Pct_ = settings.ira401kYearlyMax > 0 ? Math.min((k401Bal / settings.ira401kYearlyMax) * 100, 100) : 0;
   const k401Rem  = Math.max(settings.ira401kYearlyMax - k401Bal, 0);
+  const matchCap    = settings.employerMatchAnnualCap != null ? settings.employerMatchAnnualCap : 0;
+  const matchUsed   = ytdEmployerMatch(transactions, now.getFullYear());
+  const matchCapped = matchCap > 0 && matchUsed >= matchCap;
+  const empPerCheck   = k401Active(settings) ? employee401kPerCheck(settings) : 0;
+  const matchPerCheck = employerMatchForPaycheck(settings, empPerCheck, matchUsed);
   const k401Started   = !settings.contribution401kStart || new Date() >= parseLocalDate(settings.contribution401kStart);
   const k401StartLabel = settings.contribution401kStart
     ? parseLocalDate(settings.contribution401kStart).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '';
@@ -1744,16 +1973,24 @@ function Goals({ settings, goals, setGoals, commissions }) {
   // Only HYSA + Roth IRA count — 401k is pre-tax and deducted before take-home
   const activeBudget   = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget : settings.laterBudget;
   const monthlyContrib = (activeBudget.hysa||0) + (activeBudget.rothIRA||0);
-  const savingsRate    = settings.takeHome > 0 ? (monthlyContrib / settings.takeHome) * 100 : 0;
+  const savingsRate    = monthlyNetIncome(settings) > 0 ? (monthlyContrib / monthlyNetIncome(settings)) * 100 : 0;
   const totalComm      = commissions.reduce((s,c) => s+c.amount, 0);
 
   // ── Form state ────────────────────────────────────────────────────────
-  const [hysaIn, setHysaIn] = useState('');
-  const [k401In, setK401In] = useState('');
+  const [hysaIn, setHysaIn]   = useState('');
+  const [k401EmpIn,  setK401EmpIn]  = useState('');
+  const [k401EmprIn, setK401EmprIn] = useState('');
   const [rothIn, setRothIn] = useState('');
 
   const updHYSA = e => { e.preventDefault(); const v=parseFloat(hysaIn); if(!isNaN(v)) setGoals(g=>({...g,hysaBalance:v})); setHysaIn(''); };
-  const upd401k = e => { e.preventDefault(); const v=parseFloat(k401In); if(!isNaN(v)) setGoals(g=>({...g,ira401kBalance:v})); setK401In(''); };
+  // Each source is corrected on its own; `ira401kBalance` is kept in step purely
+  // as the back-compat mirror of the derived combined figure.
+  const upd401kEmp = e => { e.preventDefault(); const v=parseFloat(k401EmpIn);
+    if(!isNaN(v)) setGoals(g=>({...g,k401Employee:v,ira401kBalance:round2(v+(g.k401Employer||0))}));
+    setK401EmpIn(''); };
+  const upd401kEmpr = e => { e.preventDefault(); const v=parseFloat(k401EmprIn);
+    if(!isNaN(v)) setGoals(g=>({...g,k401Employer:v,ira401kBalance:round2((g.k401Employee||0)+v)}));
+    setK401EmprIn(''); };
   const updRoth = e => { e.preventDefault(); const v=parseFloat(rothIn); setGoals(g=>({...g,rothIRAOverride:isNaN(v)?null:v})); setRothIn(''); };
 
   // "Moved up" highlights are detected app-wide (see App); just read them here.
@@ -1866,17 +2103,61 @@ function Goals({ settings, goals, setGoals, commissions }) {
         <div className="gc-bar">
           <div className="gc-fill" style={{width:`${k401Pct_}%`, background:'linear-gradient(90deg,#F5A623,#FFD27A)'}}/>
         </div>
+        {/* Employee vs employer — tracked and shown as distinct sources.
+            The combined figure above is their sum, never a merged balance. */}
+        <div style={{display:'flex',gap:0,marginTop:14,marginBottom:2}}>
+          {[
+            { lbl:'You (employee)', val:k401Emp,  c:'var(--yellow)',
+              sub:`${currency(empPerCheck,2)}/check` },
+            { lbl:'Employer match', val:k401Empr, c:'var(--purple)',
+              sub:matchCapped ? 'annual cap reached'
+                              : `${currency(matchPerCheck,2)}/check` },
+            { lbl:'Combined',       val:k401Bal,  c:'var(--t1)',
+              sub:`${currency(k401Rem)} to IRS max` },
+          ].map((x,i,arr)=>(
+            <div key={x.lbl} style={{
+              flex:1, paddingRight:i<arr.length-1?14:0, marginRight:i<arr.length-1?14:0,
+              borderRight:i<arr.length-1?'1px solid var(--border)':'none',
+            }}>
+              <div style={{fontSize:'.58rem',fontWeight:600,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>{x.lbl}</div>
+              <div style={{fontSize:'.95rem',fontWeight:700,color:x.c,fontVariantNumeric:'tabular-nums'}}>{currency(x.val,2)}</div>
+              <div style={{fontSize:'.6rem',color:'var(--t4)',marginTop:2}}>{x.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Employer annual allowance — the cap that bounds the match */}
+        {matchCap > 0 && (
+          <div style={{marginTop:12}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:'.62rem',color:'var(--t3)',marginBottom:5}}>
+              <span>Employer match used · {now.getFullYear()}</span>
+              <span style={{fontVariantNumeric:'tabular-nums',color:matchCapped?'var(--yellow)':'var(--t3)'}}>
+                {currency(matchUsed,2)} / {currency(matchCap)}{matchCapped && ' · capped'}
+              </span>
+            </div>
+            <div className="track">
+              <div className="fill" style={{width:`${Math.min((matchUsed/matchCap)*100,100)}%`,background:'var(--purple)'}}/>
+            </div>
+          </div>
+        )}
+
         <div className="gc-foot">
-          <span className="gc-rate">{currency(settings.contribution401k)}/mo pre-tax</span>
+          <span className="gc-rate">{currency(empPerCheck,2)} + {currency(matchPerCheck,2)} employer / check</span>
           <span className="gc-date">
             {!k401Started ? `Starts ${k401StartLabel}`
               : k401Bal > 0 ? `${currency(k401Rem)} to IRS max` : 'Capturing employer match'}
           </span>
         </div>
-        <form onSubmit={upd401k} className="goal-update" style={{marginTop:14}}>
+        <form onSubmit={upd401kEmp} className="goal-update" style={{marginTop:14}}>
           <input type="number" step="0.01" min="0"
-            placeholder={`Balance (${currency(k401Bal)})`}
-            value={k401In} onChange={e=>setK401In(e.target.value)} />
+            placeholder={`Employee balance (${currency(k401Emp)})`}
+            value={k401EmpIn} onChange={e=>setK401EmpIn(e.target.value)} />
+          <button type="submit" className="btn btn-primary btn-sm">Update</button>
+        </form>
+        <form onSubmit={upd401kEmpr} className="goal-update" style={{marginTop:8}}>
+          <input type="number" step="0.01" min="0"
+            placeholder={`Employer balance (${currency(k401Empr)})`}
+            value={k401EmprIn} onChange={e=>setK401EmprIn(e.target.value)} />
           <button type="submit" className="btn btn-primary btn-sm">Update</button>
         </form>
       </div>
@@ -2002,11 +2283,14 @@ function Commission({ settings, commissions, setCommissions, setGoals }) {
 
 // Isolated input: holds its own string state so typing never re-renders
 // the parent Settings component (stops mobile keyboard from dismissing).
-function SettingsInput({ value, onCommit, type='number', prefix, extraStyle }) {
+function SettingsInput({ value, onCommit, type='number', prefix, extraStyle, id, name }) {
   const [str, setStr] = useState(String(value ?? ''));
-  // Sync if parent resets (e.g. Reset button)
+  // Sync if the committed value changes underneath us (e.g. Reset button)
   useEffect(() => { setStr(String(value ?? '')); }, [value]);
-  const commit = () => onCommit(str);
+  // Commit the input's OWN value, not `str`. setStr from onChange is async, so
+  // if a keystroke and the blur land in the same tick (paste, or tapping Save
+  // right after typing) `str` is still the previous value and the edit is lost.
+  const commit = e => onCommit(e && e.target ? e.target.value : str);
   return (
     <div style={{position:'relative'}}>
       {prefix && (
@@ -2014,6 +2298,8 @@ function SettingsInput({ value, onCommit, type='number', prefix, extraStyle }) {
           color:'var(--t3)',fontSize:'.78rem',pointerEvents:'none'}}>{prefix}</span>
       )}
       <input
+        id={id}
+        name={name}
         type={type==='number' ? 'text' : type}
         inputMode={type==='number' ? 'decimal' : undefined}
         value={str}
@@ -2026,36 +2312,80 @@ function SettingsInput({ value, onCommit, type='number', prefix, extraStyle }) {
   );
 }
 
+// Declared at module scope ON PURPOSE. When this lived inside Settings() it was
+// a brand-new component type on every render, so React unmounted and remounted
+// every input after each commit — which dropped the edit you were part-way
+// through and bounced focus. Keeping the type stable keeps each field's state
+// (and the caret) intact. `name` is unique per scenario+key, so the two
+// scenarios' Roth/HYSA inputs are distinct controls.
+function SettingField({ label, name, val, type='number', prefix='$', onCommit, hint }) {
+  return (
+    <div className="settings-group">
+      <label htmlFor={name}>{label}</label>
+      <SettingsInput
+        id={name} name={name} value={val} type={type} prefix={prefix} onCommit={onCommit}
+      />
+      {hint && <div style={{fontSize:'.62rem',color:'var(--t4)',marginTop:4}}>{hint}</div>}
+    </div>
+  );
+}
+
+// Read-only derived figure — shown so the schedule math is visible but not
+// editable (it is computed from the per-paycheck amount).
+function SettingDerived({ label, value, hint }) {
+  return (
+    <div className="settings-group">
+      <label>{label}</label>
+      <div style={{padding:'9px 12px',border:'1px solid var(--border)',borderRadius:'var(--r-s)',
+        background:'rgba(255,255,255,.02)',color:'var(--t2)',fontSize:'.82rem',
+        fontVariantNumeric:'tabular-nums'}}>{value}</div>
+      {hint && <div style={{fontSize:'.62rem',color:'var(--t4)',marginTop:4}}>{hint}</div>}
+    </div>
+  );
+}
+
 function Settings({ settings, setSettings }) {
   const [local,setLocal]=useState(settings);
   const [saved,setSaved]=useState(false);
-  useEffect(()=>{setLocal(settings);},[settings]);
+  // Mirrors `local` SYNCHRONOUSLY. Tapping Save blurs the field you were in, so
+  // its commit and the click land in the same tick — reading `local` there would
+  // save the value from the previous render and silently drop that last edit.
+  const localRef=useRef(settings);
+  useEffect(()=>{setLocal(settings);localRef.current=settings;},[settings]);
 
-  const set   =(k,v)=>setLocal(s=>({...s,[k]:typeof v==='string'?parseFloat(v)||0:v}));
-  const setStr=(k,v)=>setLocal(s=>({...s,[k]:v}));
-  const setBud=(p,k,v)=>setLocal(s=>({...s,[p]:{...s[p],[k]:parseFloat(v)||0}}));
+  const commitLocal=next=>{localRef.current=next;setLocal(next);};
+  // Immutable updates off the ref, so consecutive edits compose instead of
+  // clobbering each other. Writing one scenario always preserves the other.
+  const set   =(k,v)=>commitLocal({...localRef.current,[k]:typeof v==='string'?parseFloat(v)||0:v});
+  const setStr=(k,v)=>commitLocal({...localRef.current,[k]:v});
+  const setBud=(p,k,v)=>commitLocal({
+    ...localRef.current,
+    [p]:{...localRef.current[p],[k]:parseFloat(v)||0},
+  });
 
-  const handleSave=e=>{e.preventDefault();setSettings(local);setSaved(true);setTimeout(()=>setSaved(false),2500);};
-  const handleReset=()=>{if(window.confirm('Reset all settings to defaults?'))setLocal(DEFAULT_SETTINGS);};
+  const handleSave=e=>{e.preventDefault();setSettings(localRef.current);setSaved(true);setTimeout(()=>setSaved(false),2500);};
+  // Clone — handing out DEFAULT_SETTINGS itself would let later edits mutate
+  // the module-level defaults that every scenario is seeded from.
+  const handleReset=()=>{if(window.confirm('Reset all settings to defaults?'))commitLocal(cloneDeep(DEFAULT_SETTINGS));};
 
   const eb=local.earlyBudget||{};
   const lb=local.laterBudget||{};
+
+  // Props builders. These return plain props for the stable <SettingField>;
+  // they must NOT define a component (see the note on SettingField).
+  const fld    = (sk,label,extra={}) => ({ label, name:sk, val:local[sk], onCommit:v=>(extra.type==='date'?setStr(sk,v):set(sk,v)), ...extra });
+  // Scenario field — `name` is namespaced so "earlyBudget.rothIRA" and
+  // "laterBudget.rothIRA" are separate controls writing separate state.
+  const budFld = (phase,sk,label,extra={}) => ({
+    label, name:`${phase}.${sk}`,
+    val:(phase==='earlyBudget'?eb:lb)[sk],
+    onCommit:v=>setBud(phase,sk,v), ...extra,
+  });
   const earlyTotal=(eb.utilitiesAndFee||0)+(eb.rentersInsurance||0)+(eb.rothIRA||0)+(eb.hysa||0)+(eb.groceries||0)+(eb.gas||0)+(eb.funTravel||0)+(eb.outToEat||0)+(eb.shopping||0);
   const laterTotal=(lb.rentAndFee||0)+(lb.utilities||0)+(lb.rentersInsurance||0)+(lb.rothIRA||0)+(lb.hysa||0)+(lb.groceries||0)+(lb.gas||0)+(lb.funTravel||0)+(lb.outToEat||0)+(lb.shopping||0);
-  const earlyRem=(local.takeHome||0)-earlyTotal;
-  const laterRem=(local.takeHome||0)-laterTotal;
-
-  const F=({label,sk,phase,val,type='number',prefix='$'})=>(
-    <div className="settings-group">
-      <label>{label}</label>
-      <SettingsInput
-        value={val}
-        type={type}
-        prefix={prefix}
-        onCommit={v=>phase?setBud(phase,sk,v):type==='date'?setStr(sk,v):set(sk,v)}
-      />
-    </div>
-  );
+  const localNet=monthlyNetIncome(local);
+  const earlyRem=localNet-earlyTotal;
+  const laterRem=localNet-laterTotal;
 
   return (
     <div className="page">
@@ -2072,69 +2402,107 @@ function Settings({ settings, setSettings }) {
 
       <form onSubmit={handleSave} style={{display:'flex',flexDirection:'column',gap:14}}>
         <div className="card">
-          <div className="card-label">Income & Taxes</div>
+          <div className="card-label">Income &amp; Paycheck Schedule</div>
           <div className="settings-grid">
-            <F label="Base Monthly" sk="grossBase" val={local.grossBase} />
-            <F label="OTE Monthly" sk="grossOTE" val={local.grossOTE} />
-            <F label="Tax + FICA / mo" sk="federalTax" val={local.federalTax} />
-            <F label="401(k) Pre-Tax / mo" sk="contribution401k" val={local.contribution401k} />
-            <F label="Monthly Take-Home (Base)" sk="takeHome" val={local.takeHome} />
-            <F label="Start Date" sk="startDate" val={local.startDate} type="date" prefix="" />
+            <SettingField {...fld('netPerPaycheck','Net per Paycheck')}
+              hint="Take-home, already net of the 401(k) deduction" />
+            <SettingField {...fld('paychecksPerMonth','Paychecks / Month')} prefix="" />
+            <SettingField {...fld('paychecksPerYear','Paychecks / Year')} prefix="" />
+            <SettingDerived label="Monthly Take-Home"
+              value={currency(monthlyNetIncome(local),2)}
+              hint={`${checksPerMonth(local)} × ${currency(netPerCheck(local),2)} · 1st & 3rd Thursday`} />
+            <SettingDerived label="Annual Take-Home"
+              value={currency(annualNetIncome(local),2)}
+              hint={`${checksPerYear(local)} paychecks / year`} />
+            <SettingField {...fld('grossBase','Base Monthly (gross)')} />
+            <SettingField {...fld('grossOTE','OTE Monthly (gross)')} />
+            <SettingField {...fld('federalTax','Tax + FICA / mo')} />
+            <SettingField {...fld('startDate','Start Date',{type:'date',prefix:''})} />
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-label">401(k)</div>
+          <div className="settings-grid">
+            <SettingField {...fld('employee401kPerPaycheck','Employee / Paycheck')}
+              hint="Withheld before your net paycheck — not deducted again" />
+            <SettingDerived label="Employee / Month"
+              value={currency(round2(employee401kPerCheck(local)*checksPerMonth(local)),2)} />
+            <SettingDerived label="Employee / Year"
+              value={currency(round2(employee401kPerCheck(local)*checksPerYear(local)),2)} />
+            <SettingField {...fld('employerMatchRate','Employer Match Rate')} prefix="×"
+              hint="0.5 = employer matches 50% of your contribution" />
+            <SettingField {...fld('employerMatchPct','Match Applies To First')} prefix="%" />
+            <SettingField {...fld('employerMatchAnnualCap','Employer Annual Cap')}
+              hint="Hard ceiling per calendar year; resets Jan 1" />
+            <SettingDerived label="Employer / Paycheck"
+              value={currency(employerMatchForPaycheck(local, employee401kPerCheck(local), 0),2)} />
+            <SettingDerived label="Projected Match / Year"
+              value={currency(Math.min(
+                round2(employerMatchForPaycheck(local, employee401kPerCheck(local), 0)*checksPerYear(local)),
+                local.employerMatchAnnualCap || Infinity),2)}
+              hint={`Capped at ${currency(local.employerMatchAnnualCap||0)}`} />
+            <SettingField {...fld('contribution401kStart','Contributions Start',{type:'date',prefix:''})} />
           </div>
         </div>
 
         <div className="card">
           <div className="card-label">Commission Split</div>
           <div className="settings-grid">
-            <F label="HYSA %" sk="commissionHYSAPct" val={local.commissionHYSAPct} prefix="%" />
-            <F label="Personal %" sk="commissionPersonalPct" val={local.commissionPersonalPct} prefix="%" />
+            <SettingField {...fld('commissionHYSAPct','HYSA %')} prefix="%" />
+            <SettingField {...fld('commissionPersonalPct','Personal %')} prefix="%" />
           </div>
         </div>
 
         <div className="card">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-            <div className="card-label" style={{margin:0}}>Months 1–3 (Rent-Free)</div>
+            <div className="card-label" style={{margin:0}}>Without Rent</div>
             <span className={'settings-remaining '+(earlyRem>=0?'rem-ok':'rem-over')}>{currency(earlyRem)} {earlyRem>=0?'remaining':'over'}</span>
           </div>
+          <div style={{fontSize:'.66rem',color:'var(--t4)',marginTop:-8,marginBottom:12}}>
+            Independent of the With Rent scenario — editing these never changes those.
+          </div>
           <div className="settings-grid">
-            <F label="Utilities & Fee" sk="utilitiesAndFee" phase="earlyBudget" val={eb.utilitiesAndFee} />
-            <F label="Renters Insurance" sk="rentersInsurance" phase="earlyBudget" val={eb.rentersInsurance} />
-            <F label="Roth IRA" sk="rothIRA" phase="earlyBudget" val={eb.rothIRA} />
-            <F label="HYSA" sk="hysa" phase="earlyBudget" val={eb.hysa} />
-            <F label="Groceries" sk="groceries" phase="earlyBudget" val={eb.groceries} />
-            <F label="Gas" sk="gas" phase="earlyBudget" val={eb.gas} />
-            <F label="Travel" sk="funTravel" phase="earlyBudget" val={eb.funTravel} />
-            <F label="Dining" sk="outToEat" phase="earlyBudget" val={eb.outToEat} />
-            <F label="Shopping" sk="shopping" phase="earlyBudget" val={eb.shopping} />
+            <SettingField {...budFld('earlyBudget','utilitiesAndFee','Utilities & Fee')} />
+            <SettingField {...budFld('earlyBudget','rentersInsurance','Renters Insurance')} />
+            <SettingField {...budFld('earlyBudget','rothIRA','Roth IRA')} hint="Retirement investments" />
+            <SettingField {...budFld('earlyBudget','hysa','HYSA')} hint="Cash savings" />
+            <SettingField {...budFld('earlyBudget','groceries','Groceries')} />
+            <SettingField {...budFld('earlyBudget','gas','Gas')} />
+            <SettingField {...budFld('earlyBudget','funTravel','Travel')} />
+            <SettingField {...budFld('earlyBudget','outToEat','Dining')} />
+            <SettingField {...budFld('earlyBudget','shopping','Shopping')} />
           </div>
         </div>
 
         <div className="card">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-            <div className="card-label" style={{margin:0}}>Month 4–12 (With Rent)</div>
+            <div className="card-label" style={{margin:0}}>With Rent</div>
             <span className={'settings-remaining '+(laterRem>=0?'rem-ok':'rem-over')}>{currency(laterRem)} {laterRem>=0?'remaining':'over'}</span>
           </div>
+          <div style={{fontSize:'.66rem',color:'var(--t4)',marginTop:-8,marginBottom:12}}>
+            Independent of the Without Rent scenario — editing these never changes those.
+          </div>
           <div className="settings-grid">
-            <F label="Rent & Fee" sk="rentAndFee" phase="laterBudget" val={lb.rentAndFee} />
-            <F label="Utilities" sk="utilities" phase="laterBudget" val={lb.utilities} />
-            <F label="Renters Insurance" sk="rentersInsurance" phase="laterBudget" val={lb.rentersInsurance} />
-            <F label="Roth IRA" sk="rothIRA" phase="laterBudget" val={lb.rothIRA} />
-            <F label="HYSA" sk="hysa" phase="laterBudget" val={lb.hysa} />
-            <F label="Groceries" sk="groceries" phase="laterBudget" val={lb.groceries} />
-            <F label="Gas" sk="gas" phase="laterBudget" val={lb.gas} />
-            <F label="Travel" sk="funTravel" phase="laterBudget" val={lb.funTravel} />
-            <F label="Dining" sk="outToEat" phase="laterBudget" val={lb.outToEat} />
-            <F label="Shopping" sk="shopping" phase="laterBudget" val={lb.shopping} />
+            <SettingField {...budFld('laterBudget','rentAndFee','Rent & Fee')} />
+            <SettingField {...budFld('laterBudget','utilities','Utilities')} />
+            <SettingField {...budFld('laterBudget','rentersInsurance','Renters Insurance')} />
+            <SettingField {...budFld('laterBudget','rothIRA','Roth IRA')} hint="Retirement investments" />
+            <SettingField {...budFld('laterBudget','hysa','HYSA')} hint="Cash savings" />
+            <SettingField {...budFld('laterBudget','groceries','Groceries')} />
+            <SettingField {...budFld('laterBudget','gas','Gas')} />
+            <SettingField {...budFld('laterBudget','funTravel','Travel')} />
+            <SettingField {...budFld('laterBudget','outToEat','Dining')} />
+            <SettingField {...budFld('laterBudget','shopping','Shopping')} />
           </div>
         </div>
 
         <div className="card">
-          <div className="card-label">Goals & IRS Limits</div>
+          <div className="card-label">Goals &amp; IRS Limits</div>
           <div className="settings-grid">
-            <F label="HYSA Goal" sk="hysaGoal" val={local.hysaGoal} />
-            <F label="Roth IRA Yearly Limit" sk="rothIRAYearlyLimit" val={local.rothIRAYearlyLimit} />
-            <F label="401(k) IRS Yearly Max" sk="ira401kYearlyMax" val={local.ira401kYearlyMax} />
-            <F label="Employer Match %" sk="employerMatchPct" val={local.employerMatchPct} prefix="%" />
+            <SettingField {...fld('hysaGoal','HYSA Goal')} />
+            <SettingField {...fld('rothIRAYearlyLimit','Roth IRA Yearly Limit')} />
+            <SettingField {...fld('ira401kYearlyMax','401(k) IRS Yearly Max')} />
           </div>
         </div>
 
@@ -2255,14 +2623,19 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
   const acc  = netWorth.accounts || {};
   const hist = netWorth.history  || [];
 
-  // Balances — HYSA / Roth / 401k come from fd_goals (single source of truth)
-  const hysaBal = goals.hysaBalance   || 0;
-  const rothBal = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
-  const k401Bal = goals.ira401kBalance || 0;
+  // Balances — HYSA / Roth / 401k come from fd_goals (single source of truth).
+  // Each account stays its own category: HYSA is cash savings, Roth is
+  // retirement investments, and the 401(k) is split employee vs employer.
+  const hysaBal  = goals.hysaBalance   || 0;
+  const rothBal  = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
+  const k401Emp  = goals.k401Employee  || 0;
+  const k401Empr = goals.k401Employer  || 0;
+  const k401Bal  = round2(k401Emp + k401Empr);          // derived, not editable
 
-  const setHYSA = v => setGoals(g => ({ ...g, hysaBalance:    v }));
+  const setHYSA = v => setGoals(g => ({ ...g, hysaBalance:     v }));
   const setRoth = v => setGoals(g => ({ ...g, rothIRAOverride: v }));
-  const set401k = v => setGoals(g => ({ ...g, ira401kBalance:  v }));
+  const set401kEmp  = v => setGoals(g => ({ ...g, k401Employee: v, ira401kBalance: round2(v + (g.k401Employer||0)) }));
+  const set401kEmpr = v => setGoals(g => ({ ...g, k401Employer: v, ira401kBalance: round2((g.k401Employee||0) + v) }));
   const setAcc  = (key, val) => setNetWorth(s => ({ ...s, accounts: { ...s.accounts, [key]: val } }));
 
   const totalAssets = (acc.checking||0) + hysaBal + rothBal + k401Bal + (acc.brokerage||0);
@@ -2315,7 +2688,8 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
     { label:'Checking',              color:'var(--accent)', val:acc.checking||0,   onChange:v=>setAcc('checking',v),   synced:false },
     { label:'HYSA / Emergency Fund', color:'var(--accent)', val:hysaBal,            onChange:setHYSA,                   synced:true  },
     { label:'Roth IRA',              color:'var(--purple)', val:rothBal,            onChange:setRoth,                   synced:true  },
-    { label:'401(k)',                color:'var(--yellow)', val:k401Bal,            onChange:set401k,                   synced:true  },
+    { label:'401(k) — Employee',     color:'var(--yellow)', val:k401Emp,            onChange:set401kEmp,                synced:true  },
+    { label:'401(k) — Employer',     color:'var(--purple)', val:k401Empr,           onChange:set401kEmpr,               synced:true  },
     { label:'Taxable Brokerage',     color:'#06b6d4',       val:acc.brokerage||0,  onChange:v=>setAcc('brokerage',v),  synced:false },
   ];
   const liabRows = [
@@ -2517,9 +2891,9 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
 
 function App() {
   const [tab,setTab]           = useState('dashboard');
-  const [settings,setSettings] = usePersist('fd_settings',    DEFAULT_SETTINGS);
+  const [settings,setSettings] = usePersist('fd_settings',    DEFAULT_SETTINGS, migrateSettings);
   const [transactions,setTx]   = usePersist('fd_transactions', []);
-  const [goals,setGoals]       = usePersist('fd_goals',        DEFAULT_GOALS);
+  const [goals,setGoals]       = usePersist('fd_goals',        DEFAULT_GOALS,    migrateGoals);
   const [commissions,setComm]  = usePersist('fd_commissions',  []);
   const [nwData,setNwData]     = usePersist('fd_networth',     DEFAULT_NETWORTH);
 
@@ -2531,7 +2905,10 @@ function App() {
     let prev = {}; try { prev = JSON.parse(localStorage.getItem('fd_eta_prev')||'{}'); } catch {}
     let hl = {};   try { hl   = JSON.parse(sessionStorage.getItem('fd_eta_hl')||'{}'); } catch {}
     const next = { ...prev };
-    const hysaRate = ((settings.earlyBudget.hysa||0) + (settings.laterBudget.hysa||0)) / 2;  // blended (alternating)
+    // Blended across BOTH scenarios — never read one scenario's figure as if
+    // it applied to the other (that is what made the two look linked).
+    const hysaRate = blendedRate(settings, 'hysa');
+    const rothRate = blendedRate(settings, 'rothIRA');
     const hysaBal  = goals.hysaBalance || 0;
     const rothBal  = currentRothBal(settings, goals);
     const track = (key, rem, rate, done) => {
@@ -2543,7 +2920,7 @@ function App() {
       else if (days > prev[key] + 2) { next[key] = days; delete hl[key]; }
     };
     track('hysa', Math.max(settings.hysaGoal - hysaBal, 0), hysaRate, hysaBal >= settings.hysaGoal);
-    track('roth', Math.max(settings.rothIRAYearlyLimit - rothBal, 0), settings.earlyBudget.rothIRA, rothBal >= settings.rothIRAYearlyLimit);
+    track('roth', Math.max(settings.rothIRAYearlyLimit - rothBal, 0), rothRate, rothBal >= settings.rothIRAYearlyLimit);
     localStorage.setItem('fd_eta_prev', JSON.stringify(next));
     try { sessionStorage.setItem('fd_eta_hl', JSON.stringify(hl)); } catch {}
   }, [goals, settings]);
@@ -2552,7 +2929,7 @@ function App() {
     dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} />,
     budget:     <Budget     settings={settings} transactions={transactions} />,
     spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} />,
-    goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} />,
+    goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} transactions={transactions} />,
     commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} setGoals={setGoals} />,
     networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} setGoals={setGoals} settings={settings} />,
     settings:   <Settings   settings={settings} setSettings={useCallback(s=>setSettings(s),[])} />,
