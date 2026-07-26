@@ -622,12 +622,195 @@ html{-webkit-text-size-adjust:100%}
   border-radius:99px;padding:2px 7px;margin-right:8px;
   vertical-align:middle;white-space:nowrap;
 }
+/* ══════════════════════════════════════════════════════════════════
+   SPENDING INSIGHTS / CHARTS / NET WORTH
+   Everything below reuses the existing tokens (--s1, --border, --t1…)
+   so it inherits the app's theme rather than hard-coding surfaces.
+   ══════════════════════════════════════════════════════════════════ */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* ── Chart shell ── */
+.viz-wrap{display:flex;flex-direction:column;gap:10px;min-width:0}
+.viz-svg-box{position:relative;width:100%;min-width:0}
+.viz-svg{width:100%;height:190px;display:block;overflow:visible}
+.viz-axis-txt{fill:var(--t3);font-size:11px;font-variant-numeric:tabular-nums}
+.viz-empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  padding:30px 16px;text-align:center;background:var(--s1);
+  border:1px dashed var(--border2);border-radius:var(--r);
+}
+.viz-empty-msg{font-size:.82rem;color:var(--t2);font-weight:500}
+.viz-empty-hint{font-size:.7rem;color:var(--t3)}
+
+/* ── Legend (identity is never colour-alone: swatch + text label) ── */
+.viz-legend{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.viz-legend-item{
+  display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:2px 0;
+  color:inherit;font:inherit;cursor:pointer;border-radius:6px;
+}
+.viz-legend-item:disabled{cursor:default}
+.viz-legend-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.viz-swatch{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+.viz-legend-label{font-size:.7rem;color:var(--t2)}
+.viz-legend-val{font-size:.7rem;color:var(--t3);font-variant-numeric:tabular-nums}
+
+/* ── Tooltip ── */
+.viz-tip{
+  position:absolute;top:0;transform:translateX(-50%);pointer-events:none;
+  background:var(--s3);border:1px solid var(--border2);border-radius:var(--r-s);
+  padding:8px 10px;min-width:132px;z-index:5;box-shadow:0 6px 20px rgba(0,0,0,.5);
+}
+.viz-tip-hd{font-size:.66rem;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
+.viz-tip-row{display:flex;align-items:center;gap:6px;font-size:.72rem;margin-top:3px}
+.viz-tip-lbl{color:var(--t2);flex:1}
+.viz-tip-val{color:var(--t1);font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ── Ranked bars ── */
+.viz-bars{display:flex;flex-direction:column;gap:12px}
+.viz-bar-row{
+  display:block;width:100%;text-align:left;background:none;border:0;padding:0;
+  color:inherit;font:inherit;
+}
+.viz-bar-click{cursor:pointer;border-radius:var(--r-s)}
+.viz-bar-click:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.viz-bar-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:5px}
+.viz-bar-lbl{font-size:.78rem;color:var(--t1);font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.viz-bar-val{font-size:.78rem;color:var(--t1);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.viz-bar-sub{color:var(--t3);font-weight:500}
+.viz-bar-meta{font-size:.66rem;color:var(--t3);margin-top:4px}
+.viz-status{font-size:.62rem;font-weight:700;margin-left:7px;white-space:nowrap}
+.viz-track{height:8px;background:var(--s3);border-radius:99px;overflow:hidden}
+.viz-track-ghost{height:5px;margin-bottom:3px;background:transparent}
+.viz-fill{height:100%;border-radius:99px;transition:width .25s ease}
+.viz-fill-ghost{height:100%;border-radius:99px;background:var(--border2)}
+
+/* ── Donut ── */
+.viz-donut-box{display:flex;justify-content:center}
+.viz-donut{width:100%;max-width:210px;height:auto}
+.viz-donut circle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.viz-donut-lbl{fill:var(--t3);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.viz-donut-val{fill:var(--t1);font-size:21px;font-weight:700;font-variant-numeric:tabular-nums}
+.viz-donut-pct{fill:var(--t3);font-size:11px;font-variant-numeric:tabular-nums}
+
+/* ── Table fallback ── */
+.viz-table{font-size:.7rem;color:var(--t3)}
+.viz-table summary{cursor:pointer;padding:4px 0;color:var(--t3)}
+.viz-table summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.viz-table table{width:100%;border-collapse:collapse;margin-top:6px}
+.viz-table th,.viz-table td{
+  text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);
+  font-variant-numeric:tabular-nums;color:var(--t2);
+}
+.viz-table th{color:var(--t3);font-weight:600}
+
+/* ── Calendar ── */
+.cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.cal-nav{display:flex;align-items:center;gap:6px}
+.cal-btn{
+  display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;
+  background:var(--s2);border:1px solid var(--border);border-radius:var(--r-s);
+  color:var(--t2);cursor:pointer;padding:0 10px;font-size:.72rem;font-weight:600;
+}
+.cal-btn:hover{background:var(--s3);color:var(--t1)}
+.cal-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cal-title{font-size:.95rem;font-weight:700;color:var(--t1);min-width:150px;text-align:center}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-dow{
+  font-size:.6rem;font-weight:700;color:var(--t3);text-align:center;
+  text-transform:uppercase;letter-spacing:.06em;padding:4px 0;
+}
+.cal-cell{
+  position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  min-height:66px;padding:6px 6px 5px;background:var(--s1);
+  border:1px solid transparent;border-radius:var(--r-s);
+  cursor:pointer;text-align:left;color:inherit;font:inherit;overflow:hidden;
+}
+.cal-cell:hover{background:var(--s2)}
+.cal-cell:focus-visible{outline:2px solid var(--accent);outline-offset:1px;z-index:2}
+.cal-cell-empty{background:transparent;cursor:default;border-color:transparent}
+.cal-cell-quiet{background:transparent}          /* no spending — stays minimal */
+.cal-cell-today{border-color:var(--accent)}
+.cal-cell-sel{background:var(--s3);border-color:var(--border2);box-shadow:0 0 0 1px var(--border2)}
+.cal-cell-peak{background:rgba(216,89,38,.07)}   /* highest-spend day, subtle */
+.cal-daynum{font-size:.72rem;font-weight:600;color:var(--t2);line-height:1}
+.cal-cell-today .cal-daynum{color:var(--accent)}
+.cal-amt{font-size:.66rem;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums;line-height:1.15;word-break:break-all}
+.cal-cnt{font-size:.58rem;color:var(--t3);line-height:1}
+.cal-dot{position:absolute;top:6px;right:6px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.cal-peak-tag{position:absolute;bottom:4px;right:5px;font-size:.55rem;color:var(--t3)}
+
+/* ── Filters ── */
+.flt-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.flt-field{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 132px}
+.flt-field label{font-size:.6rem;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em}
+.flt-field select,.flt-field input{
+  width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--r-s);
+  color:var(--t1);padding:8px 10px;font-size:.78rem;font-family:inherit;
+}
+.flt-field select:focus,.flt-field input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+
+/* ── Stat cards ── */
+.ins-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(146px,1fr));gap:10px}
+.ins-card{
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 13px;display:flex;flex-direction:column;gap:5px;min-width:0;
+  text-align:left;color:inherit;font:inherit;
+}
+button.ins-card{cursor:pointer}
+button.ins-card:hover{background:var(--s2)}
+button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ins-card-lbl{font-size:.58rem;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.08em}
+.ins-card-val{font-size:1.08rem;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums;letter-spacing:-.02em;word-break:break-word}
+.ins-card-sub{font-size:.65rem;color:var(--t3);word-break:break-word}
+.ins-card-link{font-size:.6rem;color:var(--accent);font-weight:600;margin-top:auto}
+
+/* ── Day detail drawer ── */
+.day-panel{background:var(--s1);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden}
+.day-panel-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 15px;border-bottom:1px solid var(--border)}
+.day-tx{display:flex;justify-content:space-between;gap:12px;padding:11px 15px;border-bottom:1px solid var(--border)}
+.day-tx:last-child{border-bottom:0}
+.day-tx-name{font-size:.8rem;color:var(--t1);font-weight:500;word-break:break-word}
+.day-tx-meta{font-size:.64rem;color:var(--t3);margin-top:3px;display:flex;flex-wrap:wrap;gap:4px 8px}
+.day-tx-amt{font-size:.82rem;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;font-size:.55rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid var(--border2);color:var(--t3);text-transform:uppercase;letter-spacing:.05em}
+.pill-pending{color:var(--yellow);border-color:rgba(245,166,35,.35)}
+.pill-refund{color:var(--accent);border-color:rgba(0,200,5,.3)}
+
+/* ── Segmented control ── */
+.seg{display:inline-flex;background:var(--s2);border:1px solid var(--border);border-radius:99px;padding:3px;gap:2px;flex-wrap:wrap}
+.seg button{
+  background:none;border:0;border-radius:99px;padding:5px 12px;
+  font-size:.68rem;font-weight:600;color:var(--t3);cursor:pointer;font-family:inherit;white-space:nowrap;
+}
+.seg button.on{background:var(--s3);color:var(--t1)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+/* ── Net worth account rows ── */
+.nwa-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 15px;border-bottom:1px solid var(--border)}
+.nwa-row:last-child{border-bottom:0}
+.nwa-name{font-size:.8rem;color:var(--t1);font-weight:500}
+.nwa-tag{font-size:.55rem;color:var(--t3);border:1px solid var(--border2);border-radius:99px;padding:1px 6px;margin-left:7px;text-transform:uppercase;letter-spacing:.05em}
+.nwa-meta{font-size:.64rem;color:var(--t3);margin-top:3px}
+.nwa-val{text-align:right;white-space:nowrap}
+.nwa-amt{font-size:.85rem;font-weight:700;color:var(--t1);font-variant-numeric:tabular-nums}
+.nwa-chg{font-size:.64rem;font-variant-numeric:tabular-nums;margin-top:2px}
+
+@media(max-width:560px){
+  .cal-cell{min-height:52px;padding:4px 4px 3px}
+  .cal-amt{font-size:.58rem}
+  .cal-cnt{display:none}                 /* abbreviated cells; full detail on select */
+  .cal-grid{gap:3px}
+  .cal-title{min-width:0;flex:1}
+  .ins-cards{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+  .viz-svg{height:170px}
+  .flt-field{flex:1 1 100%}
+}
   </style>
 </head>
 <body>
 <div id="root"></div>
 <script id="app-src" type="text/jsx-source">
-const { useState, useEffect, useCallback, useRef } = React;
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 function parseLocalDate(str) {
@@ -953,6 +1136,347 @@ function fmtImprove(days) {
   return Math.max(1, days)+' days';
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// ANALYTICS LAYER — single source of truth for every derived number.
+// Classification lives here and ONLY here; no chart or card re-implements
+// "is this spending?". Amounts are stored POSITIVE with `type` carrying the
+// sign, so nothing below should ever compare amount < 0.
+// ══════════════════════════════════════════════════════════════════════
+
+// Safe local-date handling. Dates are 'YYYY-MM-DD' strings; parsing them with
+// new Date(str) would treat them as UTC and shift the day backwards west of
+// Greenwich, landing transactions on the wrong calendar cell.
+function txDateKey(t) {
+  const d = t && t.date;
+  if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(d)) return null;
+  return d.slice(0, 10);
+}
+function isValidDateKey(k) {
+  if (!k) return false;
+  const [y, m, d] = k.split('-').map(Number);
+  if (!y || !m || !d || m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+const dateKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const monthKeyOf = k => (k || '').slice(0, 7);
+// Guard every ratio the UI renders — no NaN/Infinity/undefined ever reaches text.
+const safeNum = n => (typeof n === 'number' && isFinite(n) ? n : 0);
+const safePct = (part, whole) => (whole > 0 && isFinite(part / whole) ? (part / whole) * 100 : 0);
+
+// ── Classification ────────────────────────────────────────────────────
+// Categories that represent moving money into the user's own accounts
+// rather than consuming it.
+const SAVINGS_CATEGORIES    = ['savings'];
+const RETIREMENT_KEYWORDS   = ['401k', '401(k)', 'roth', 'ira', 'retirement', 'employer match', 'vanguard', 'fidelity'];
+const SAVINGS_KEYWORDS      = ['hysa', 'savings', 'emergency fund', 'ally bank', 'marcus', 'transfer to savings'];
+const TRANSFER_KEYWORDS     = ['transfer', 'xfer', 'zelle to self', 'to checking', 'from checking', 'internal transfer', 'balance transfer'];
+const CC_PAYMENT_KEYWORDS   = ['credit card payment', 'card payment', 'autopay', 'payment thank you', 'payment - thank you', 'chase payment', 'amex payment', 'discover payment', 'capital one payment'];
+const REFUND_KEYWORDS       = ['refund', 'return', 'reversal', 'credit adjustment', 'chargeback', 'reimburse'];
+const INVESTMENT_KEYWORDS   = ['brokerage', 'investment purchase', 'buy order', 'stock purchase'];
+
+const descOf = t => String((t && (t.description ?? t.merchant)) || '').toLowerCase();
+const hasKeyword = (t, list) => { const d = descOf(t); return list.some(k => d.includes(k)); };
+
+// Explicit flags always win over keyword sniffing, so an imported feed that
+// labels its own rows is never second-guessed.
+function isRefund(t) {
+  if (!t) return false;
+  if (t.refund === true || t.isRefund === true) return true;
+  return t.type === 'expense' && hasKeyword(t, REFUND_KEYWORDS);
+}
+function isRetirementContribution(t) {
+  if (!t) return false;
+  if (t.kind === 'retirement' || t.retirement === true) return true;
+  if (t.employee401k || t.employer401k) return true;
+  return hasKeyword(t, RETIREMENT_KEYWORDS);
+}
+function isSavingsTransfer(t) {
+  if (!t) return false;
+  if (t.kind === 'savings') return true;
+  if (SAVINGS_CATEGORIES.includes(t.category)) return true;
+  return hasKeyword(t, SAVINGS_KEYWORDS);
+}
+function isCreditCardPayment(t) {
+  if (!t) return false;
+  if (t.kind === 'ccPayment') return true;
+  return hasKeyword(t, CC_PAYMENT_KEYWORDS);
+}
+function isInternalTransfer(t) {
+  if (!t) return false;
+  if (t.kind === 'transfer' || t.transfer === true) return true;
+  if (hasKeyword(t, TRANSFER_KEYWORDS)) return true;
+  return hasKeyword(t, INVESTMENT_KEYWORDS);
+}
+function isIncomeTransaction(t) {
+  if (!t) return false;
+  return t.type === 'income' || t.kind === 'paycheck';
+}
+// A transaction is a duplicate when an EARLIER row in the list already has the
+// same date, amount and normalized merchant. Comparing against index means the
+// first occurrence is always kept and only later copies drop out.
+function isDuplicateTransaction(t, all, index) {
+  if (!t || !Array.isArray(all)) return false;
+  if (t.duplicate === true) return true;
+  const key = `${txDateKey(t)}|${safeNum(t.amount).toFixed(2)}|${normalizeMerchantName(t.description)}|${t.category||''}`;
+  const upto = typeof index === 'number' ? index : all.indexOf(t);
+  for (let i = 0; i < upto; i++) {
+    const o = all[i];
+    if (!o) continue;
+    if (`${txDateKey(o)}|${safeNum(o.amount).toFixed(2)}|${normalizeMerchantName(o.description)}|${o.category||''}` === key) return true;
+  }
+  return false;
+}
+// THE definition of spending. Everything else in the app defers to this.
+// Refunds are excluded here and handled as negative adjustments by the
+// aggregators, so a refund reduces its category rather than inflating it.
+function isSpendingTransaction(t, all, index) {
+  if (!t) return false;
+  if (t.type !== 'expense') return false;
+  if (!isValidDateKey(txDateKey(t))) return false;
+  if (isIncomeTransaction(t))        return false;
+  if (isRetirementContribution(t))   return false;
+  if (isSavingsTransfer(t))          return false;
+  if (isCreditCardPayment(t))        return false;
+  if (isInternalTransfer(t))         return false;
+  if (isRefund(t))                   return false;
+  if (all && isDuplicateTransaction(t, all, index)) return false;
+  return true;
+}
+// Signed contribution to a spending total: purchases add, refunds subtract.
+function spendingDelta(t, all, index) {
+  if (isSpendingTransaction(t, all, index)) return safeNum(t.amount);
+  if (isRefund(t) && !isDuplicateTransaction(t, all, index) && isValidDateKey(txDateKey(t))) return -safeNum(t.amount);
+  return 0;
+}
+const categoryOf = t => (t && t.category) || 'uncategorized';
+const accountOf  = t => (t && t.account) || 'Unspecified';
+
+// ── Merchant normalization ────────────────────────────────────────────
+// Groups obvious variants WITHOUT touching t.description — the original is
+// always preserved and shown in transaction detail.
+const MERCHANT_ALIASES = [
+  [/\b(uber\s*eats|ubereats)\b/,            'Uber Eats'],
+  [/\buber\b/,                              'Uber'],
+  [/\b(lyft)\b/,                            'Lyft'],
+  [/\b(amzn|amazon)\b/,                     'Amazon'],
+  [/\b(wal[\s-]?mart|wm\s?supercenter)\b/,  'Walmart'],
+  [/\b(target)\b/,                          'Target'],
+  [/\b(starbucks|sbux)\b/,                  'Starbucks'],
+  [/\b(chick[\s-]?fil[\s-]?a)\b/,           'Chick-fil-A'],
+  [/\b(mc\s?donald)/,                       "McDonald's"],
+  [/\b(trader\s?joe)/,                      "Trader Joe's"],
+  [/\b(whole\s?foods|wholefds)\b/,          'Whole Foods'],
+  [/\b(publix)\b/,                          'Publix'],
+  [/\b(kroger)\b/,                          'Kroger'],
+  [/\b(costco)\b/,                          'Costco'],
+  [/\b(cvs)\b/,                             'CVS'],
+  [/\b(walgreens)\b/,                       'Walgreens'],
+  [/\b(shell)\b/,                           'Shell'],
+  [/\b(chevron)\b/,                         'Chevron'],
+  [/\b(exxon|mobil)\b/,                     'Exxon'],
+  [/\b(delta\s?air|delta)\b/,               'Delta'],
+  [/\b(netflix)\b/,                         'Netflix'],
+  [/\b(spotify)\b/,                         'Spotify'],
+  [/\b(doordash|door\s?dash)\b/,            'DoorDash'],
+  [/\b(grubhub)\b/,                         'Grubhub'],
+  [/\b(instacart)\b/,                       'Instacart'],
+  [/\b(apple\.com|apple\s?store)\b/,        'Apple'],
+];
+function normalizeMerchantName(description) {
+  let s = String(description || '').trim();
+  if (!s) return 'Unknown';
+  s = s.toLowerCase()
+    .replace(/^(sq|tst|pos|pp|paypal|sp|ach|pmnt|dbt|crd|visa|mc)\s*[\*#:\-]\s*/i, '') // processor prefixes
+    .replace(/\s*[\*#]\s*[a-z0-9]{3,}\b/gi, ' ')      // "UBER *TRIP", "SQ *COFFEE"
+    .replace(/\b\d{4,}\b/g, ' ')                       // long transaction / store ids
+    .replace(/\b(store|str|#)\s*\d+\b/gi, ' ')         // "STORE 1234"
+    .replace(/\b[a-z]{2}\s+\d{5}(-\d{4})?\b/gi, ' ')   // trailing "GA 30303"
+    .replace(/\b(purchase|payment|recurring|debit|card)\b/gi, ' ')
+    .replace(/[^\w\s&'\-\.]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  for (const [re, name] of MERCHANT_ALIASES) if (re.test(s)) return name;
+  if (!s) return 'Unknown';
+  // Title-case what's left; keep short tokens like "BP" uppercase.
+  return s.split(' ').slice(0, 4)
+    .map(w => w.length <= 2 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+// ── Selectors ─────────────────────────────────────────────────────────
+// All of them take the transaction list explicitly and return fresh objects,
+// so there is no hidden cache to go stale.
+function getFilteredTransactions(transactions, filters) {
+  const f = filters || {};
+  const list = Array.isArray(transactions) ? transactions : [];
+  return list.filter((t, i) => {
+    const k = txDateKey(t);
+    if (!isValidDateKey(k)) return false;
+    if (f.month && monthKeyOf(k) !== f.month) return false;
+    if (f.from && k < f.from) return false;
+    if (f.to   && k > f.to)   return false;
+    if (f.category && f.category !== 'all' && categoryOf(t) !== f.category) return false;
+    if (f.account  && f.account  !== 'all' && accountOf(t)  !== f.account)  return false;
+    if (f.merchant && f.merchant !== 'all' && normalizeMerchantName(t.description) !== f.merchant) return false;
+    if (f.status === 'pending'   && !t.pending) return false;
+    if (f.status === 'completed' &&  t.pending) return false;
+    if (f.excludeDuplicates !== false && isDuplicateTransaction(t, list, list.indexOf(t))) return false;
+    return true;
+  });
+}
+// Spending rows only, with refunds retained so aggregators can net them out.
+function spendingRows(transactions) {
+  const all = Array.isArray(transactions) ? transactions : [];
+  return all
+    .map((t, i) => ({ t, delta: spendingDelta(t, all, all.indexOf(t)) }))
+    .filter(r => r.delta !== 0);
+}
+function getTransactionsForDate(transactions, key) {
+  return (transactions || []).filter(t => txDateKey(t) === key);
+}
+function getTransactionsForMonth(transactions, year, month) {
+  const mk = `${year}-${String(month+1).padStart(2,'0')}`;
+  return (transactions || []).filter(t => monthKeyOf(txDateKey(t)) === mk);
+}
+function getDailySpendingTotals(transactions) {
+  const out = {};
+  for (const { t, delta } of spendingRows(transactions)) {
+    const k = txDateKey(t);
+    if (!out[k]) out[k] = { total: 0, count: 0 };
+    out[k].total += delta;
+    if (delta > 0) out[k].count += 1;
+  }
+  for (const k of Object.keys(out)) out[k].total = round2(out[k].total);
+  return out;
+}
+function getMonthlySpendingTotals(transactions) {
+  const out = {};
+  for (const { t, delta } of spendingRows(transactions)) {
+    const mk = monthKeyOf(txDateKey(t));
+    out[mk] = round2((out[mk] || 0) + delta);
+  }
+  return out;
+}
+function getCategorySpendingTotals(transactions) {
+  const out = {};
+  for (const { t, delta } of spendingRows(transactions)) {
+    const c = categoryOf(t);
+    if (!out[c]) out[c] = { total: 0, count: 0, largest: 0 };
+    out[c].total += delta;
+    if (delta > 0) { out[c].count += 1; out[c].largest = Math.max(out[c].largest, delta); }
+  }
+  for (const c of Object.keys(out)) {
+    out[c].total = round2(out[c].total);
+    out[c].avg   = out[c].count > 0 ? round2(out[c].total / out[c].count) : 0;
+  }
+  return out;
+}
+// rankingMode: 'spend' | 'largest' | 'frequency'
+function merchantStats(transactions) {
+  const m = {};
+  for (const { t, delta } of spendingRows(transactions)) {
+    const name = normalizeMerchantName(t.description);
+    if (!m[name]) m[name] = { name, total: 0, count: 0, largest: 0, categories: {} };
+    m[name].total += delta;
+    if (delta > 0) {
+      m[name].count += 1;
+      m[name].largest = Math.max(m[name].largest, delta);
+      const c = categoryOf(t);
+      m[name].categories[c] = round2((m[name].categories[c] || 0) + delta);
+    }
+  }
+  return Object.values(m).map(x => {
+    const topCat = Object.entries(x.categories).sort((a,b)=>b[1]-a[1])[0];
+    return { ...x, total: round2(x.total), avg: x.count ? round2(x.total/x.count) : 0,
+             topCategory: topCat ? topCat[0] : 'uncategorized' };
+  });
+}
+const RANK_SORT = {
+  spend:     (a,b) => b.total - a.total,
+  largest:   (a,b) => b.largest - a.largest,
+  frequency: (a,b) => b.count - a.count || b.total - a.total,
+};
+function getTopMerchants(transactions, rankingMode = 'spend', limit = 5) {
+  return merchantStats(transactions)
+    .filter(m => m.total > 0)
+    .sort(RANK_SORT[rankingMode] || RANK_SORT.spend)
+    .slice(0, limit);
+}
+function getTopMerchantByCategory(transactions, category, rankingMode = 'spend') {
+  const rows = (transactions || []).filter(t => categoryOf(t) === category);
+  return getTopMerchants(rows, rankingMode, 1)[0] || null;
+}
+function getLargestTransactionByCategory(transactions, category) {
+  let best = null;
+  for (const { t, delta } of spendingRows(transactions)) {
+    if (categoryOf(t) !== category || delta <= 0) continue;
+    if (!best || delta > best.amount) best = { amount: delta, description: t.description, date: txDateKey(t) };
+  }
+  return best;
+}
+function getMostFrequentMerchantByCategory(transactions, category) {
+  const rows = (transactions || []).filter(t => categoryOf(t) === category);
+  return getTopMerchants(rows, 'frequency', 1)[0] || null;
+}
+// Only categories that actually HAVE a budget appear here — a category without
+// one is never rendered as "over budget".
+function getBudgetVsActual(transactions, budgets) {
+  const actuals = getCategorySpendingTotals(transactions);
+  return Object.entries(budgets || {})
+    .filter(([, limit]) => safeNum(limit) > 0)
+    .map(([cat, limit]) => {
+      const actual = safeNum((actuals[cat] || {}).total);
+      const pctUsed = safePct(actual, limit);
+      return {
+        category: cat, budget: safeNum(limit), actual,
+        remaining: round2(safeNum(limit) - actual), pctUsed,
+        status: pctUsed > 100 ? 'over' : pctUsed >= 80 ? 'near' : 'under',
+      };
+    })
+    .sort((a, b) => b.pctUsed - a.pctUsed);
+}
+// Net worth from STORED BALANCES only. Contribution history explains how a
+// balance grew; adding it on top would double-count, so it is never summed here.
+function getNetWorthSnapshot(accounts, goals) {
+  const a = accounts || {}, g = goals || {};
+  const cash       = safeNum(a.checking) + safeNum(g.hysaBalance);
+  const k401       = safeNum(g.k401Employee) + safeNum(g.k401Employer) || safeNum(g.ira401kBalance);
+  const retirement = safeNum(g.rothIRAOverride) + k401;
+  const other      = safeNum(a.brokerage);
+  const liabilities= safeNum(a.creditCard) + safeNum(a.loans);
+  const assets     = cash + retirement + other;
+  return {
+    cash: round2(cash), retirement: round2(retirement), other: round2(other),
+    k401Employee: round2(safeNum(g.k401Employee)), k401Employer: round2(safeNum(g.k401Employer)),
+    assets: round2(assets), liabilities: round2(liabilities),
+    netWorth: round2(assets - liabilities),
+  };
+}
+
+// ── Chart palette ─────────────────────────────────────────────────────
+// Validated for this app's dark surface (#0d0d0d): lightness band, chroma
+// floor, adjacent-pair CVD separation, normal-vision floor and 3:1 contrast
+// all pass. Slot ORDER is the CVD-safety mechanism — do not reorder, and do
+// not generate a 9th hue. Colour is bound to category IDENTITY below, never
+// to rank, so filtering never repaints the survivors.
+const VIZ_SERIES = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'];
+const VIZ_OTHER  = '#6b7280';   // neutral — "Other"/uncategorized, never a series hue
+const VIZ_STATUS = { under:'#0ca30c', near:'#fab219', over:'#d03b3b' };
+const STATUS_LABEL = { under:'Under budget', near:'Near budget', over:'Over budget' };
+const STATUS_MARK  = { under:'✓', near:'!', over:'▲' };   // never colour alone
+// CATEGORIES is declared further down the file, so this must resolve lazily —
+// reading it at module scope here would hit the temporal dead zone.
+let _catOrder = null;
+const catOrder = () => (_catOrder ||= CATEGORIES.map(c => c.id));
+function vizColor(catId) {
+  if (catId === 'other' || catId === 'uncategorized' || catId === '__other__') return VIZ_OTHER;
+  const i = catOrder().indexOf(catId);
+  return i >= 0 ? VIZ_SERIES[i % VIZ_SERIES.length] : VIZ_OTHER;
+}
+const catLabel = id => (CATEGORIES.find(c => c.id === id) || {}).label
+  || (id === 'uncategorized' ? 'Uncategorized' : id ? id.charAt(0).toUpperCase()+id.slice(1) : 'Uncategorized');
+
 function Bar({ value, max, color='var(--blue)', lg=false }) {
   const p = max ? Math.min((value/max)*100, 100) : 0;
   return (
@@ -1025,6 +1549,15 @@ function NavIcon({ name, active }) {
         <circle cx="12" cy="12" r="2" fill={active ? '#00C805' : 'none'}/>
       </svg>
     ),
+    insights: (
+      <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
+        <rect x="3" y="4" width="18" height="17" rx="2"/>
+        <line x1="3" y1="9" x2="21" y2="9"/>
+        <line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/>
+        <rect x="7" y="12" width="3" height="6" rx="1" fill={active?'#00C805':'none'}/>
+        <rect x="14" y="14" width="3" height="4" rx="1" fill={active?'#00C805':'none'}/>
+      </svg>
+    ),
     comm: (
       <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
         <line x1="12" y1="1" x2="12" y2="23"/>
@@ -1045,6 +1578,262 @@ function NavIcon({ name, active }) {
     ),
   };
   return icons[name] || null;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// CHART PRIMITIVES — plain SVG, matching the app's existing hand-rolled
+// charts. Deliberately no chart library: the app already renders SVG this
+// way and adding one would be a second, redundant dependency.
+// Shared rules: 2px strokes, 4px rounded data-ends anchored to the baseline,
+// recessive grid, values in text tokens (never the series colour), a legend
+// whenever there are 2+ series, and a table fallback for screen readers.
+// ══════════════════════════════════════════════════════════════════════
+const money0 = n => currency(safeNum(n), 0);
+const money2 = n => currency(safeNum(n), 2);
+
+function VizEmpty({ message, hint }) {
+  return (
+    <div className="viz-empty" role="status">
+      <Icon name="chart" size={22} color="var(--t3)" strokeWidth={1.5}/>
+      <div className="viz-empty-msg">{message}</div>
+      {hint && <div className="viz-empty-hint">{hint}</div>}
+    </div>
+  );
+}
+
+function VizLegend({ items, onSelect }) {
+  if (!items || items.length < 2) return null;   // one series needs no legend
+  return (
+    <div className="viz-legend">
+      {items.map(it => (
+        <button key={it.key} type="button" className="viz-legend-item"
+          onClick={onSelect ? () => onSelect(it.key) : undefined}
+          disabled={!onSelect}
+          aria-label={`${it.label}${it.value != null ? ', '+money2(it.value) : ''}`}>
+          <span className="viz-swatch" style={{background:it.color}} aria-hidden="true"/>
+          <span className="viz-legend-label">{it.label}</span>
+          {it.value != null && <span className="viz-legend-val">{money0(it.value)}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Screen-reader / no-colour fallback for any chart.
+function VizTable({ caption, cols, rows }) {
+  if (!rows || !rows.length) return null;
+  return (
+    <details className="viz-table">
+      <summary>View as table</summary>
+      <table>
+        <caption className="sr-only">{caption}</caption>
+        <thead><tr>{cols.map(c => <th key={c} scope="col">{c}</th>)}</tr></thead>
+        <tbody>{rows.map((r,i) => <tr key={i}>{r.map((c,j) => <td key={j}>{c}</td>)}</tr>)}</tbody>
+      </table>
+    </details>
+  );
+}
+
+// ── Line trend chart (spending over time, net worth over time) ────────
+// Multi-series with a shared crosshair. One y-axis only — never a second
+// scale, even when series differ in magnitude.
+function LineTrendChart({ series, labels, height=190, formatY=money0, emptyMsg }) {
+  const [hover, setHover] = useState(null);
+  const svgRef = React.useRef(null);
+  const live = (series || []).filter(s => s.points && s.points.length);
+  const n = labels ? labels.length : 0;
+  if (!live.length || n < 2) {
+    return <VizEmpty message={emptyMsg || 'Not enough data to chart yet.'} hint="At least two months of activity are needed." />;
+  }
+  const W = 720, H = height, PL = 52, PR = 14, PT = 14, PB = 26;
+  const all = live.flatMap(s => s.points.map(p => safeNum(p)));
+  const rawMax = Math.max(...all, 0), rawMin = Math.min(...all, 0);
+  const max = rawMax === rawMin ? rawMax + 1 : rawMax;
+  const min = Math.min(rawMin, 0);
+  const x = i => PL + (i / (n - 1)) * (W - PL - PR);
+  const y = v => H - PB - ((safeNum(v) - min) / (max - min)) * (H - PT - PB);
+  const ticks = 4;
+  const tickVals = [...Array(ticks+1)].map((_,i) => min + ((max-min)/ticks)*i);
+
+  const move = e => {
+    const r = svgRef.current.getBoundingClientRect();
+    const cx = ((e.touches ? e.touches[0].clientX : e.clientX) - r.left) / r.width * W;
+    let idx = Math.round(((cx - PL) / (W - PL - PR)) * (n - 1));
+    idx = Math.max(0, Math.min(n - 1, idx));
+    setHover(isFinite(idx) ? idx : null);
+  };
+
+  return (
+    <div className="viz-wrap">
+      <div className="viz-svg-box">
+        <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+          className="viz-svg" role="img"
+          aria-label={`Line chart: ${live.map(s=>s.label).join(', ')}`}
+          onMouseMove={move} onMouseLeave={()=>setHover(null)}
+          onTouchStart={move} onTouchMove={move} onTouchEnd={()=>setHover(null)}>
+          {tickVals.map((v,i) => (
+            <g key={i}>
+              <line x1={PL} x2={W-PR} y1={y(v)} y2={y(v)} stroke="var(--border)" strokeWidth="1"/>
+              <text x={PL-8} y={y(v)+4} textAnchor="end" className="viz-axis-txt">{formatY(v)}</text>
+            </g>
+          ))}
+          {labels.map((l,i) => (
+            (n <= 8 || i % Math.ceil(n/6) === 0) &&
+              <text key={i} x={x(i)} y={H-8} textAnchor="middle" className="viz-axis-txt">{l}</text>
+          ))}
+          {hover != null && <line x1={x(hover)} x2={x(hover)} y1={PT} y2={H-PB} stroke="var(--border2)" strokeWidth="1"/>}
+          {live.map(s => (
+            <polyline key={s.key} fill="none" stroke={s.color} strokeWidth="2"
+              strokeLinejoin="round" strokeLinecap="round"
+              points={s.points.map((p,i) => `${x(i)},${y(p)}`).join(' ')}/>
+          ))}
+          {hover != null && live.map(s => (
+            <circle key={s.key} cx={x(hover)} cy={y(s.points[hover])} r="4.5"
+              fill={s.color} stroke="var(--s1)" strokeWidth="2"/>
+          ))}
+        </svg>
+        {hover != null && (
+          <div className="viz-tip" style={{left:`${(x(hover)/W)*100}%`}}>
+            <div className="viz-tip-hd">{labels[hover]}</div>
+            {live.map(s => (
+              <div key={s.key} className="viz-tip-row">
+                <span className="viz-swatch" style={{background:s.color}} aria-hidden="true"/>
+                <span className="viz-tip-lbl">{s.label}</span>
+                <span className="viz-tip-val">{money2(s.points[hover])}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <VizLegend items={live.map(s => ({ key:s.key, label:s.label, color:s.color }))}/>
+      <VizTable caption="Chart data" cols={['Period', ...live.map(s=>s.label)]}
+        rows={labels.map((l,i) => [l, ...live.map(s => money2(s.points[i]))])}/>
+    </div>
+  );
+}
+
+// ── Ranked horizontal bars ────────────────────────────────────────────
+// Used for Top Merchants, Budget vs Actual, and as the automatic fallback
+// when a donut would have too many slices to read.
+function RankedBars({ rows, formatVal=money0, onSelect, showCompare=false, emptyMsg }) {
+  if (!rows || !rows.length) return <VizEmpty message={emptyMsg || 'Nothing to show for this period.'} />;
+  const max = Math.max(...rows.map(r => Math.max(safeNum(r.value), safeNum(r.compare))), 1);
+  return (
+    <div className="viz-wrap">
+      <div className="viz-bars">
+        {rows.map(r => {
+          const w  = Math.max(safePct(safeNum(r.value), max), r.value > 0 ? 1.5 : 0);
+          const cw = showCompare ? Math.max(safePct(safeNum(r.compare), max), r.compare > 0 ? 1.5 : 0) : 0;
+          const Tag = onSelect ? 'button' : 'div';
+          return (
+            <Tag key={r.key} className={'viz-bar-row'+(onSelect?' viz-bar-click':'')}
+              onClick={onSelect ? () => onSelect(r.key) : undefined}
+              type={onSelect ? 'button' : undefined}
+              aria-label={`${r.label}: ${formatVal(r.value)}${showCompare?`, budget ${formatVal(r.compare)}`:''}${r.statusLabel?`, ${r.statusLabel}`:''}`}>
+              <div className="viz-bar-head">
+                <span className="viz-bar-lbl">
+                  {r.label}
+                  {r.statusLabel && (
+                    <span className="viz-status" style={{color:r.color}}>
+                      <span aria-hidden="true">{r.statusMark}</span> {r.statusLabel}
+                    </span>
+                  )}
+                </span>
+                <span className="viz-bar-val">
+                  {formatVal(r.value)}
+                  {showCompare && <span className="viz-bar-sub"> / {formatVal(r.compare)}</span>}
+                </span>
+              </div>
+              {showCompare && (
+                <div className="viz-track viz-track-ghost" title={`Budget ${formatVal(r.compare)}`}>
+                  <div className="viz-fill-ghost" style={{width:`${cw}%`}}/>
+                </div>
+              )}
+              <div className="viz-track">
+                <div className="viz-fill" style={{width:`${w}%`, background:r.color}}/>
+              </div>
+              {r.sub && <div className="viz-bar-meta">{r.sub}</div>}
+            </Tag>
+          );
+        })}
+      </div>
+      <VizTable caption="Ranked data"
+        cols={showCompare ? ['Item','Actual','Budget','Status'] : ['Item','Value','Detail']}
+        rows={rows.map(r => showCompare
+          ? [r.label, formatVal(r.value), formatVal(r.compare), r.statusLabel||'—']
+          : [r.label, formatVal(r.value), r.sub||'—'])}/>
+    </div>
+  );
+}
+
+// ── Donut ─────────────────────────────────────────────────────────────
+// Caps at MAX_SLICES; anything beyond folds into a neutral "Other" so no
+// 9th generated hue is ever needed. The caller switches to RankedBars when
+// even the capped donut would be unreadable.
+const MAX_SLICES = 7;
+function DonutChart({ rows, total, onSelect, emptyMsg }) {
+  const [active, setActive] = useState(null);
+  if (!rows || !rows.length || !(total > 0)) {
+    return <VizEmpty message={emptyMsg || 'No spending recorded for this period.'} />;
+  }
+  const sorted = [...rows].sort((a,b) => b.value - a.value);
+  let slices = sorted;
+  if (sorted.length > MAX_SLICES) {
+    const head = sorted.slice(0, MAX_SLICES - 1);
+    const tail = sorted.slice(MAX_SLICES - 1);
+    slices = [...head, {
+      key:'__other__', label:`Other (${tail.length})`,
+      value: round2(tail.reduce((s,r)=>s+r.value,0)), color: VIZ_OTHER,
+    }];
+  }
+  const R = 78, SW = 26, C = 100, circ = 2*Math.PI*R;
+  let acc = 0;
+  const arcs = slices.map(s => {
+    const frac = safePct(s.value, total)/100;
+    const seg = { ...s, frac, offset: acc };
+    acc += frac;
+    return seg;
+  });
+  const shown = active != null ? arcs.find(a=>a.key===active) : null;
+  return (
+    <div className="viz-wrap">
+      <div className="viz-donut-box">
+        <svg viewBox="0 0 200 200" className="viz-donut" role="img"
+          aria-label={`Donut chart of spending by category, total ${money2(total)}`}>
+          <circle cx={C} cy={C} r={R} fill="none" stroke="var(--s3)" strokeWidth={SW}/>
+          {arcs.map(a => (
+            <circle key={a.key} cx={C} cy={C} r={R} fill="none"
+              stroke={a.color} strokeWidth={active===a.key?SW+4:SW}
+              strokeDasharray={`${Math.max(a.frac*circ - 2, 0)} ${circ}`}
+              strokeDashoffset={-a.offset*circ}
+              transform={`rotate(-90 ${C} ${C})`}
+              style={{cursor:onSelect?'pointer':'default', transition:'stroke-width .12s'}}
+              tabIndex={0} role="button"
+              aria-label={`${a.label}: ${money2(a.value)}, ${safePct(a.value,total).toFixed(1)} percent`}
+              onMouseEnter={()=>setActive(a.key)} onMouseLeave={()=>setActive(null)}
+              onFocus={()=>setActive(a.key)} onBlur={()=>setActive(null)}
+              onClick={onSelect&&a.key!=='__other__'?()=>onSelect(a.key):undefined}
+              onKeyDown={e=>{if((e.key==='Enter'||e.key===' ')&&onSelect&&a.key!=='__other__'){e.preventDefault();onSelect(a.key);}}}/>
+          ))}
+          <text x={C} y={C-6} textAnchor="middle" className="viz-donut-lbl">
+            {shown ? shown.label : 'Total'}
+          </text>
+          <text x={C} y={C+18} textAnchor="middle" className="viz-donut-val">
+            {money0(shown ? shown.value : total)}
+          </text>
+          {shown && (
+            <text x={C} y={C+34} textAnchor="middle" className="viz-donut-pct">
+              {safePct(shown.value,total).toFixed(1)}%
+            </text>
+          )}
+        </svg>
+      </div>
+      <VizLegend items={arcs.map(a => ({ key:a.key, label:a.label, color:a.color, value:a.value }))}
+        onSelect={onSelect ? k => k!=='__other__' && onSelect(k) : undefined}/>
+      <VizTable caption="Spending by category" cols={['Category','Amount','Share']}
+        rows={arcs.map(a => [a.label, money2(a.value), safePct(a.value,total).toFixed(1)+'%'])}/>
+    </div>
+  );
 }
 
 // ── Projected Net Worth Chart ─────────────────────────────────────
@@ -1205,6 +1994,7 @@ const TABS = [
   { id:'dashboard', label:'Dashboard',  short:'Dash',   icon:'dash'   },
   { id:'budget',    label:'Budget',     short:'Budget', icon:'budget' },
   { id:'spending',  label:'Spending',   short:'Spend',  icon:'spend'  },
+  { id:'insights',  label:'Insights',   short:'Insights',icon:'insights'},
   { id:'goals',     label:'Goals',      short:'Goals',  icon:'goals'  },
   { id:'commission',label:'Commission', short:'Comm',   icon:'comm'   },
   { id:'networth',  label:'Net Worth',  short:'Worth',  icon:'worth'  },
@@ -1224,7 +2014,7 @@ const CATEGORIES = [
 ];
 
 // ── Dashboard ─────────────────────────────────────────────────────────
-function Dashboard({ settings, transactions, goals, commissions, setGoals, setTransactions }) {
+function Dashboard({ settings, transactions, goals, commissions, setGoals, setTransactions, goTo }) {
   const phase = getPhaseInfo(settings.startDate);
   const now   = new Date();
 
@@ -1306,6 +2096,33 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
     }));
     setPayOpen(false);
   };
+
+  // ── Financial Health inputs ──
+  // Spending comes from the shared classifier, so this card and the Spending
+  // Insights page can never report different totals for the same month.
+  const health = useMemo(() => {
+    const monthTxAll = getFilteredTransactions(transactions, { month: monthStr });
+    const catTotals  = getCategorySpendingTotals(monthTxAll);
+    const spent      = round2(Object.values(catTotals).reduce((s,c)=>s+c.total,0));
+    const daily      = getDailySpendingTotals(monthTxAll);
+    const nwSnap     = getNetWorthSnapshot((JSON.parse(localStorage.getItem('fd_networth')||'{}').accounts)||{}, goals);
+    // Next payday: the next 1st/3rd Thursday at or after today, rolling into
+    // next month once this month's two have passed.
+    const upcoming = [
+      ...paycheckDatesForMonth(now.getFullYear(), now.getMonth()),
+      ...paycheckDatesForMonth(now.getFullYear(), now.getMonth()+1),
+    ].filter(d => d >= new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+    const nextPay = upcoming[0] || null;
+    return {
+      spent,
+      spendCount: Object.values(daily).reduce((s,d)=>s+d.count,0),
+      budgetLeft: round2(totalBudgeted - spent),
+      topCat: Object.entries(catTotals).filter(([,c])=>c.total>0).sort((a,b)=>b[1].total-a[1].total)[0] || null,
+      nw: nwSnap.netWorth, cash: nwSnap.cash, retirement: nwSnap.retirement,
+      nextPay,
+      daysToPay: nextPay ? Math.round((nextPay - new Date(now.getFullYear(),now.getMonth(),now.getDate()))/86400000) : null,
+    };
+  }, [transactions, goals, monthStr, totalBudgeted, now.getFullYear(), now.getMonth(), now.getDate()]);
 
   // Paycheck breakdown — built around the actual net paycheck. The 401(k) rows
   // are informational (already withheld); they are NOT deducted from take-home.
@@ -1439,6 +2256,66 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
             Check 1 logged · {currency(paychecksThisMonth[0].amount,2)} deposited · 1 more to fully fund {now.toLocaleDateString('en-US',{month:'long'})}
           </div>
         )}
+      </div>
+
+      {/* ── Financial Health ── */}
+      {/* Reuses the corrected income + 401(k) logic: savings rate is out of
+          net take-home (the 401(k) is already withheld and is NOT subtracted
+          again), and the employer match is reported separately from cash. */}
+      <div>
+        <div className="section-head">Financial Health</div>
+        <div className="ins-cards">
+          <button type="button" className="ins-card" onClick={()=>goTo&&goTo('insights')}>
+            <span className="ins-card-lbl">Spent This Month</span>
+            <span className="ins-card-val">{money2(health.spent)}</span>
+            <span className="ins-card-sub">{health.spendCount} purchase{health.spendCount===1?'':'s'}</span>
+            <span className="ins-card-link">Spending Insights →</span>
+          </button>
+          <button type="button" className="ins-card" onClick={()=>goTo&&goTo('budget')}>
+            <span className="ins-card-lbl">Budget Remaining</span>
+            <span className="ins-card-val" style={{color:health.budgetLeft>=0?'var(--accent)':'var(--red)'}}>
+              {health.budgetLeft>=0?'':'−'}{money2(Math.abs(health.budgetLeft))}
+            </span>
+            <span className="ins-card-sub">
+              {totalBudgeted>0?`of ${money0(totalBudgeted)} budgeted`:'no budget set'}
+            </span>
+            <span className="ins-card-link">View budget →</span>
+          </button>
+          <div className="ins-card">
+            <span className="ins-card-lbl">Savings Rate</span>
+            <span className="ins-card-val" style={{color:'var(--accent)'}}>{pct(savingsRate,0)}</span>
+            <span className="ins-card-sub">{money0(monthlyContrib)}/mo of {money0(netMonthly)} take-home</span>
+          </div>
+          <button type="button" className="ins-card" onClick={()=>goTo&&goTo('networth')}>
+            <span className="ins-card-lbl">Net Worth</span>
+            <span className="ins-card-val" style={{color:health.nw>=0?'var(--t1)':'var(--red)'}}>{money2(health.nw)}</span>
+            <span className="ins-card-sub">{money0(health.cash)} cash · {money0(health.retirement)} retirement</span>
+            <span className="ins-card-link">Net Worth →</span>
+          </button>
+          {health.topCat ? (
+            <button type="button" className="ins-card" onClick={()=>goTo&&goTo('insights')}>
+              <span className="ins-card-lbl">Top Category</span>
+              <span className="ins-card-val">{catLabel(health.topCat[0])}</span>
+              <span className="ins-card-sub">{money2(health.topCat[1].total)} this month</span>
+              <span className="ins-card-link">Drill down →</span>
+            </button>
+          ) : (
+            <div className="ins-card">
+              <span className="ins-card-lbl">Top Category</span>
+              <span className="ins-card-val">—</span>
+              <span className="ins-card-sub">no spending recorded yet</span>
+            </div>
+          )}
+          <div className="ins-card">
+            <span className="ins-card-lbl">Next Paycheck</span>
+            <span className="ins-card-val">{money2(baseDeposit)}</span>
+            <span className="ins-card-sub">
+              {health.nextPay
+                ? `${health.nextPay.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})} · ${health.daysToPay===0?'today':health.daysToPay===1?'tomorrow':`in ${health.daysToPay} days`}`
+                : '1st & 3rd Thursday'}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Funded This Month — fills as each paycheck half lands */}
@@ -2145,6 +3022,640 @@ function Goals({ settings, goals, setGoals, commissions, transactions }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// SPENDING INSIGHTS
+// Reads the SAME fd_transactions store as every other page — there is no
+// second transaction database. One `filtered` array feeds the calendar,
+// the cards, the charts and the drill-down, so they can never disagree.
+// ══════════════════════════════════════════════════════════════════════
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const RANK_LABEL = { spend:'Top spend', largest:'Largest single', frequency:'Most frequent' };
+
+// Category budgets for a month, derived from whichever budget scenario that
+// month uses. Reuses the existing scenario resolver so "With Rent" and
+// "Without Rent" stay independent.
+function categoryBudgetsFor(settings, ref) {
+  const b = budgetForRef(settings, ref) || {};
+  const ph = getPhaseInfo(settings.startDate, ref);
+  return {
+    housing:   ph.isRentMonth ? (b.rentAndFee||0) : 0,
+    groceries: b.groceries||0,
+    gas:       b.gas||0,
+    dining:    b.outToEat||0,
+    shopping:  b.shopping||0,
+    travel:    b.funTravel||0,
+    utilities: (ph.isRentMonth ? b.utilities : b.utilitiesAndFee)||0,
+  };
+}
+
+function SpendingInsights({ settings, transactions, setTransactions, goTo }) {
+  const today = new Date();
+  const [cursor, setCursor] = useState(() => ({ y: today.getFullYear(), m: today.getMonth() }));
+  const [selDate, setSelDate]   = useState(null);
+  const [drillCat, setDrillCat] = useState(null);
+  const [sortBy, setSortBy]     = useState('amount-desc');
+  const [trendRange, setTrendRange] = useState(6);
+  const [rankMode, setRankMode] = useState('spend');
+  const [topN, setTopN]         = useState(5);
+  const [useRange, setUseRange] = useState(false);
+  const [filters, setFilters]   = useState({ from:'', to:'', category:'all', merchant:'all', account:'all', status:'all' });
+
+  const monthKey = `${cursor.y}-${String(cursor.m+1).padStart(2,'0')}`;
+  const setF = (k,v) => setFilters(f => ({ ...f, [k]: v }));
+  const resetFilters = () => {
+    setFilters({ from:'', to:'', category:'all', merchant:'all', account:'all', status:'all' });
+    setUseRange(false); setSelDate(null); setDrillCat(null);
+    setCursor({ y: today.getFullYear(), m: today.getMonth() });
+  };
+
+  // ── THE filtered set. Everything below derives from this one array. ──
+  const activeFilters = useMemo(() => ({
+    ...filters,
+    month: useRange ? null : monthKey,
+    from:  useRange ? filters.from : '',
+    to:    useRange ? filters.to   : '',
+  }), [filters, useRange, monthKey]);
+  const filtered = useMemo(
+    () => getFilteredTransactions(transactions, activeFilters),
+    [transactions, activeFilters]);
+
+  const daily      = useMemo(() => getDailySpendingTotals(filtered), [filtered]);
+  const byCat      = useMemo(() => getCategorySpendingTotals(filtered), [filtered]);
+  const merchants  = useMemo(() => getTopMerchants(filtered, rankMode, topN), [filtered, rankMode, topN]);
+  const totalSpend = useMemo(() => round2(Object.values(byCat).reduce((s,c)=>s+c.total,0)), [byCat]);
+  const income     = useMemo(() => round2(filtered.filter(isIncomeTransaction).reduce((s,t)=>s+safeNum(t.amount),0)), [filtered]);
+  const spendCount = useMemo(() => Object.values(daily).reduce((s,d)=>s+d.count,0), [daily]);
+
+  // Option lists come from ALL transactions so a filter never hides its own
+  // escape route (e.g. picking a merchant then being unable to pick another).
+  const allMerchants = useMemo(() => {
+    const s = new Set((transactions||[]).filter(t=>t.type==='expense').map(t=>normalizeMerchantName(t.description)));
+    return [...s].sort();
+  }, [transactions]);
+  const allAccounts = useMemo(() => {
+    const s = new Set((transactions||[]).map(accountOf));
+    return [...s].sort();
+  }, [transactions]);
+
+  // ── Summary stats ──
+  const dayEntries = Object.entries(daily).filter(([,d]) => d.total > 0);
+  const peakDay    = dayEntries.sort((a,b)=>b[1].total-a[1].total)[0] || null;
+  const topCatEnt  = Object.entries(byCat).filter(([,c])=>c.total>0).sort((a,b)=>b[1].total-a[1].total)[0] || null;
+  const largestTx  = useMemo(() => {
+    let best = null;
+    for (const { t, delta } of spendingRows(filtered))
+      if (delta > 0 && (!best || delta > best.amount))
+        best = { amount: delta, description: t.description, date: txDateKey(t) };
+    return best;
+  }, [filtered]);
+  const daysElapsed = useRange
+    ? Math.max(dayEntries.length, 1)
+    : (cursor.y===today.getFullYear() && cursor.m===today.getMonth())
+      ? today.getDate()
+      : new Date(cursor.y, cursor.m+1, 0).getDate();
+  const avgDaily = round2(totalSpend / Math.max(daysElapsed,1));
+
+  // ── Calendar grid ──
+  const firstDow  = new Date(cursor.y, cursor.m, 1).getDay();
+  const daysIn    = new Date(cursor.y, cursor.m+1, 0).getDate();
+  const todayKey  = dateKey(today);
+  const peakKey   = peakDay ? peakDay[0] : null;
+  const cells = [
+    ...Array.from({length:firstDow}, (_,i) => ({ key:`e${i}`, empty:true })),
+    ...Array.from({length:daysIn}, (_,i) => {
+      const k = `${cursor.y}-${String(cursor.m+1).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`;
+      return { key:k, day:i+1, ...(daily[k] || { total:0, count:0 }) };
+    }),
+  ];
+
+  // ── Trend ──
+  const trend = useMemo(() => {
+    const months = [];
+    if (trendRange === 'ytd') {
+      for (let m=0; m<=today.getMonth(); m++) months.push({ y:today.getFullYear(), m });
+    } else {
+      for (let i=trendRange-1; i>=0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth()-i, 1);
+        months.push({ y:d.getFullYear(), m:d.getMonth() });
+      }
+    }
+    // Trend always spans real months, so it ignores the month filter but keeps
+    // the dimension filters (category / merchant / account / status).
+    const base = getFilteredTransactions(transactions, { ...filters, month:null, from:'', to:'' });
+    const totals = getMonthlySpendingTotals(base);
+    return {
+      labels: months.map(({y,m}) => `${MONTH_NAMES[m].slice(0,3)} '${String(y).slice(2)}`),
+      points: months.map(({y,m}) => safeNum(totals[`${y}-${String(m+1).padStart(2,'0')}`])),
+    };
+  }, [transactions, filters, trendRange, today.getFullYear(), today.getMonth()]);
+
+  // ── Budget vs actual ──
+  const budgets = useMemo(() => categoryBudgetsFor(settings, new Date(cursor.y, cursor.m, 1)), [settings, cursor]);
+  const bva     = useMemo(() => getBudgetVsActual(filtered, budgets), [filtered, budgets]);
+  const monthBudgetTotal = Object.values(budgets).reduce((s,v)=>s+safeNum(v),0);
+
+  // ── Day detail ──
+  const dayTx = useMemo(() => {
+    if (!selDate) return [];
+    const rows = getTransactionsForDate(filtered, selDate);
+    const cmp = {
+      'amount-desc': (a,b)=>safeNum(b.amount)-safeNum(a.amount),
+      'amount-asc':  (a,b)=>safeNum(a.amount)-safeNum(b.amount),
+      'category':    (a,b)=>catLabel(categoryOf(a)).localeCompare(catLabel(categoryOf(b))),
+      'merchant':    (a,b)=>normalizeMerchantName(a.description).localeCompare(normalizeMerchantName(b.description)),
+      'time':        (a,b)=>String(a.time||'').localeCompare(String(b.time||'')),
+    }[sortBy] || (()=>0);
+    return [...rows].sort(cmp);
+  }, [filtered, selDate, sortBy]);
+  const dayTotal = selDate ? safeNum((daily[selDate]||{}).total) : 0;
+  const dayCount = selDate ? safeNum((daily[selDate]||{}).count) : 0;
+
+  // ── Category drill-down (vs previous month) ──
+  const drill = useMemo(() => {
+    if (!drillCat) return null;
+    const cur = byCat[drillCat] || { total:0, count:0, avg:0, largest:0 };
+    const prevD = new Date(cursor.y, cursor.m-1, 1);
+    const prevTx = getFilteredTransactions(transactions, {
+      ...filters, month:`${prevD.getFullYear()}-${String(prevD.getMonth()+1).padStart(2,'0')}`, from:'', to:'',
+    });
+    const prevTotal = safeNum((getCategorySpendingTotals(prevTx)[drillCat]||{}).total);
+    const limit = safeNum(budgets[drillCat]);
+    const pctUsed = safePct(cur.total, limit);
+    const catTx = filtered.filter(t => categoryOf(t) === drillCat);
+    const byDate = getDailySpendingTotals(catTx);
+    return {
+      ...cur, limit, prevTotal,
+      hasBudget: limit > 0,
+      remaining: round2(limit - cur.total),
+      pctUsed,
+      status: limit > 0 ? (pctUsed > 100 ? 'over' : pctUsed >= 80 ? 'near' : 'under') : null,
+      delta: round2(cur.total - prevTotal),
+      deltaPct: prevTotal > 0 ? safePct(cur.total - prevTotal, prevTotal) : null,
+      merchants: getTopMerchants(catTx, rankMode, 8),
+      largestTx: getLargestTransactionByCategory(filtered, drillCat),
+      dates: Object.entries(byDate).filter(([,d])=>d.total>0).sort((a,b)=>a[0].localeCompare(b[0])),
+    };
+  }, [drillCat, byCat, filtered, transactions, filters, cursor, budgets, rankMode]);
+
+  // Donut auto-falls back to ranked bars when there are too many categories.
+  const catRows = Object.entries(byCat).filter(([,c])=>c.total>0)
+    .map(([id,c]) => ({ key:id, label:catLabel(id), value:c.total, color:vizColor(id) }));
+  const tooManySlices = catRows.length > MAX_SLICES + 2;
+
+  const periodLabel = useRange
+    ? (filters.from||filters.to ? `${filters.from||'start'} → ${filters.to||'today'}` : 'All time')
+    : `${MONTH_NAMES[cursor.m]} ${cursor.y}`;
+  const shiftMonth = d => setCursor(c => {
+    const n = new Date(c.y, c.m+d, 1);
+    return { y:n.getFullYear(), m:n.getMonth() };
+  });
+
+  return (
+    <div className="page">
+      <div className="page-top">
+        <div>
+          <h2 className="page-title">Spending Insights</h2>
+          <div className="page-sub">{periodLabel} · {spendCount} purchase{spendCount===1?'':'s'}</div>
+        </div>
+      </div>
+
+      {/* ── Filters ── */}
+      <div className="card">
+        <div className="flt-bar">
+          <div className="flt-field">
+            <label htmlFor="f-period">Period</label>
+            <select id="f-period" value={useRange?'range':'month'} onChange={e=>setUseRange(e.target.value==='range')}>
+              <option value="month">By month</option>
+              <option value="range">Custom range</option>
+            </select>
+          </div>
+          {useRange ? (
+            <>
+              <div className="flt-field">
+                <label htmlFor="f-from">From</label>
+                <input id="f-from" type="date" value={filters.from} onChange={e=>setF('from',e.target.value)}/>
+              </div>
+              <div className="flt-field">
+                <label htmlFor="f-to">To</label>
+                <input id="f-to" type="date" value={filters.to} onChange={e=>setF('to',e.target.value)}/>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flt-field">
+                <label htmlFor="f-month">Month</label>
+                <select id="f-month" value={cursor.m} onChange={e=>setCursor(c=>({...c,m:+e.target.value}))}>
+                  {MONTH_NAMES.map((n,i) => <option key={n} value={i}>{n}</option>)}
+                </select>
+              </div>
+              <div className="flt-field">
+                <label htmlFor="f-year">Year</label>
+                <select id="f-year" value={cursor.y} onChange={e=>setCursor(c=>({...c,y:+e.target.value}))}>
+                  {[...Array(7)].map((_,i) => {
+                    const y = today.getFullYear()-3+i;
+                    return <option key={y} value={y}>{y}</option>;
+                  })}
+                </select>
+              </div>
+            </>
+          )}
+          <div className="flt-field">
+            <label htmlFor="f-cat">Category</label>
+            <select id="f-cat" value={filters.category} onChange={e=>setF('category',e.target.value)}>
+              <option value="all">All categories</option>
+              {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+              <option value="uncategorized">Uncategorized</option>
+            </select>
+          </div>
+          <div className="flt-field">
+            <label htmlFor="f-merch">Merchant</label>
+            <select id="f-merch" value={filters.merchant} onChange={e=>setF('merchant',e.target.value)}>
+              <option value="all">All merchants</option>
+              {allMerchants.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="flt-field">
+            <label htmlFor="f-acct">Account</label>
+            <select id="f-acct" value={filters.account} onChange={e=>setF('account',e.target.value)}>
+              <option value="all">All accounts</option>
+              {allAccounts.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <div className="flt-field">
+            <label htmlFor="f-status">Status</label>
+            <select id="f-status" value={filters.status} onChange={e=>setF('status',e.target.value)}>
+              <option value="all">All</option>
+              <option value="completed">Completed</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+          <div className="flt-field" style={{flex:'0 0 auto'}}>
+            <label aria-hidden="true">&nbsp;</label>
+            <button type="button" className="cal-btn" onClick={resetFilters}>Reset Filters</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Summary cards ── */}
+      <div className="ins-cards">
+        <div className="ins-card">
+          <span className="ins-card-lbl">Total Spending</span>
+          <span className="ins-card-val">{money2(totalSpend)}</span>
+          <span className="ins-card-sub">{spendCount} transaction{spendCount===1?'':'s'}</span>
+        </div>
+        <div className="ins-card">
+          <span className="ins-card-lbl">Total Income</span>
+          <span className="ins-card-val" style={{color:'var(--accent)'}}>{money2(income)}</span>
+          <span className="ins-card-sub">paychecks &amp; other income</span>
+        </div>
+        <div className="ins-card">
+          <span className="ins-card-lbl">Net Cash Flow</span>
+          <span className="ins-card-val" style={{color:income-totalSpend>=0?'var(--accent)':'var(--red)'}}>
+            {income-totalSpend>=0?'+':'−'}{money2(Math.abs(income-totalSpend))}
+          </span>
+          <span className="ins-card-sub">income − spending</span>
+        </div>
+        <div className="ins-card">
+          <span className="ins-card-lbl">Avg / Day</span>
+          <span className="ins-card-val">{money2(avgDaily)}</span>
+          <span className="ins-card-sub">over {daysElapsed} day{daysElapsed===1?'':'s'}</span>
+        </div>
+        {topCatEnt ? (
+          <button type="button" className="ins-card" onClick={()=>setDrillCat(topCatEnt[0])}>
+            <span className="ins-card-lbl">Top Category</span>
+            <span className="ins-card-val">{catLabel(topCatEnt[0])}</span>
+            <span className="ins-card-sub">{money2(topCatEnt[1].total)}</span>
+            <span className="ins-card-link">View breakdown →</span>
+          </button>
+        ) : (
+          <div className="ins-card"><span className="ins-card-lbl">Top Category</span>
+            <span className="ins-card-val">—</span><span className="ins-card-sub">no spending yet</span></div>
+        )}
+        {peakDay ? (
+          <button type="button" className="ins-card" onClick={()=>setSelDate(peakDay[0])}>
+            <span className="ins-card-lbl">Highest Day</span>
+            <span className="ins-card-val">{money2(peakDay[1].total)}</span>
+            <span className="ins-card-sub">
+              {parseLocalDate(peakDay[0]).toLocaleDateString('en-US',{month:'long',day:'numeric'})}
+            </span>
+            <span className="ins-card-link">See the day →</span>
+          </button>
+        ) : (
+          <div className="ins-card"><span className="ins-card-lbl">Highest Day</span>
+            <span className="ins-card-val">—</span><span className="ins-card-sub">no spending yet</span></div>
+        )}
+        <div className="ins-card">
+          <span className="ins-card-lbl">Largest Purchase</span>
+          <span className="ins-card-val">{largestTx?money2(largestTx.amount):'—'}</span>
+          <span className="ins-card-sub">{largestTx?largestTx.description:'no spending yet'}</span>
+        </div>
+        <div className="ins-card">
+          <span className="ins-card-lbl">Budget Used</span>
+          <span className="ins-card-val">{monthBudgetTotal>0?pct(safePct(totalSpend,monthBudgetTotal),0):'—'}</span>
+          <span className="ins-card-sub">
+            {monthBudgetTotal>0?`of ${money0(monthBudgetTotal)} budgeted`:'no budget for this month'}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Calendar ── */}
+      <div>
+        <div className="cal-head">
+          <div className="cal-nav">
+            <button className="cal-btn" onClick={()=>shiftMonth(-1)} aria-label="Previous month">
+              <Icon name="chevronLeft" size={15}/>
+            </button>
+            <button className="cal-btn" onClick={()=>setCursor({y:today.getFullYear(),m:today.getMonth()})}>Today</button>
+            <button className="cal-btn" onClick={()=>shiftMonth(1)} aria-label="Next month">
+              <Icon name="chevronRight" size={15}/>
+            </button>
+          </div>
+          <div className="cal-title">{MONTH_NAMES[cursor.m]} {cursor.y}</div>
+          <div style={{fontSize:'.7rem',color:'var(--t3)',fontVariantNumeric:'tabular-nums'}}>
+            {money0(Object.values(daily).reduce((s,d)=>s+d.total,0))} this month
+          </div>
+        </div>
+        {useRange && (
+          <div style={{fontSize:'.66rem',color:'var(--t3)',marginBottom:8}}>
+            Calendar follows the month above; cards and charts follow your custom range.
+          </div>
+        )}
+        <div className="cal-grid" role="grid" aria-label="Monthly spending calendar">
+          {DOW.map(d => <div key={d} className="cal-dow" role="columnheader">{d}</div>)}
+          {cells.map(c => {
+            if (c.empty) return <div key={c.key} className="cal-cell cal-cell-empty" aria-hidden="true"/>;
+            const has = c.total > 0;
+            const cls = ['cal-cell', !has&&'cal-cell-quiet', c.key===todayKey&&'cal-cell-today',
+                         c.key===selDate&&'cal-cell-sel', has&&c.key===peakKey&&'cal-cell-peak']
+                        .filter(Boolean).join(' ');
+            return (
+              <button key={c.key} className={cls} onClick={()=>setSelDate(s=>s===c.key?null:c.key)}
+                aria-pressed={c.key===selDate}
+                aria-label={`${parseLocalDate(c.key).toLocaleDateString('en-US',{month:'long',day:'numeric'})}: ${has?`${money2(c.total)} across ${c.count} transaction${c.count===1?'':'s'}`:'no spending'}${c.key===peakKey&&has?' — highest spending day':''}`}>
+                <span className="cal-daynum">{c.day}</span>
+                {has && <span className="cal-dot" aria-hidden="true"/>}
+                {has && <span className="cal-amt">{money0(c.total)}</span>}
+                {has && <span className="cal-cnt">{c.count} tx</span>}
+                {has && c.key===peakKey && <span className="cal-peak-tag" aria-hidden="true">peak</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Day detail ── */}
+      {selDate && (
+        <div className="day-panel">
+          <div className="day-panel-hd">
+            <div>
+              <div style={{fontSize:'.9rem',fontWeight:700,color:'var(--t1)'}}>
+                {parseLocalDate(selDate).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}
+              </div>
+              <div style={{fontSize:'.72rem',color:'var(--t3)',marginTop:3,fontVariantNumeric:'tabular-nums'}}>
+                {money2(dayTotal)} spent · {dayCount} purchase{dayCount===1?'':'s'} · {dayTx.length} row{dayTx.length===1?'':'s'}
+              </div>
+            </div>
+            <button className="cal-btn" onClick={()=>setSelDate(null)} aria-label="Close day details">✕</button>
+          </div>
+          {dayTx.length > 0 && (
+            <div style={{padding:'10px 15px',borderBottom:'1px solid var(--border)'}}>
+              <div className="flt-field" style={{maxWidth:210}}>
+                <label htmlFor="d-sort">Sort by</label>
+                <select id="d-sort" value={sortBy} onChange={e=>setSortBy(e.target.value)}>
+                  <option value="amount-desc">Highest amount</option>
+                  <option value="amount-asc">Lowest amount</option>
+                  <option value="category">Category</option>
+                  <option value="merchant">Merchant</option>
+                  <option value="time">Time</option>
+                </select>
+              </div>
+            </div>
+          )}
+          {dayTx.length === 0 ? (
+            <div style={{padding:'22px 15px'}}>
+              <VizEmpty message="No spending recorded for this date." />
+            </div>
+          ) : dayTx.map(t => {
+            const refund = isRefund(t);
+            const counted = isSpendingTransaction(t, transactions, (transactions||[]).indexOf(t));
+            return (
+              <div key={t.id} className="day-tx">
+                <div style={{minWidth:0}}>
+                  <div className="day-tx-name">{t.description || catLabel(categoryOf(t))}</div>
+                  <div className="day-tx-meta">
+                    <span>{catLabel(categoryOf(t))}</span>
+                    <span>·</span>
+                    <span>{normalizeMerchantName(t.description)}</span>
+                    <span>·</span>
+                    <span>{accountOf(t)}</span>
+                    {t.time && <><span>·</span><span>{t.time}</span></>}
+                    {t.note && <><span>·</span><span>{t.note}</span></>}
+                    {t.pending && <span className="pill pill-pending">Pending</span>}
+                    {refund && <span className="pill pill-refund">Refund</span>}
+                    {!counted && !refund && t.type==='expense' && <span className="pill">Not spending</span>}
+                  </div>
+                </div>
+                <div className="day-tx-amt" style={{color:refund?'var(--accent)':t.type==='income'?'var(--accent)':'var(--t1)'}}>
+                  {refund?'+':t.type==='income'?'+':'−'}{money2(t.amount)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Trend ── */}
+      <div>
+        <div className="cal-head">
+          <div className="section-head" style={{padding:0,marginBottom:0}}>Spending Trend</div>
+          <div className="seg" role="group" aria-label="Trend range">
+            {[[3,'3M'],[6,'6M'],[12,'12M'],['ytd','YTD']].map(([v,l]) => (
+              <button key={l} className={trendRange===v?'on':''} onClick={()=>setTrendRange(v)}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div className="card">
+          <LineTrendChart
+            labels={trend.labels}
+            series={[{ key:'spend', label:'Monthly spending', color:VIZ_SERIES[0], points:trend.points }]}
+            emptyMsg="Not enough history for a trend yet."/>
+          <div style={{fontSize:'.64rem',color:'var(--t3)',marginTop:8}}>
+            Excludes transfers, savings, retirement contributions, card payments and duplicates.
+          </div>
+        </div>
+      </div>
+
+      {/* ── Category breakdown ── */}
+      <div>
+        <div className="section-head">Category Breakdown</div>
+        <div className="card">
+          {tooManySlices ? (
+            <RankedBars
+              rows={catRows.sort((a,b)=>b.value-a.value)}
+              onSelect={setDrillCat}
+              emptyMsg="No spending recorded for this period."/>
+          ) : (
+            <DonutChart rows={catRows} total={totalSpend} onSelect={setDrillCat}
+              emptyMsg="No spending recorded for this period."/>
+          )}
+        </div>
+      </div>
+
+      {/* ── Budget vs actual ── */}
+      <div>
+        <div className="section-head">Budget vs. Actual</div>
+        <div className="card">
+          {bva.length === 0 ? (
+            <VizEmpty message="No category budgets defined for this month."
+              hint="Set category amounts in Settings to compare against actual spending."/>
+          ) : (
+            <RankedBars showCompare rows={bva.map(b => ({
+              key:b.category, label:catLabel(b.category), value:b.actual, compare:b.budget,
+              color:VIZ_STATUS[b.status], statusLabel:STATUS_LABEL[b.status], statusMark:STATUS_MARK[b.status],
+              sub:`${b.pctUsed.toFixed(0)}% used · ${b.remaining>=0?`${money2(b.remaining)} left`:`${money2(Math.abs(b.remaining))} over`}`,
+            }))} onSelect={setDrillCat}/>
+          )}
+        </div>
+      </div>
+
+      {/* ── Top merchants ── */}
+      <div>
+        <div className="cal-head">
+          <div className="section-head" style={{padding:0,marginBottom:0}}>Top Merchants</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            <div className="seg" role="group" aria-label="Ranking mode">
+              {Object.entries(RANK_LABEL).map(([v,l]) => (
+                <button key={v} className={rankMode===v?'on':''} onClick={()=>setRankMode(v)}>{l}</button>
+              ))}
+            </div>
+            <div className="seg" role="group" aria-label="How many merchants">
+              {[5,10].map(n => <button key={n} className={topN===n?'on':''} onClick={()=>setTopN(n)}>Top {n}</button>)}
+            </div>
+          </div>
+        </div>
+        <div className="card">
+          <RankedBars
+            rows={merchants.map((m,i) => ({
+              key:m.name, label:m.name,
+              value: rankMode==='frequency' ? m.count : rankMode==='largest' ? m.largest : m.total,
+              color: vizColor(m.topCategory),
+              sub: `${m.count} transaction${m.count===1?'':'s'} · ${money2(m.total)} total · mostly ${catLabel(m.topCategory)}`,
+            }))}
+            formatVal={rankMode==='frequency' ? (v=>`${safeNum(v)} tx`) : money2}
+            onSelect={name => setF('merchant', name)}
+            emptyMsg="No merchant spending for this period."/>
+          {filters.merchant !== 'all' && (
+            <button className="cal-btn" style={{marginTop:12}} onClick={()=>setF('merchant','all')}>
+              Clear merchant filter: {filters.merchant}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Where You Spent the Most ── */}
+      <div>
+        <div className="section-head">Where You Spent the Most</div>
+        {catRows.length === 0 ? (
+          <div className="card"><VizEmpty message="No spending recorded for this period."/></div>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {catRows.sort((a,b)=>b.value-a.value).map(c => {
+              const stat = byCat[c.key];
+              const top  = getTopMerchantByCategory(filtered, c.key, rankMode);
+              const share = top ? safePct(top.total, stat.total) : 0;
+              return (
+                <button key={c.key} className="ins-card" style={{cursor:'pointer'}} onClick={()=>setDrillCat(c.key)}>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span className="viz-swatch" style={{background:c.color}} aria-hidden="true"/>
+                    <span style={{fontSize:'.86rem',fontWeight:700,color:'var(--t1)'}}>{c.label}</span>
+                    <span style={{marginLeft:'auto',fontSize:'.86rem',fontWeight:700,fontVariantNumeric:'tabular-nums'}}>
+                      {money2(stat.total)}
+                    </span>
+                  </div>
+                  {top ? (
+                    <div style={{fontSize:'.68rem',color:'var(--t3)',lineHeight:1.7,marginTop:4}}>
+                      Top merchant: <span style={{color:'var(--t2)',fontWeight:600}}>{top.name}</span> · {money2(top.total)} across {top.count} transaction{top.count===1?'':'s'}<br/>
+                      Largest: {money2(stat.largest)} · Avg: {money2(stat.avg)} · {stat.count} total tx<br/>
+                      {share.toFixed(1)}% of {c.label} spending went to {top.name}
+                    </div>
+                  ) : (
+                    <div style={{fontSize:'.68rem',color:'var(--t3)',marginTop:4}}>No merchant detail available.</div>
+                  )}
+                  <span className="ins-card-link">Drill down →</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Category drill-down ── */}
+      {drill && (
+        <div className="day-panel">
+          <div className="day-panel-hd">
+            <div>
+              <div style={{fontSize:'.9rem',fontWeight:700,color:'var(--t1)'}}>{catLabel(drillCat)}</div>
+              <div style={{fontSize:'.72rem',color:'var(--t3)',marginTop:3}}>{periodLabel}</div>
+            </div>
+            <button className="cal-btn" onClick={()=>setDrillCat(null)} aria-label="Close category details">✕</button>
+          </div>
+          <div style={{padding:15,display:'flex',flexDirection:'column',gap:14}}>
+            <div className="ins-cards">
+              <div className="ins-card"><span className="ins-card-lbl">Total</span>
+                <span className="ins-card-val">{money2(drill.total)}</span>
+                <span className="ins-card-sub">{drill.count} transaction{drill.count===1?'':'s'}</span></div>
+              <div className="ins-card"><span className="ins-card-lbl">Average</span>
+                <span className="ins-card-val">{money2(drill.avg)}</span>
+                <span className="ins-card-sub">per transaction</span></div>
+              <div className="ins-card"><span className="ins-card-lbl">Largest</span>
+                <span className="ins-card-val">{money2(drill.largest)}</span>
+                <span className="ins-card-sub">{drill.largestTx?drill.largestTx.description:'—'}</span></div>
+              <div className="ins-card"><span className="ins-card-lbl">Budget</span>
+                <span className="ins-card-val" style={{color:drill.hasBudget?VIZ_STATUS[drill.status]:'var(--t1)'}}>
+                  {drill.hasBudget?pct(drill.pctUsed,0):'—'}
+                </span>
+                <span className="ins-card-sub">
+                  {drill.hasBudget
+                    ? <>{STATUS_MARK[drill.status]} {STATUS_LABEL[drill.status]} · {drill.remaining>=0?`${money2(drill.remaining)} left`:`${money2(Math.abs(drill.remaining))} over`}</>
+                    : 'no budget set for this category'}
+                </span></div>
+              <div className="ins-card"><span className="ins-card-lbl">vs. Last Month</span>
+                <span className="ins-card-val" style={{color:drill.delta>0?'var(--red)':drill.delta<0?'var(--accent)':'var(--t1)'}}>
+                  {drill.delta>0?'+':drill.delta<0?'−':''}{money2(Math.abs(drill.delta))}
+                </span>
+                <span className="ins-card-sub">
+                  {drill.deltaPct==null?`no spending last month`:`${drill.deltaPct>0?'+':''}${drill.deltaPct.toFixed(1)}% · was ${money2(drill.prevTotal)}`}
+                </span></div>
+            </div>
+            <div>
+              <div className="eyebrow" style={{marginBottom:8}}>Merchants — {RANK_LABEL[rankMode]}</div>
+              <RankedBars
+                rows={drill.merchants.map(m => ({
+                  key:m.name, label:m.name,
+                  value: rankMode==='frequency'?m.count:rankMode==='largest'?m.largest:m.total,
+                  color: vizColor(drillCat),
+                  sub:`${m.count} tx · largest ${money2(m.largest)} · avg ${money2(m.avg)}`,
+                }))}
+                formatVal={rankMode==='frequency'?(v=>`${safeNum(v)} tx`):money2}
+                emptyMsg="No merchants in this category for the period."/>
+            </div>
+            <div>
+              <div className="eyebrow" style={{marginBottom:8}}>Spending by date</div>
+              {drill.dates.length ? (
+                <LineTrendChart height={150}
+                  labels={drill.dates.map(([d]) => parseLocalDate(d).toLocaleDateString('en-US',{month:'short',day:'numeric'}))}
+                  series={[{ key:'d', label:catLabel(drillCat), color:vizColor(drillCat), points:drill.dates.map(([,v])=>v.total) }]}
+                  emptyMsg="Not enough dated activity to chart."/>
+              ) : <VizEmpty message="No dated spending in this category."/>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Commission ─────────────────────────────────────────────────────────
 function Commission({ settings, commissions, setCommissions, setGoals }) {
   const [showForm,setShowForm]=useState(false);
@@ -2613,25 +4124,72 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
   const set401kEmpr = v => setGoals(g => ({ ...g, k401Employer: v, ira401kBalance: round2((g.k401Employee||0) + v) }));
   const setAcc  = (key, val) => setNetWorth(s => ({ ...s, accounts: { ...s.accounts, [key]: val } }));
 
-  const totalAssets = (acc.checking||0) + hysaBal + rothBal + k401Bal + (acc.brokerage||0);
-  const totalLiab   = (acc.creditCard||0) + (acc.loans||0);
-  const nw          = totalAssets - totalLiab;
+  // Net worth is computed from STORED BALANCES ONLY. Contribution history
+  // (paycheck 401(k) rows, HYSA allocations) explains how these balances grew —
+  // adding it on top of the balances would double-count, so it never is.
+  const snap        = getNetWorthSnapshot(acc, goals);
+  const totalAssets = snap.assets;
+  const totalLiab   = snap.liabilities;
+  const nw          = snap.netWorth;
   const isPos       = nw >= 0;
 
   // Snapshot logic
   const now      = new Date();
   const monthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const hasMonth = hist.some(h => h.month === monthKey);
+  const [nwRange, setNwRange] = useState(12);
 
   const saveSnapshot = () => {
-    const entry = { month:monthKey, netWorth:nw, assets:totalAssets, liabilities:totalLiab };
+    // Records the composition too, so the trend can show cash vs retirement.
+    const entry = {
+      month:monthKey, netWorth:nw, assets:totalAssets, liabilities:totalLiab,
+      cash:snap.cash, retirement:snap.retirement, other:snap.other,
+    };
     setNetWorth(s => ({
       ...s,
-      history: [...s.history.filter(h=>h.month!==monthKey), entry]
+      history: [...(s.history||[]).filter(h=>h.month!==monthKey), entry]
         .sort((a,b) => a.month.localeCompare(b.month)),
     }));
   };
-  const delSnapshot = m => setNetWorth(s => ({ ...s, history: s.history.filter(h=>h.month!==m) }));
+  const delSnapshot = m => setNetWorth(s => ({ ...s, history: (s.history||[]).filter(h=>h.month!==m) }));
+
+  // Older snapshots stored only {netWorth, assets, liabilities}. Read them
+  // defensively rather than rewriting them — migrating in place would invent
+  // a cash/retirement split that was never actually recorded.
+  const histSorted = [...hist].filter(h => h && h.month).sort((a,b)=>a.month.localeCompare(b.month));
+  const prevSnap   = histSorted.filter(h => h.month < monthKey).slice(-1)[0] || null;
+  const yearStart  = histSorted.filter(h => h.month <= `${now.getFullYear()}-01`).slice(-1)[0]
+                     || histSorted.find(h => h.month.startsWith(String(now.getFullYear()))) || null;
+
+  const deltaMonth   = prevSnap ? round2(nw - safeNum(prevSnap.netWorth)) : null;
+  const deltaMonthPct= prevSnap && safeNum(prevSnap.netWorth) !== 0
+    ? (nw - safeNum(prevSnap.netWorth)) / Math.abs(safeNum(prevSnap.netWorth)) * 100 : null;
+  const deltaYTD     = yearStart ? round2(nw - safeNum(yearStart.netWorth)) : null;
+  const deltaYTDPct  = yearStart && safeNum(yearStart.netWorth) !== 0
+    ? (nw - safeNum(yearStart.netWorth)) / Math.abs(safeNum(yearStart.netWorth)) * 100 : null;
+
+  // Trend series. Current (unsaved) month is appended so the chart always
+  // reflects what the page is showing.
+  const nwTrend = (() => {
+    const rows = [...histSorted.filter(h => h.month !== monthKey),
+                  { month:monthKey, netWorth:nw, cash:snap.cash, retirement:snap.retirement }];
+    const cut = nwRange === 'all' ? rows
+      : nwRange === 'ytd' ? rows.filter(h => h.month.startsWith(String(now.getFullYear())))
+      : rows.slice(-nwRange);
+    return {
+      labels: cut.map(h => {
+        const [y,m] = h.month.split('-');
+        return `${MONTH_NAMES[+m-1].slice(0,3)} '${y.slice(2)}`;
+      }),
+      net:   cut.map(h => safeNum(h.netWorth)),
+      cash:  cut.map(h => safeNum(h.cash)),
+      ret:   cut.map(h => safeNum(h.retirement)),
+      hasComposition: cut.some(h => h.cash != null || h.retirement != null),
+      count: cut.length,
+    };
+  })();
+
+  const prevOf = key => prevSnap && prevSnap[key] != null ? safeNum(prevSnap[key]) : null;
 
   // Spending by category (all-time)
   const catSpend = {};
@@ -2691,6 +4249,88 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
         </button>
       </div>
 
+      {/* Composition + change cards */}
+      <div className="ins-cards">
+        <div className="ins-card">
+          <span className="ins-card-lbl">Cash</span>
+          <span className="ins-card-val">{money2(snap.cash)}</span>
+          <span className="ins-card-sub">checking + HYSA · spendable</span>
+        </div>
+        <div className="ins-card">
+          <span className="ins-card-lbl">Retirement</span>
+          <span className="ins-card-val" style={{color:'var(--purple)'}}>{money2(snap.retirement)}</span>
+          <span className="ins-card-sub">Roth + 401(k) · not spendable</span>
+        </div>
+        <div className="ins-card">
+          <span className="ins-card-lbl">Other Investments</span>
+          <span className="ins-card-val">{money2(snap.other)}</span>
+          <span className="ins-card-sub">taxable brokerage</span>
+        </div>
+        <div className="ins-card">
+          <span className="ins-card-lbl">Liabilities</span>
+          <span className="ins-card-val" style={{color:totalLiab>0?'var(--red)':'var(--t1)'}}>{money2(totalLiab)}</span>
+          <span className="ins-card-sub">cards + loans</span>
+        </div>
+        <div className="ins-card">
+          <span className="ins-card-lbl">Change vs. Last Month</span>
+          <span className="ins-card-val" style={{color:deltaMonth==null?'var(--t1)':deltaMonth>=0?'var(--accent)':'var(--red)'}}>
+            {deltaMonth==null?'—':`${deltaMonth>=0?'+':'−'}${money2(Math.abs(deltaMonth))}`}
+          </span>
+          <span className="ins-card-sub">
+            {deltaMonth==null ? 'no earlier snapshot yet'
+              : deltaMonthPct==null ? `was ${money2(prevSnap.netWorth)}`
+              : `${deltaMonthPct>=0?'+':''}${deltaMonthPct.toFixed(1)}% · was ${money2(prevSnap.netWorth)}`}
+          </span>
+        </div>
+        <div className="ins-card">
+          <span className="ins-card-lbl">Change YTD</span>
+          <span className="ins-card-val" style={{color:deltaYTD==null?'var(--t1)':deltaYTD>=0?'var(--accent)':'var(--red)'}}>
+            {deltaYTD==null?'—':`${deltaYTD>=0?'+':'−'}${money2(Math.abs(deltaYTD))}`}
+          </span>
+          <span className="ins-card-sub">
+            {deltaYTD==null ? 'no snapshot this year yet'
+              : deltaYTDPct==null ? `since ${yearStart.month}`
+              : `${deltaYTDPct>=0?'+':''}${deltaYTDPct.toFixed(1)}% since ${yearStart.month}`}
+          </span>
+        </div>
+      </div>
+
+      {/* Net worth trend */}
+      <div>
+        <div className="cal-head">
+          <div className="section-head" style={{padding:0,marginBottom:0}}>Net Worth Over Time</div>
+          <div className="seg" role="group" aria-label="Net worth range">
+            {[[3,'3M'],[6,'6M'],[12,'12M'],['ytd','YTD'],['all','All']].map(([v,l]) => (
+              <button key={l} className={nwRange===v?'on':''} onClick={()=>setNwRange(v)}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div className="card">
+          {nwTrend.count < 2 ? (
+            <VizEmpty
+              message={histSorted.length===0
+                ? 'Add account balances to begin tracking net worth.'
+                : 'Only one snapshot so far — take another next month to see a trend.'}
+              hint="Tap Snapshot above to record this month's totals."/>
+          ) : (
+            <LineTrendChart
+              labels={nwTrend.labels}
+              series={[
+                { key:'net',  label:'Net worth',  color:VIZ_SERIES[0], points:nwTrend.net },
+                ...(nwTrend.hasComposition ? [
+                  { key:'cash', label:'Cash',       color:VIZ_SERIES[2], points:nwTrend.cash },
+                  { key:'ret',  label:'Retirement', color:VIZ_SERIES[6], points:nwTrend.ret },
+                ] : []),
+              ]}/>
+          )}
+          {histSorted.length > 0 && !nwTrend.hasComposition && (
+            <div style={{fontSize:'.64rem',color:'var(--t3)',marginTop:8}}>
+              Earlier snapshots pre-date cash/retirement tracking, so only total net worth is plotted for those months.
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Assets vs liabilities stat strip */}
       <div style={{display:'flex',gap:0}}>
         {[
@@ -2730,6 +4370,55 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Account breakdown — share of net worth + month-over-month change */}
+      <div>
+        <div className="eyebrow" style={{marginBottom:10}}>Account Breakdown</div>
+        <div className="card-flush">
+          {[
+            { key:'checking',   label:'Checking',          val:safeNum(acc.checking),  tag:'Cash',       prev:prevOf('cash') },
+            { key:'hysa',       label:'HYSA',              val:hysaBal,                tag:'Cash',       prev:null },
+            { key:'roth',       label:'Roth IRA',          val:rothBal,                tag:'Retirement', prev:null },
+            { key:'k401e',      label:'401(k) — Employee', val:k401Emp,                tag:'Retirement', prev:null },
+            { key:'k401r',      label:'401(k) — Employer', val:k401Empr,               tag:'Employer',   prev:null },
+            { key:'brokerage',  label:'Taxable Brokerage', val:safeNum(acc.brokerage), tag:'Investment', prev:null },
+            { key:'cc',         label:'Credit Card',       val:safeNum(acc.creditCard),tag:'Liability',  prev:null, neg:true },
+            { key:'loans',      label:'Loans / Other Debt',val:safeNum(acc.loans),     tag:'Liability',  prev:null, neg:true },
+          ].filter(r => r.val !== 0).map(r => (
+            <div key={r.key} className="nwa-row">
+              <div style={{minWidth:0}}>
+                <div>
+                  <span className="nwa-name">{r.label}</span>
+                  <span className="nwa-tag">{r.tag}</span>
+                </div>
+                <div className="nwa-meta">
+                  {r.neg ? 'reduces net worth' : `${safePct(r.val, totalAssets).toFixed(1)}% of assets`}
+                  {r.key==='k401r' && ' · employer money, not spendable cash'}
+                </div>
+              </div>
+              <div className="nwa-val">
+                <div className="nwa-amt" style={{color:r.neg?'var(--red)':'var(--t1)'}}>
+                  {r.neg?'−':''}{money2(r.val)}
+                </div>
+                <div className="nwa-chg" style={{color:'var(--t3)'}}>
+                  {nw !== 0 ? `${safePct(r.val, Math.abs(nw)).toFixed(1)}% of net worth` : '—'}
+                </div>
+              </div>
+            </div>
+          ))}
+          {totalAssets === 0 && totalLiab === 0 && (
+            <div style={{padding:'22px 15px'}}>
+              <VizEmpty message="Add account balances to begin tracking net worth."
+                hint="Enter balances in the Assets section above."/>
+            </div>
+          )}
+        </div>
+        {!prevSnap && (
+          <div style={{fontSize:'.64rem',color:'var(--t3)',marginTop:8}}>
+            Per-account month-over-month change appears once you have snapshots from two different months.
+          </div>
+        )}
       </div>
 
       {/* Liabilities */}
@@ -2901,9 +4590,10 @@ function App() {
   }, [goals, settings]);
 
   const pages = {
-    dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} />,
+    dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} goTo={setTab} />,
     budget:     <Budget     settings={settings} transactions={transactions} />,
     spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} />,
+    insights:   <SpendingInsights settings={settings} transactions={transactions} setTransactions={setTx} goTo={setTab} />,
     goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} transactions={transactions} />,
     commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} setGoals={setGoals} />,
     networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} setGoals={setGoals} settings={settings} />,
