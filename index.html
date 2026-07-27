@@ -2009,7 +2009,6 @@ const CATEGORIES = [
   { id:'shopping',  label:'Shopping',          abbr:'SHP', color:'var(--purple)'},
   { id:'travel',    label:'Travel',            abbr:'TRV', color:'#06b6d4'      },
   { id:'utilities', label:'Utilities',         abbr:'UTL', color:'var(--yellow)'},
-  { id:'savings',   label:'Savings',           abbr:'SAV', color:'var(--green)' },   // legacy catch-all; kept so old data stays visible
   { id:'hysa',      label:'HYSA',              abbr:'HYS', color:'var(--accent)' },
   { id:'rothIRA',   label:'Roth IRA',          abbr:'IRA', color:'var(--purple)' },
   { id:'other',     label:'Other',             abbr:'OTH', color:'var(--t3)'    },
@@ -2045,6 +2044,11 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   const payDates    = paycheckDatesForMonth(now.getFullYear(), now.getMonth());
   const paychecksThisMonth = transactions.filter(t=>t.kind==='paycheck' && t.date && t.date.startsWith(monthStr));
   const checkCount  = Math.min(paychecksThisMonth.length, perMonth);
+  // 401(k) isn't a category any transaction is tagged with — it's withheld
+  // automatically per logged paycheck — so its "actual" for the This Month
+  // list below is synthesized from paychecksThisMonth rather than read out
+  // of byCategory like every other row.
+  byCategory['__401k__'] = round2(paychecksThisMonth.reduce((s,p)=>s+(p.employee401k||0), 0));
   const monthName   = now.toLocaleDateString('en-US',{month:'long', year:'numeric'});
   const baseDeposit = netPerCheck(settings);          // $1,713 take-home
   const nextPayDate = payDates[Math.min(checkCount, perMonth-1)];
@@ -2138,9 +2142,14 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   ];
 
   // Category bars for "This Month" (only show if transactions exist)
+  // HYSA, Roth IRA and 401(k) are separate account categories — never
+  // combined into one "Savings" row — matching how Spending Insights and the
+  // Net Worth page already keep them distinct.
   const catSpendRows = phase.isEarly || phase.isPreEmployment ? [
     { label:'Utilities',  cat:'utilities', budget:budget.utilitiesAndFee },
-    { label:'Savings',    cat:'savings',   budget:(budget.rothIRA||0)+(budget.hysa||0) },
+    { label:'HYSA',       cat:'hysa',      budget:budget.hysa||0 },
+    { label:'Roth IRA',   cat:'rothIRA',   budget:budget.rothIRA||0 },
+    { label:'401(k)',     cat:'__401k__',  budget:empMonthly },
     { label:'Groceries',  cat:'groceries', budget:budget.groceries },
     { label:'Gas',        cat:'gas',       budget:budget.gas },
     { label:'Dining',     cat:'dining',    budget:budget.outToEat },
@@ -2149,7 +2158,9 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   ] : [
     { label:'Housing',    cat:'housing',   budget:budget.rentAndFee },
     { label:'Utilities',  cat:'utilities', budget:budget.utilities },
-    { label:'Savings',    cat:'savings',   budget:(budget.rothIRA||0)+(budget.hysa||0) },
+    { label:'HYSA',       cat:'hysa',      budget:budget.hysa||0 },
+    { label:'Roth IRA',   cat:'rothIRA',   budget:budget.rothIRA||0 },
+    { label:'401(k)',     cat:'__401k__',  budget:empMonthly },
     { label:'Groceries',  cat:'groceries', budget:budget.groceries },
     { label:'Gas',        cat:'gas',       budget:budget.gas },
     { label:'Dining',     cat:'dining',    budget:budget.outToEat },
@@ -2779,7 +2790,7 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals }) 
                       <div className="tx-body">
                         <div className="tx-desc">{t.description}</div>
                         <div className="tx-meta">
-                          {cat?.label} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                          {catLabel(t.category)} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
                         </div>
                       </div>
                       <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
