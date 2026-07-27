@@ -1033,6 +1033,60 @@ function usePersist(key, def, migrate) {
   return [val, setVal];
 }
 
+// ── Backup / restore ───────────────────────────────────────────────────
+// This app has no server and no account — each browser/device holds its
+// own completely separate copy of localStorage. Export/import is the
+// manual bridge between devices: read the raw persisted JSON directly
+// (what's actually saved, not any unsaved in-memory form state), bundle it
+// into one file, and on the other end write it back verbatim. Writing
+// raw + reloading (rather than pushing into React state) means the normal
+// usePersist/migrate path runs exactly as it would for any other load, so
+// an export from an older build still migrates correctly on import.
+const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth'];
+
+function exportBackup() {
+  const data = {};
+  for (const k of BACKUP_KEYS) {
+    const raw = localStorage.getItem(k);
+    if (raw == null) continue;
+    try { data[k] = JSON.parse(raw); } catch { /* skip anything unreadable */ }
+  }
+  const payload = { app: 'finance-dashboard', exportedAt: new Date().toISOString(), data };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `finance-backup-${dateKey(new Date())}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Reads and validates the file; the actual write only happens after the
+// caller confirms, since this replaces whatever is currently on THIS device.
+function readBackupFile(file, cb) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    let parsed;
+    try { parsed = JSON.parse(reader.result); }
+    catch { cb({ ok:false, error:'That file is not valid JSON.' }); return; }
+    const data = parsed && typeof parsed.data === 'object' ? parsed.data : null;
+    if (!data || !BACKUP_KEYS.some(k => k in data)) {
+      cb({ ok:false, error:'That file does not look like a Finance backup.' });
+      return;
+    }
+    cb({ ok:true, data });
+  };
+  reader.onerror = () => cb({ ok:false, error:'Could not read that file.' });
+  reader.readAsText(file);
+}
+function applyBackup(data) {
+  for (const k of BACKUP_KEYS) {
+    if (k in data) localStorage.setItem(k, JSON.stringify(data[k]));
+  }
+}
+
 // ── Income / paycheck-schedule helpers ────────────────────────────────
 const round2 = n => Math.round(((+n||0) + Number.EPSILON) * 100) / 100;
 
@@ -3888,6 +3942,19 @@ function SettingDerived({ label, value, hint }) {
 function Settings({ settings, setSettings }) {
   const [local,setLocal]=useState(settings);
   const [saved,setSaved]=useState(false);
+  const [importMsg,setImportMsg]=useState(null);   // {type:'error'|'ok', text}
+  const fileInputRef=useRef(null);
+  const handleImportFile=e=>{
+    const file=e.target.files&&e.target.files[0];
+    e.target.value='';   // reset so picking the same file again still fires onChange
+    if(!file) return;
+    readBackupFile(file, res=>{
+      if(!res.ok){ setImportMsg({type:'error',text:res.error}); return; }
+      if(!window.confirm('Import this backup? It will replace all data on THIS device — settings, transactions, goals, net worth, and commissions. This cannot be undone.')) return;
+      applyBackup(res.data);
+      location.reload();
+    });
+  };
   // Mirrors `local` SYNCHRONOUSLY. Tapping Save blurs the field you were in, so
   // its commit and the click land in the same tick — reading `local` there would
   // save the value from the previous render and silently drop that last edit.
@@ -3939,6 +4006,30 @@ function Settings({ settings, setSettings }) {
           {saved&&<span className="badge badge-green">Saved</span>}
           <button type="button" className="btn btn-ghost" onClick={handleReset}>Reset</button>
         </div>
+      </div>
+
+      {/* This app has no account or server — each device holds a fully
+          separate copy of everything. Export/import is the manual bridge:
+          download one file here, then import that exact file on another
+          device to copy this data over. */}
+      <div className="card">
+        <div className="card-label">Backup &amp; Transfer</div>
+        <p style={{fontSize:'.72rem',color:'var(--t3)',margin:'0 0 12px',lineHeight:1.5}}>
+          This app has no cloud sync — your phone and laptop each keep a separate copy.
+          Export a backup here, then import that same file on the other device to copy
+          your data over. Exports whatever is currently saved, so hit Save below first
+          if you have unsaved edits.
+        </p>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+          <button type="button" className="btn btn-primary" onClick={exportBackup}>Export Backup</button>
+          <button type="button" className="btn btn-ghost" onClick={()=>fileInputRef.current&&fileInputRef.current.click()}>Import Backup</button>
+          <input ref={fileInputRef} type="file" accept="application/json,.json" style={{display:'none'}} onChange={handleImportFile} />
+        </div>
+        {importMsg && (
+          <div style={{marginTop:10,fontSize:'.72rem',color:importMsg.type==='error'?'var(--red)':'var(--accent)'}}>
+            {importMsg.text}
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSave} style={{display:'flex',flexDirection:'column',gap:14}}>
