@@ -4694,10 +4694,27 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',run);}
   else{run();}
 })();
-// Register service worker for PWA / offline support
+// Register service worker for PWA / offline support.
+// A new sw.js can finish installing and activating (skipWaiting +
+// clients.claim() in sw.js) WHILE this page is still showing content from
+// the worker that was active when the page loaded — the browser doesn't
+// re-render an already-open page just because control changed underneath
+// it. Without the reload below, a phone that visited before a deploy can
+// sit on stale content indefinitely, only ever catching up on some later,
+// unrelated navigation. `controllerchange` fires the instant the new
+// worker takes over; reloading then means the update is visible on THIS
+// visit, not "eventually, next time."
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
-    navigator.serviceWorker.register('sw.js').catch(function(){});
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      reg.update().catch(function(){});
+    }).catch(function(){});
+  });
+  var swRefreshed = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    if (swRefreshed) return;
+    swRefreshed = true;
+    window.location.reload();
   });
 }
 </script>
