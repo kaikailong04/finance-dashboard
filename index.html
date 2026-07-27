@@ -844,7 +844,7 @@ function getPhaseInfo(startDateStr, ref) {
 
 // ── Defaults ───────────────────────────────────────────────────────────
 const DEFAULT_SETTINGS = {
-  schemaVersion:        2,
+  schemaVersion:        3,
   startDate:            '2026-07-01',
   grossBase:            5000,
   grossOTE:             6667,
@@ -952,7 +952,7 @@ function deepMerge(def, stored) {
 // ── Schema migrations ─────────────────────────────────────────────────
 // Run ONCE on load, then the record is stamped with its version. They must
 // never re-sync the two budget scenarios on subsequent loads.
-const SETTINGS_SCHEMA_VERSION = 2;
+const SETTINGS_SCHEMA_VERSION = 3;
 const GOALS_SCHEMA_VERSION    = 2;
 
 function migrateSettings(raw) {
@@ -983,6 +983,25 @@ function migrateSettings(raw) {
   // it as a per-paycheck amount so the 2×/month schedule drives everything.
   if (s.netPerPaycheck == null && typeof s.takeHome === 'number' && s.takeHome > 0)
     s.netPerPaycheck = round2(s.takeHome / (s.paychecksPerMonth || 2));
+
+  // v2 → v3 · stale placeholder income. Any browser that saved settings
+  // before the paycheck-schedule fix has the OLD hardcoded default
+  // (takeHome: 3755, no netPerPaycheck) rather than a value the user
+  // actually entered. The v1→v2 step above dutifully derived
+  // netPerPaycheck = 3755/2 = 1877.50 from it — which is why the Dashboard
+  // could still show $3,755/mo (2 × 1877.50) on a device that never touched
+  // Settings, even after every other fix had deployed. Both values match
+  // the exact pre-fix placeholder, so this is safe to correct once.
+  if (s.netPerPaycheck === 1877.5 && s.takeHome === 3755) {
+    s.netPerPaycheck = 1713;
+    s.takeHome = 3426;
+  }
+  // Same collision, cosmetic only: 'employerMatchPct' existed pre-fix with a
+  // different meaning (a flat 4%) and is now "match applies to the first N%
+  // of pay" (6%). It was never read by the match dollar calculation (that
+  // uses employerMatchRate/employerMatchAnnualCap, both new keys), so this
+  // only ever affected the Settings label, never a real number.
+  if (s.employerMatchPct === 4) s.employerMatchPct = 6;
 
   s.schemaVersion = SETTINGS_SCHEMA_VERSION;
   return s;
