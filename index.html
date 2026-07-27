@@ -1167,7 +1167,7 @@ const safePct = (part, whole) => (whole > 0 && isFinite(part / whole) ? (part / 
 // ── Classification ────────────────────────────────────────────────────
 // Categories that represent moving money into the user's own accounts
 // rather than consuming it.
-const SAVINGS_CATEGORIES    = ['savings'];
+const SAVINGS_CATEGORIES    = ['savings', 'hysa', 'rothIRA'];
 const RETIREMENT_KEYWORDS   = ['401k', '401(k)', 'roth', 'ira', 'retirement', 'employer match', 'vanguard', 'fidelity'];
 const SAVINGS_KEYWORDS      = ['hysa', 'savings', 'emergency fund', 'ally bank', 'marcus', 'transfer to savings'];
 const TRANSFER_KEYWORDS     = ['transfer', 'xfer', 'zelle to self', 'to checking', 'from checking', 'internal transfer', 'balance transfer'];
@@ -2009,7 +2009,9 @@ const CATEGORIES = [
   { id:'shopping',  label:'Shopping',          abbr:'SHP', color:'var(--purple)'},
   { id:'travel',    label:'Travel',            abbr:'TRV', color:'#06b6d4'      },
   { id:'utilities', label:'Utilities',         abbr:'UTL', color:'var(--yellow)'},
-  { id:'savings',   label:'Savings',           abbr:'SAV', color:'var(--green)' },
+  { id:'savings',   label:'Savings',           abbr:'SAV', color:'var(--green)' },   // legacy catch-all; kept so old data stays visible
+  { id:'hysa',      label:'HYSA',              abbr:'HYS', color:'var(--accent)' },
+  { id:'rothIRA',   label:'Roth IRA',          abbr:'IRA', color:'var(--purple)' },
   { id:'other',     label:'Other',             abbr:'OTH', color:'var(--t3)'    },
 ];
 
@@ -2585,7 +2587,7 @@ function Budget({ settings, transactions }) {
 }
 
 // ── Spending ──────────────────────────────────────────────────────────
-function Spending({ settings, transactions, setTransactions }) {
+function Spending({ settings, transactions, setTransactions, goals, setGoals }) {
   const now   = new Date();
   const [viewMonth, setViewMonth] = useState({y:now.getFullYear(),m:now.getMonth()});
   const [showForm, setShowForm]   = useState(false);
@@ -2607,19 +2609,36 @@ function Spending({ settings, transactions, setTransactions }) {
   const byCategory = {};
   for (const t of expenses) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
 
+  // HYSA and Roth IRA are tracked as separate budget lines and separate
+  // categories — never combined into one "Savings" bucket. Legacy 'savings'-
+  // tagged transactions get no budget line here (lim=0 hides the bar) but
+  // stay visible in the category list below via CATEGORIES' catch-all entry.
   const catBudget = isRentFree ? {
     housing:   budget.utilitiesAndFee||0,
     groceries: budget.groceries, gas:budget.gas, dining:budget.outToEat,
     shopping:  budget.shopping,  travel:budget.funTravel, utilities:budget.utilitiesAndFee||0,
-    savings:   (budget.rothIRA||0)+(budget.hysa||0), other:0,
+    hysa:      budget.hysa||0,   rothIRA: budget.rothIRA||0, other:0,
   } : {
     housing:   budget.rentAndFee||0,
     groceries: budget.groceries, gas:budget.gas, dining:budget.outToEat,
     shopping:  budget.shopping,  travel:budget.funTravel, utilities:budget.utilities||0,
-    savings:   (budget.rothIRA||0)+(budget.hysa||0), other:0,
+    hysa:      budget.hysa||0,   rothIRA: budget.rothIRA||0, other:0,
   };
 
   const totalBudget = Object.values(catBudget).reduce((s,v)=>s+v, 0);
+
+  // Logging a HYSA or Roth IRA transaction here is a real contribution, so it
+  // syncs the same goals balance the paycheck flow and Commission tracker
+  // write to — one balance, fed from every place money can enter it. Paycheck
+  // rows are category:'income' (never 'hysa'/'rothIRA'), so this never
+  // double-counts the automatic per-paycheck allocation.
+  const syncSavings = (category, amt, sign) => {
+    if (category === 'hysa') {
+      setGoals(g => ({ ...g, hysaBalance: round2(Math.max((g.hysaBalance||0) + sign*amt, 0)) }));
+    } else if (category === 'rothIRA') {
+      setGoals(g => ({ ...g, rothIRAOverride: round2(Math.max(currentRothBal(settings,g) + sign*amt, 0)) }));
+    }
+  };
 
   const handleAdd = e => {
     e.preventDefault();
@@ -2630,11 +2649,17 @@ function Spending({ settings, transactions, setTransactions }) {
       description:form.description.trim()||form.category,
       amount:amt, category:form.category, type:form.type,
     },...prev]);
+    if (form.type === 'expense') syncSavings(form.category, amt, +1);
     setForm(f=>({...f,description:'',amount:''}));
     setShowForm(false);
   };
 
-  const del    = id => { if(window.confirm('Delete this transaction?')) setTransactions(p=>p.filter(t=>t.id!==id)); };
+  const del = id => {
+    if (!window.confirm('Delete this transaction?')) return;
+    const t = transactions.find(x=>x.id===id);
+    setTransactions(p=>p.filter(t=>t.id!==id));
+    if (t && t.type === 'expense') syncSavings(t.category, safeNum(t.amount), -1);
+  };
   const sorted = [...monthTx].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const monthLabel = new Date(viewMonth.y,viewMonth.m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
 
@@ -4592,7 +4617,7 @@ function App() {
   const pages = {
     dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} goTo={setTab} />,
     budget:     <Budget     settings={settings} transactions={transactions} />,
-    spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} />,
+    spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} goals={goals} setGoals={setGoals} />,
     insights:   <SpendingInsights settings={settings} transactions={transactions} setTransactions={setTx} goTo={setTab} />,
     goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} transactions={transactions} />,
     commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} setGoals={setGoals} />,
