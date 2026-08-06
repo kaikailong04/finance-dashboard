@@ -1716,6 +1716,12 @@ function MerchantLogo({ description, size=32 }) {
 function getFilteredTransactions(transactions, filters) {
   const f = filters || {};
   const list = Array.isArray(transactions) ? transactions : [];
+  const q = (f.search || '').trim().toLowerCase();
+  // safeNum only accepts actual numbers (by design, elsewhere it's guarding
+  // against NaN/undefined reaching the UI) — these two are the one spot that
+  // needs a string→number parse first, since they come straight off inputs.
+  const min = f.minAmount !== '' && f.minAmount != null ? safeNum(parseFloat(f.minAmount)) : null;
+  const max = f.maxAmount !== '' && f.maxAmount != null ? safeNum(parseFloat(f.maxAmount)) : null;
   return list.filter((t, i) => {
     const k = txDateKey(t);
     if (!isValidDateKey(k)) return false;
@@ -1727,6 +1733,19 @@ function getFilteredTransactions(transactions, filters) {
     if (f.merchant && f.merchant !== 'all' && normalizeMerchantName(t.description) !== f.merchant) return false;
     if (f.status === 'pending'   && !t.pending) return false;
     if (f.status === 'completed' &&  t.pending) return false;
+    // 'recurring' is a pseudo-type — matches how logRecurringTransaction tags
+    // its own transactions (paymentMethod:'Recurring'), not t.type.
+    if (f.type && f.type !== 'all') {
+      if (f.type === 'recurring' ? t.paymentMethod !== 'Recurring' : t.type !== f.type) return false;
+    }
+    if (f.paymentMethod && f.paymentMethod !== 'all' && (t.paymentMethod||'') !== f.paymentMethod) return false;
+    if (min != null && safeNum(t.amount) < min) return false;
+    if (max != null && safeNum(t.amount) > max) return false;
+    if (q) {
+      const hay = [t.description, t.merchant, t.notes, catLabel(categoryOf(t)), accountOf(t), t.toAccount]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
     if (f.excludeDuplicates !== false && isDuplicateTransaction(t, list, list.indexOf(t))) return false;
     return true;
   });
@@ -4599,13 +4618,13 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
   const [rankMode, setRankMode] = useState('spend');
   const [topN, setTopN]         = useState(5);
   const [useRange, setUseRange] = useState(false);
-  const [filters, setFilters]   = useState({ from:'', to:'', category:'all', merchant:'all', account:'all', status:'all' });
+  const [filters, setFilters]   = useState({ from:'', to:'', category:'all', merchant:'all', account:'all', status:'all', search:'', minAmount:'', maxAmount:'', paymentMethod:'all', type:'all' });
   const [showReview, setShowReview] = useState(false);
 
   const monthKey = `${cursor.y}-${String(cursor.m+1).padStart(2,'0')}`;
   const setF = (k,v) => setFilters(f => ({ ...f, [k]: v }));
   const resetFilters = () => {
-    setFilters({ from:'', to:'', category:'all', merchant:'all', account:'all', status:'all' });
+    setFilters({ from:'', to:'', category:'all', merchant:'all', account:'all', status:'all', search:'', minAmount:'', maxAmount:'', paymentMethod:'all', type:'all' });
     setUseRange(false); setSelDate(null); setDrillCat(null);
     setCursor({ y: today.getFullYear(), m: today.getMonth() });
   };
@@ -4924,6 +4943,11 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
 
       {/* ── Filters ── */}
       <div className="card">
+        <div className="fg" style={{marginBottom:12}}>
+          <label htmlFor="f-search">Search</label>
+          <input id="f-search" type="text" placeholder="Merchant, category, account, notes…"
+            value={filters.search} onChange={e=>setF('search',e.target.value)}/>
+        </div>
         <div className="flt-bar">
           <div className="flt-field">
             <label htmlFor="f-period">Period</label>
@@ -4991,6 +5015,33 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
               <option value="completed">Completed</option>
               <option value="pending">Pending</option>
             </select>
+          </div>
+          <div className="flt-field">
+            <label htmlFor="f-type">Type</label>
+            <select id="f-type" value={filters.type} onChange={e=>setF('type',e.target.value)}>
+              <option value="all">All</option>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+              <option value="transfer">Transfer</option>
+              <option value="recurring">Recurring</option>
+            </select>
+          </div>
+          <div className="flt-field">
+            <label htmlFor="f-pm">Payment Method</label>
+            <select id="f-pm" value={filters.paymentMethod} onChange={e=>setF('paymentMethod',e.target.value)}>
+              <option value="all">All methods</option>
+              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+              <option value="Transfer">Transfer</option>
+              <option value="Recurring">Recurring</option>
+            </select>
+          </div>
+          <div className="flt-field" style={{flex:'1 1 90px'}}>
+            <label htmlFor="f-min">Min Amount</label>
+            <input id="f-min" type="number" min="0" step="1" placeholder="$0" value={filters.minAmount} onChange={e=>setF('minAmount',e.target.value)}/>
+          </div>
+          <div className="flt-field" style={{flex:'1 1 90px'}}>
+            <label htmlFor="f-max">Max Amount</label>
+            <input id="f-max" type="number" min="0" step="1" placeholder="Any" value={filters.maxAmount} onChange={e=>setF('maxAmount',e.target.value)}/>
           </div>
           <div className="flt-field" style={{flex:'0 0 auto'}}>
             <label aria-hidden="true">&nbsp;</label>
