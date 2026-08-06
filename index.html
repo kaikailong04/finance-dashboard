@@ -67,6 +67,55 @@
   --r-s: 10px;
 
   --shadow: 0 0 0 1px var(--border);
+
+  /* Blurred sticky chrome (header / bottom nav) — a touch more opaque than
+     the page background so content doesn't show through the blur seam. */
+  --header-bg: rgba(6,6,6,.96);
+  --navbar-bg: rgba(6,6,6,.98);
+
+  /* Hand-drawn SVG charts (net worth trend, etc.) set fill/stroke via
+     inline style={{...}} using these rather than literal hex, so they stay
+     legible in both themes. */
+  --chart-grid: #222222;
+  --chart-axis: #52525b;
+  --chart-zero: #3f3f46;
+
+  /* Subtle neutral "wash" fills (icon badge backgrounds, thin progress
+     tracks, faint hairlines) — white-on-dark by default, flipped to
+     black-on-light below so they stay visible instead of vanishing. */
+  --wash-1: rgba(255,255,255,.02);
+  --wash-2: rgba(255,255,255,.05);
+  --wash-3: rgba(255,255,255,.09);
+}
+
+/* ── Light theme (Settings → Appearance) — same tokens, light values.
+   Every component already reads var(--bg)/var(--s1)/var(--t1)/etc., so
+   this block is the entire light theme; nothing else needs to change. ── */
+:root[data-theme="light"] {
+  --bg:      #f5f6f7;
+  --s1:      #ffffff;
+  --s2:      #ffffff;
+  --s3:      #eef0f2;
+  --border:  rgba(0,0,0,0.09);
+  --border2: rgba(0,0,0,0.14);
+
+  --accent-lt: color-mix(in srgb, var(--accent) 10%, transparent);
+
+  --t1: #0a0a0a;
+  --t2: #43454a;
+  --t3: #8a8d93;
+  --t4: #c2c4c9;
+
+  --header-bg: rgba(255,255,255,.92);
+  --navbar-bg: rgba(255,255,255,.96);
+
+  --chart-grid: #e2e4e8;
+  --chart-axis: #8a8d93;
+  --chart-zero: #c2c4c9;
+
+  --wash-1: rgba(0,0,0,.02);
+  --wash-2: rgba(0,0,0,.04);
+  --wash-3: rgba(0,0,0,.07);
 }
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -91,7 +140,7 @@ html{-webkit-text-size-adjust:100%}
 
 .header{
   position:sticky;top:0;z-index:100;
-  background:rgba(6,6,6,.96);
+  background:var(--header-bg);
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   border-bottom:1px solid var(--border);
   /* Extend into the notch / Dynamic Island area */
@@ -128,7 +177,7 @@ html{-webkit-text-size-adjust:100%}
 
 .mobile-nav{
   display:none;position:fixed;bottom:0;left:0;right:0;
-  background:rgba(6,6,6,.98);
+  background:var(--navbar-bg);
   border-top:1px solid var(--border);z-index:100;
   padding-bottom:env(safe-area-inset-bottom);
 }
@@ -542,7 +591,7 @@ html{-webkit-text-size-adjust:100%}
 .sp-nums{font-size:.78rem;font-variant-numeric:tabular-nums}
 .sp-spent{color:var(--t1);font-weight:600}
 .sp-bgt{color:var(--t4)}
-.bar{height:2px;background:rgba(255,255,255,.05);border-radius:99px;overflow:hidden}
+.bar{height:2px;background:var(--wash-2);border-radius:99px;overflow:hidden}
 .bar-in{height:100%;border-radius:99px;background:var(--accent);transition:width .5s cubic-bezier(.4,0,.2,1)}
 .bar-in.warn{background:var(--yellow)}
 .bar-in.over{background:var(--red)}
@@ -557,7 +606,7 @@ html{-webkit-text-size-adjust:100%}
 .gc-sub{font-size:.72rem;color:var(--t3);margin-top:3px}
 .gc-pct{font-size:1.6rem;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums;text-align:right;line-height:1}
 .gc-of{font-size:.68rem;color:var(--t3);text-align:right;margin-top:3px}
-.gc-bar{height:3px;background:rgba(255,255,255,.05);border-radius:99px;overflow:hidden;margin-bottom:12px}
+.gc-bar{height:3px;background:var(--wash-2);border-radius:99px;overflow:hidden;margin-bottom:12px}
 .gc-fill{height:100%;border-radius:99px}
 .gc-foot{display:flex;justify-content:space-between;align-items:center}
 .gc-rate{font-size:.72rem;color:var(--t3)}
@@ -571,8 +620,8 @@ html{-webkit-text-size-adjust:100%}
   border:none;font-family:inherit;
 }
 .phase-pill-on{background:var(--accent);color:#000}
-.phase-pill-off{background:rgba(255,255,255,.05);color:var(--t3)}
-.phase-pill-off:hover{background:rgba(255,255,255,.09);color:var(--t2)}
+.phase-pill-off{background:var(--wash-2);color:var(--t3)}
+.phase-pill-off:hover{background:var(--wash-3);color:var(--t2)}
 
 /* ── Add button (green pill) ─────────────────────────────────────── */
 .add-btn{
@@ -785,6 +834,25 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .seg button.on{background:var(--s3);color:var(--t1)}
 .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
+/* ── Toggle rows (Settings → Notifications) ── */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer}
+.toggle-row:last-child{border-bottom:0}
+.toggle-row-lbl{font-size:.82rem;font-weight:600;color:var(--t1)}
+.toggle-row-sub{font-size:.66rem;color:var(--t3);margin-top:2px}
+input.switch{
+  appearance:none;-webkit-appearance:none;flex-shrink:0;
+  width:38px;height:22px;border-radius:99px;background:var(--wash-3);
+  border:1px solid var(--border2);position:relative;cursor:pointer;
+  transition:background .15s;
+}
+input.switch::before{
+  content:'';position:absolute;top:1px;left:1px;width:18px;height:18px;border-radius:50%;
+  background:var(--t2);transition:transform .15s,background .15s;
+}
+input.switch:checked{background:var(--accent-lt);border-color:var(--accent)}
+input.switch:checked::before{transform:translateX(16px);background:var(--accent)}
+input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
 /* ── Net worth account rows ── */
 .nwa-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 15px;border-bottom:1px solid var(--border)}
 .nwa-row:last-child{border-bottom:0}
@@ -816,10 +884,10 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
   width:56px;height:56px;border-radius:50%;
   background:var(--accent);color:#000;border:none;
   display:flex;align-items:center;justify-content:center;
-  box-shadow:0 10px 28px rgba(0,200,5,.35),0 2px 8px rgba(0,0,0,.5);
+  box-shadow:0 10px 28px color-mix(in srgb, var(--accent) 35%, transparent),0 2px 8px rgba(0,0,0,.5);
   transition:transform .12s,box-shadow .12s;
 }
-.fab:hover{box-shadow:0 12px 32px rgba(0,200,5,.45),0 2px 8px rgba(0,0,0,.5)}
+.fab:hover{box-shadow:0 12px 32px color-mix(in srgb, var(--accent) 45%, transparent),0 2px 8px rgba(0,0,0,.5)}
 .fab:active{transform:scale(.92)}
 @media(max-width:700px){ .fab{ right:18px; bottom:calc(80px + env(safe-area-inset-bottom)); } }
 
@@ -1178,6 +1246,15 @@ const DEFAULT_SETTINGS = {
     outToEat:          200,
     shopping:          150,
   },
+
+  // ── Personalization (Priority 18) ──────────────────────────────────
+  accentColor: '#00C805',
+  theme:       'dark',      // 'dark' | 'light'
+  notifPrefs: {
+    creditCardAlerts: true,   // per-card Notifications feed on Account Detail
+    billReminders:    true,   // "due soon" cards on Dashboard / Bills
+    budgetAlerts:     true,   // over-budget callouts on Spending / Dashboard
+  },
 };
 
 const DEFAULT_GOALS = {
@@ -1325,7 +1402,7 @@ function usePersist(key, def, migrate) {
 // raw + reloading (rather than pushing into React state) means the normal
 // usePersist/migrate path runs exactly as it would for any other load, so
 // an export from an older build still migrates correctly on import.
-const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth', 'fd_accounts', 'fd_bills', 'fd_recurring', 'fd_customgoals'];
+const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth', 'fd_accounts', 'fd_bills', 'fd_recurring', 'fd_customgoals', 'fd_customcategories'];
 
 function exportBackup() {
   const data = {};
@@ -1368,6 +1445,93 @@ function applyBackup(data) {
   for (const k of BACKUP_KEYS) {
     if (k in data) localStorage.setItem(k, JSON.stringify(data[k]));
   }
+}
+
+// ── CSV export / import ────────────────────────────────────────────────
+// Separate from the JSON backup above: this is a plain spreadsheet-friendly
+// transaction ledger — for opening in Excel/Sheets or importing history from
+// a bank export, not a full-fidelity copy of every screen's settings.
+const CSV_COLUMNS = ['Date','Type','Category','Description','Merchant','Amount','Account','Payment Method','Notes'];
+function csvEscape(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+function exportTransactionsCSV(transactions) {
+  const rows = [CSV_COLUMNS.join(',')];
+  for (const t of [...(transactions||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''))) {
+    rows.push([
+      t.date||'', t.type||'', catLabel(categoryOf(t)), t.description||'', t.merchant||'',
+      t.amount!=null?t.amount:'', accountOf(t), t.paymentMethod||'', t.notes||'',
+    ].map(csvEscape).join(','));
+  }
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `finance-transactions-${dateKey(new Date())}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+// One line of CSV → array of fields, respecting quoted commas/newlines.
+// Small hand-rolled parser rather than a split(',') — bank exports and
+// Excel both quote fields that contain commas (e.g. "Amazon, Inc").
+function parseCSVLine(line) {
+  const out = []; let cur = ''; let inQ = false;
+  for (let i=0;i<line.length;i++){
+    const c = line[i];
+    if (inQ) {
+      if (c === '"' && line[i+1] === '"') { cur+='"'; i++; }
+      else if (c === '"') inQ = false;
+      else cur += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ',') { out.push(cur); cur=''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+function parseTransactionsCSV(text, accounts) {
+  const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim() !== '');
+  if (!lines.length) return { rows:[], errors:['File is empty.'] };
+  const header = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+  const idx = name => header.indexOf(name);
+  const iDate=idx('date'), iType=idx('type'), iCat=idx('category'), iDesc=idx('description'),
+        iMerch=idx('merchant'), iAmt=idx('amount'), iAcct=idx('account'), iPm=idx('payment method'), iNotes=idx('notes');
+  if (iDate === -1 || iAmt === -1) {
+    return { rows:[], errors:[`Missing required column${iDate===-1&&iAmt===-1?'s':''}: ${[iDate===-1&&'Date',iAmt===-1&&'Amount'].filter(Boolean).join(', ')}.`] };
+  }
+  const rows = [], errors = [];
+  const acctByName = new Map((accounts||[]).filter(a=>!a.archived).map(a => [a.name.trim().toLowerCase(), a]));
+  const catByLabel  = new Map(CATEGORIES.map(c => [c.label.toLowerCase(), c.id]));
+  for (let li=1; li<lines.length; li++) {
+    const f = parseCSVLine(lines[li]);
+    const rawDate = (f[iDate]||'').trim();
+    const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate
+      : (() => { const d = new Date(rawDate); return isNaN(d) ? null : ymd(d); })();
+    const amt = parseFloat((f[iAmt]||'').replace(/[$,]/g,''));
+    if (!parsedDate) { errors.push(`Row ${li+1}: unrecognized date "${rawDate}".`); continue; }
+    if (!isFinite(amt)) { errors.push(`Row ${li+1}: unrecognized amount "${f[iAmt]}".`); continue; }
+    const rawType = (iType>=0 ? f[iType] : '').trim().toLowerCase();
+    const type = rawType === 'income' ? 'income' : rawType === 'transfer' ? 'expense' /* transfers need two accounts — import as a plain expense rather than silently move money */ : 'expense';
+    const rawCat = (iCat>=0 ? f[iCat] : '').trim();
+    const category = type==='income' ? 'income' : (catByLabel.get(rawCat.toLowerCase()) || (CATEGORIES.some(c=>c.id===rawCat)?rawCat:'other'));
+    const acctName = (iAcct>=0 ? f[iAcct] : '').trim();
+    const matchedAcct = acctByName.get(acctName.toLowerCase());
+    rows.push({
+      id: String(Date.now())+Math.random().toString(36).slice(2,6)+li,
+      date: parsedDate, type, amount: round2(Math.abs(amt)), category,
+      description: (iDesc>=0 ? f[iDesc] : '').trim() || (iMerch>=0 ? f[iMerch] : '').trim() || catLabel(category),
+      merchant: (iMerch>=0 ? f[iMerch] : '').trim(),
+      notes: (iNotes>=0 ? f[iNotes] : '').trim(),
+      paymentMethod: (iPm>=0 ? f[iPm] : '').trim() || 'Imported',
+      accountId: matchedAcct ? matchedAcct.id : null,
+      account: matchedAcct ? matchedAcct.name : (acctName || 'Unspecified'),
+      importedFromCSV: true,
+    });
+  }
+  return { rows, errors };
 }
 
 // ── Income / paycheck-schedule helpers ────────────────────────────────
@@ -3247,8 +3411,8 @@ function ProjectedChart({ settings }) {
       <svg width="100%" viewBox={`0 0 ${VW} ${VH}`} style={{display:'block',overflow:'visible'}}>
         <defs>
           <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#00C805" stopOpacity="0.18"/>
-            <stop offset="100%" stopColor="#00C805" stopOpacity="0"/>
+            <stop offset="0%" style={{stopColor:'var(--accent)'}} stopOpacity="0.18"/>
+            <stop offset="100%" style={{stopColor:'var(--accent)'}} stopOpacity="0"/>
           </linearGradient>
         </defs>
 
@@ -3256,14 +3420,14 @@ function ProjectedChart({ settings }) {
         {yTicks.map((v, i) => (
           <line key={i}
             x1={PL} y1={toY(v)} x2={VW - PR} y2={toY(v)}
-            stroke="rgba(255,255,255,0.05)" strokeWidth="1"
+            style={{stroke:'var(--wash-2)'}} strokeWidth="1"
             strokeDasharray={v === 0 ? 'none' : '3,6'}/>
         ))}
 
         {/* Y-axis labels */}
         {yTicks.map((v, i) => (
           <text key={i} x={PL - 6} y={toY(v) + 4} textAnchor="end"
-            fill="#484848" fontSize="13" fontFamily="Inter,system-ui,sans-serif">
+            style={{fill:'var(--t3)'}} fontSize="13" fontFamily="Inter,system-ui,sans-serif">
             {fmtY(v)}
           </text>
         ))}
@@ -3272,7 +3436,7 @@ function ProjectedChart({ settings }) {
         <path d={areaPath} fill="url(#pg)"/>
 
         {/* Line */}
-        <path d={linePath} fill="none" stroke="#00C805" strokeWidth="2"
+        <path d={linePath} fill="none" style={{stroke:'var(--accent)'}} strokeWidth="2"
           strokeLinecap="round" strokeLinejoin="round"/>
 
         {/* X-axis month labels */}
@@ -3282,7 +3446,7 @@ function ProjectedChart({ settings }) {
           const anchor = i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle';
           return (
             <text key={i} x={x} y={VH - 4} textAnchor={anchor}
-              fill="#484848" fontSize="13" fontFamily="Inter,system-ui,sans-serif">
+              style={{fill:'var(--t3)'}} fontSize="13" fontFamily="Inter,system-ui,sans-serif">
               {fmtX(p.date)}
             </text>
           );
@@ -3290,16 +3454,16 @@ function ProjectedChart({ settings }) {
 
         {/* Dots at each data point */}
         {coords.map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="2.5" fill="#00C805" opacity={i === 0 ? 0.4 : 0.7}/>
+          <circle key={i} cx={x} cy={y} r="2.5" style={{fill:'var(--accent)'}} opacity={i === 0 ? 0.4 : 0.7}/>
         ))}
 
         {/* Final dot + glow */}
-        <circle cx={fx} cy={fy} r="4.5" fill="#00C805"/>
-        <circle cx={fx} cy={fy} r="9"   fill="#00C805" opacity="0.15"/>
+        <circle cx={fx} cy={fy} r="4.5" style={{fill:'var(--accent)'}}/>
+        <circle cx={fx} cy={fy} r="9"   style={{fill:'var(--accent)'}} opacity="0.15"/>
 
         {/* Final value label — above the last dot */}
         <text x={fx} y={fy - 12} textAnchor="end"
-          fill="#00C805" fontSize="14" fontWeight="700" fontFamily="Inter,system-ui,sans-serif">
+          style={{fill:'var(--accent)'}} fontSize="14" fontWeight="700" fontFamily="Inter,system-ui,sans-serif">
           {currency(finalNW)}
         </text>
       </svg>
@@ -3325,7 +3489,12 @@ const TABS = [
   { id:'settings',  label:'Settings',   short:'More',   icon:'more'   },
 ];
 
-const CATEGORIES = [
+// Fixed set the rest of the app (budget scenario fields, forecasting, the
+// AI coach) is wired to by id — never user-deletable. User-defined
+// categories (Settings → Categories) are merged in ahead of the 'other'
+// catch-all by setCustomCategories() below, so CATEGORIES itself stays the
+// single source every consumer already reads without having to change.
+const BUILTIN_CATEGORIES = [
   { id:'housing',   label:'Housing',          abbr:'HSG', color:'var(--blue)'  },
   { id:'groceries', label:'Groceries',         abbr:'GRC', color:'var(--green)' },
   { id:'gas',       label:'Gas',               abbr:'GAS', color:'var(--yellow)'},
@@ -3337,6 +3506,21 @@ const CATEGORIES = [
   { id:'rothIRA',   label:'Roth IRA',          abbr:'IRA', color:'var(--purple)' },
   { id:'other',     label:'Other',             abbr:'OTH', color:'var(--t3)'    },
 ];
+const CUSTOM_CATEGORY_COLORS = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#9085e9','#e66767','#06b6d4','#f97316','#ec4899'];
+let CATEGORIES = BUILTIN_CATEGORIES;
+// Called once per render from App() — reassigning CATEGORIES (not mutating
+// BUILTIN_CATEGORIES) means every existing `CATEGORIES.map/filter(...)`
+// call site across the app picks up custom categories for free, and
+// resetting the catOrder() cache keeps chart colors in sync. Named
+// distinctly from the `customCategories` React state / its setCustomCategories
+// setter in App() — this is the module-level sync, not the state update.
+function setModuleCustomCategories(custom) {
+  const list = (custom||[]).filter(c=>c&&c.id);
+  CATEGORIES = list.length
+    ? [...BUILTIN_CATEGORIES.slice(0,-1), ...list, BUILTIN_CATEGORIES[BUILTIN_CATEGORIES.length-1]]
+    : BUILTIN_CATEGORIES;
+  _catOrder = null;
+}
 
 // ── Dashboard ─────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════
@@ -4100,11 +4284,11 @@ function Budget({ settings, transactions }) {
     { label:'Renters Insurance', limit:eb.rentersInsurance, cat:'other',     icon:'shield',  iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
     { label:'Roth IRA',          limit:eb.rothIRA,          cat:'savings',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
     { label:'HYSA',              limit:eb.hysa,             cat:'savings',   icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
-    { label:'Groceries',         limit:eb.groceries,        cat:'groceries', icon:'cart',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
-    { label:'Gas',               limit:eb.gas,              cat:'gas',       icon:'fuel',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
-    { label:'Travel',            limit:eb.funTravel,        cat:'travel',    icon:'plane',   iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
-    { label:'Dining',            limit:eb.outToEat,         cat:'dining',    icon:'fork',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
-    { label:'Shopping',          limit:eb.shopping,         cat:'shopping',  icon:'bag',     iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
+    { label:'Groceries',         limit:eb.groceries,        cat:'groceries', icon:'cart',    iconBg:'var(--wash-2)',iconClr:'#666'            },
+    { label:'Gas',               limit:eb.gas,              cat:'gas',       icon:'fuel',    iconBg:'var(--wash-2)',iconClr:'#666'            },
+    { label:'Travel',            limit:eb.funTravel,        cat:'travel',    icon:'plane',   iconBg:'var(--wash-2)',iconClr:'#666'            },
+    { label:'Dining',            limit:eb.outToEat,         cat:'dining',    icon:'fork',    iconBg:'var(--wash-2)',iconClr:'#666'            },
+    { label:'Shopping',          limit:eb.shopping,         cat:'shopping',  icon:'bag',     iconBg:'var(--wash-2)',iconClr:'#666'            },
   ];
   const laterRows = [
     { label:'Rent & Fee',        limit:lb.rentAndFee,       cat:'housing',   icon:'home',    iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
@@ -4112,11 +4296,11 @@ function Budget({ settings, transactions }) {
     { label:'Renters Insurance', limit:lb.rentersInsurance, cat:'other',     icon:'shield',  iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
     { label:'Roth IRA',          limit:lb.rothIRA,          cat:'savings',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
     { label:'HYSA',              limit:lb.hysa,             cat:'savings',   icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
-    { label:'Groceries',         limit:lb.groceries,        cat:'groceries', icon:'cart',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
-    { label:'Gas',               limit:lb.gas,              cat:'gas',       icon:'fuel',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
-    { label:'Travel',            limit:lb.funTravel,        cat:'travel',    icon:'plane',   iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
-    { label:'Dining',            limit:lb.outToEat,         cat:'dining',    icon:'fork',    iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
-    { label:'Shopping',          limit:lb.shopping,         cat:'shopping',  icon:'bag',     iconBg:'rgba(255,255,255,.05)',iconClr:'#666'            },
+    { label:'Groceries',         limit:lb.groceries,        cat:'groceries', icon:'cart',    iconBg:'var(--wash-2)',iconClr:'#666'            },
+    { label:'Gas',               limit:lb.gas,              cat:'gas',       icon:'fuel',    iconBg:'var(--wash-2)',iconClr:'#666'            },
+    { label:'Travel',            limit:lb.funTravel,        cat:'travel',    icon:'plane',   iconBg:'var(--wash-2)',iconClr:'#666'            },
+    { label:'Dining',            limit:lb.outToEat,         cat:'dining',    icon:'fork',    iconBg:'var(--wash-2)',iconClr:'#666'            },
+    { label:'Shopping',          limit:lb.shopping,         cat:'shopping',  icon:'bag',     iconBg:'var(--wash-2)',iconClr:'#666'            },
   ];
 
   const rows    = sel === 0 ? earlyRows : laterRows;
@@ -5926,18 +6110,22 @@ function SettingDerived({ label, value, hint }) {
     <div className="settings-group">
       <label>{label}</label>
       <div style={{padding:'9px 12px',border:'1px solid var(--border)',borderRadius:'var(--r-s)',
-        background:'rgba(255,255,255,.02)',color:'var(--t2)',fontSize:'.82rem',
+        background:'var(--wash-1)',color:'var(--t2)',fontSize:'.82rem',
         fontVariantNumeric:'tabular-nums'}}>{value}</div>
       {hint && <div style={{fontSize:'.62rem',color:'var(--t4)',marginTop:4}}>{hint}</div>}
     </div>
   );
 }
 
-function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoals, netWorth, setNetWorth, transactions, setTransactions, recurring, setRecurring }) {
+function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoals, netWorth, setNetWorth, transactions, setTransactions, recurring, setRecurring, customCategories, setCustomCategories, goTo }) {
   const [local,setLocal]=useState(settings);
   const [saved,setSaved]=useState(false);
   const [importMsg,setImportMsg]=useState(null);   // {type:'error'|'ok', text}
   const fileInputRef=useRef(null);
+  const csvInputRef=useRef(null);
+  const [csvMsg,setCsvMsg]=useState(null);
+  const [newCatLabel,setNewCatLabel]=useState('');
+  const [newCatColor,setNewCatColor]=useState(CUSTOM_CATEGORY_COLORS[0]);
   const handleImportFile=e=>{
     const file=e.target.files&&e.target.files[0];
     e.target.value='';   // reset so picking the same file again still fires onChange
@@ -5948,6 +6136,38 @@ function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoal
       applyBackup(res.data);
       location.reload();
     });
+  };
+  const handleImportCSV=e=>{
+    const file=e.target.files&&e.target.files[0];
+    e.target.value='';
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const { rows, errors } = parseTransactionsCSV(String(reader.result), accounts);
+      if (!rows.length) { setCsvMsg({type:'error',text:errors[0]||'No valid rows found in that file.'}); return; }
+      const proceed = window.confirm(
+        `Import ${rows.length} transaction${rows.length===1?'':'s'} from this CSV`
+        + (errors.length ? ` (${errors.length} row${errors.length===1?'':'s'} skipped)` : '')
+        + '?\n\nThese are added as transaction records for spending history & reports — they do NOT change any account balance. Update balances in Net Worth / Accounts separately if this CSV reflects new money.'
+      );
+      if (!proceed) return;
+      setTransactions(prev => [...rows, ...prev]);
+      setCsvMsg({type:'ok', text:`Imported ${rows.length} transaction${rows.length===1?'':'s'}.`+(errors.length?` ${errors.length} row${errors.length===1?'':'s'} skipped — ${errors.slice(0,3).join(' ')}`:'')});
+    };
+    reader.onerror=()=>setCsvMsg({type:'error',text:'Could not read that file.'});
+    reader.readAsText(file);
+  };
+  const addCustomCategory=()=>{
+    const label=newCatLabel.trim();
+    if(!label) return;
+    const id='custom_'+label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')+'_'+Date.now().toString(36).slice(-4);
+    const abbr=label.replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase()||'CAT';
+    setCustomCategories(list=>[...(list||[]), { id, label, abbr, color:newCatColor }]);
+    setNewCatLabel('');
+  };
+  const removeCustomCategory=id=>{
+    if(!window.confirm('Remove this category? Past transactions keep it, but it will no longer show up when adding new ones.')) return;
+    setCustomCategories(list=>(list||[]).filter(c=>c.id!==id));
   };
   // Mirrors `local` SYNCHRONOUSLY. Tapping Save blurs the field you were in, so
   // its commit and the click land in the same tick — reading `local` there would
@@ -5963,6 +6183,10 @@ function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoal
   const setBud=(p,k,v)=>commitLocal({
     ...localRef.current,
     [p]:{...localRef.current[p],[k]:parseFloat(v)||0},
+  });
+  const setNotif=(k,v)=>commitLocal({
+    ...localRef.current,
+    notifPrefs:{...(localRef.current.notifPrefs||{}),[k]:v},
   });
 
   const handleSave=e=>{e.preventDefault();setSettings(localRef.current);setSaved(true);setTimeout(()=>setSaved(false),2500);};
@@ -6002,8 +6226,125 @@ function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoal
         </div>
       </div>
 
+      {/* Quick links — Accounts/Bills/Goals already have their own full
+          pages (and their own tabs), so this is discoverability, not a
+          second copy of that UI. */}
+      <div className="card" style={{padding:'10px 14px'}}>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          {[
+            ['accounts',  'wallet',  'Accounts & Cards'],
+            ['bills',     'receipt', 'Recurring Bills'],
+            ['goals',     'target',  'Goals'],
+          ].map(([id,icon,label]) => (
+            <button key={id} type="button" className="btn btn-ghost btn-sm" onClick={()=>goTo&&goTo(id)}>
+              <Icon name={icon} size={13}/>{label} →
+            </button>
+          ))}
+        </div>
+      </div>
+
       <RecurringSection recurring={recurring} setRecurring={setRecurring} accounts={accounts}
         ctxBase={{ settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions }}/>
+
+      {/* ── Personalization (Priority 18) ── accent color + light/dark theme,
+          applied via CSS custom properties on <html> once Saved below. */}
+      <div className="card">
+        <div className="card-label">Personalization</div>
+        <div className="settings-group" style={{marginBottom:14}}>
+          <label>Accent Color</label>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6}}>
+            {['#00C805','#3987e5','#7B74FF','#F5A623','#FF5000','#06b6d4','#d95181','#e66767'].map(c => (
+              <button key={c} type="button" aria-label={c}
+                onClick={()=>setStr('accentColor',c)}
+                style={{
+                  width:30,height:30,borderRadius:'50%',background:c,cursor:'pointer',
+                  border:(local.accentColor||'#00C805').toLowerCase()===c.toLowerCase() ? '2px solid var(--t1)' : '2px solid transparent',
+                  boxShadow:(local.accentColor||'#00C805').toLowerCase()===c.toLowerCase() ? '0 0 0 2px var(--bg)' : 'none',
+                }}/>
+            ))}
+          </div>
+        </div>
+        <div className="settings-group">
+          <label>Appearance</label>
+          <div className="seg" role="group" aria-label="Appearance" style={{marginTop:6,width:'fit-content'}}>
+            <button type="button" className={local.theme!=='light'?'on':''} onClick={()=>setStr('theme','dark')}>Dark</button>
+            <button type="button" className={local.theme==='light'?'on':''} onClick={()=>setStr('theme','light')}>Light</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Categories (Priority 18) ── built-ins are fixed (budget scenario
+          fields and the AI coach are wired to their ids by name); custom
+          categories are additive and show up everywhere CATEGORIES does —
+          Add Transaction, Budget, Spending, Insights. */}
+      <div className="card">
+        <div className="card-label">Categories</div>
+        <div style={{fontSize:'.66rem',color:'var(--t4)',marginBottom:8}}>Built-in — always available, can't be removed</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:16}}>
+          {BUILTIN_CATEGORIES.filter(c=>c.id!=='hysa'&&c.id!=='rothIRA').map(c => (
+            <span key={c.id} style={{
+              display:'inline-block',padding:'5px 11px',borderRadius:99,
+              background:'var(--wash-2)',border:'1px solid var(--border)',
+              color:'var(--t2)',fontSize:'.7rem',fontWeight:600,
+            }}>{c.label}</span>
+          ))}
+        </div>
+        {(customCategories||[]).length > 0 && (
+          <div className="card-flush" style={{marginBottom:14}}>
+            {customCategories.map(c => (
+              <div key={c.id} className="v-row">
+                <div className="v-row-left">
+                  <div className="v-row-icon" style={{background:c.color+'22'}}>
+                    <span style={{width:9,height:9,borderRadius:'50%',background:c.color,display:'block'}}/>
+                  </div>
+                  <div className="v-row-name">{c.label}</div>
+                </div>
+                <button type="button" className="btn-icon" aria-label={`Remove ${c.label}`} onClick={()=>removeCustomCategory(c.id)}>
+                  <Icon name="trash" size={14}/>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+          <input type="text" placeholder="New category name" value={newCatLabel}
+            onChange={e=>setNewCatLabel(e.target.value)}
+            onKeyDown={e=>e.key==='Enter' && addCustomCategory()}
+            style={{flex:'1 1 160px',minWidth:140}}/>
+          <div style={{display:'flex',gap:5}}>
+            {CUSTOM_CATEGORY_COLORS.slice(0,6).map(c => (
+              <button key={c} type="button" aria-label={c} onClick={()=>setNewCatColor(c)}
+                style={{width:22,height:22,borderRadius:'50%',background:c,
+                  border:newCatColor===c?'2px solid var(--t1)':'2px solid transparent'}}/>
+            ))}
+          </div>
+          <button type="button" className="btn btn-primary btn-sm" disabled={!newCatLabel.trim()} onClick={addCustomCategory}>Add</button>
+        </div>
+      </div>
+
+      {/* ── Notifications (Priority 18) ── toggles what already computes
+          elsewhere (the per-card Notifications feed on Account Detail, the
+          Dashboard's due-soon reminders); it doesn't invent new alert types
+          since this is a PWA with no push-notification backend. */}
+      <div className="card">
+        <div className="card-label">Notifications</div>
+        <div style={{display:'flex',flexDirection:'column',gap:2}}>
+          {[
+            ['creditCardAlerts', 'Credit card alerts', 'Statement closing, payment due, utilization on each card'],
+            ['billReminders',    'Bill reminders',      'Due-soon cards on Dashboard and Bills'],
+            ['budgetAlerts',     'Budget alerts',        'Over-budget callouts on Spending and Dashboard'],
+          ].map(([k,label,sub]) => (
+            <label key={k} className="toggle-row">
+              <div>
+                <div className="toggle-row-lbl">{label}</div>
+                <div className="toggle-row-sub">{sub}</div>
+              </div>
+              <input type="checkbox" className="switch" checked={(local.notifPrefs||{})[k]!==false}
+                onChange={e=>setNotif(k, e.target.checked)}/>
+            </label>
+          ))}
+        </div>
+      </div>
 
       {/* This app has no account or server — each device holds a fully
           separate copy of everything. Export/import is the manual bridge:
@@ -6025,6 +6366,22 @@ function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoal
         {importMsg && (
           <div style={{marginTop:10,fontSize:'.72rem',color:importMsg.type==='error'?'var(--red)':'var(--accent)'}}>
             {importMsg.text}
+          </div>
+        )}
+        <div style={{height:1,background:'var(--border)',margin:'14px 0'}}/>
+        <p style={{fontSize:'.72rem',color:'var(--t3)',margin:'0 0 12px',lineHeight:1.5}}>
+          Or work with just the transaction ledger as a spreadsheet — CSV export for
+          Excel/Sheets, or CSV import to bring in a bank's transaction history.
+          Importing adds transaction records only; it never changes an account balance.
+        </p>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+          <button type="button" className="btn btn-primary" onClick={()=>exportTransactionsCSV(transactions)}>Export CSV</button>
+          <button type="button" className="btn btn-ghost" onClick={()=>csvInputRef.current&&csvInputRef.current.click()}>Import CSV</button>
+          <input ref={csvInputRef} type="file" accept="text/csv,.csv" style={{display:'none'}} onChange={handleImportCSV} />
+        </div>
+        {csvMsg && (
+          <div style={{marginTop:10,fontSize:'.72rem',color:csvMsg.type==='error'?'var(--red)':'var(--accent)'}}>
+            {csvMsg.text}
           </div>
         )}
       </div>
@@ -6209,17 +6566,17 @@ function SvgLine({ history }) {
         {/* Horizontal grid lines at each y-tick */}
         {yTicks.map((v,i) => (
           <line key={i} x1={PL} y1={toY(v)} x2={VW-PR} y2={toY(v)}
-            stroke="#222" strokeWidth="1" strokeDasharray="3,5" />
+            style={{stroke:'var(--chart-grid)'}} strokeWidth="1" strokeDasharray="3,5" />
         ))}
         {/* Zero line (bolder when range crosses zero) */}
         {showZero && (
           <line x1={PL} y1={toY(0)} x2={VW-PR} y2={toY(0)}
-            stroke="#3f3f46" strokeWidth="1.5" />
+            style={{stroke:'var(--chart-zero)'}} strokeWidth="1.5" />
         )}
         {/* Y-axis labels */}
         {yTicks.map((v,i) => (
           <text key={i} x={PL-6} y={toY(v)+5} textAnchor="end"
-            fill="#52525b" fontSize="17" fontFamily="Inter,system-ui,sans-serif">
+            style={{fill:'var(--chart-axis)'}} fontSize="17" fontFamily="Inter,system-ui,sans-serif">
             {fmtY(v)}
           </text>
         ))}
@@ -6237,7 +6594,7 @@ function SvgLine({ history }) {
           const anchor = i===0 ? 'start' : i===pts.length-1 ? 'end' : 'middle';
           return (
             <text key={i} x={p.x} y={VH-4} textAnchor={anchor}
-              fill="#52525b" fontSize="17" fontFamily="Inter,system-ui,sans-serif">
+              style={{fill:'var(--chart-axis)'}} fontSize="17" fontFamily="Inter,system-ui,sans-serif">
               {fmtX(p.month)}
             </text>
           );
@@ -8167,6 +8524,30 @@ function App() {
   const [bills,setBills]       = usePersist('fd_bills',        []);
   const [recurring,setRecurring] = usePersist('fd_recurring',  []);
   const [customGoals,setCustomGoals] = usePersist('fd_customgoals', []);
+  const [customCategories,setCustomCategories] = usePersist('fd_customcategories', []);
+  // Reassigns the module-level CATEGORIES binding every render (see its
+  // definition) — synchronous, not an effect, so the very first paint
+  // already has custom categories in every CATEGORIES.map/filter(...) call
+  // site across the app, not just renders after the initial mount.
+  setModuleCustomCategories(customCategories);
+
+  // ── Personalization (Priority 18) — accent color + light/dark theme are
+  // applied as CSS custom properties on the root element, so every existing
+  // var(--accent)/var(--bg)/etc. consumer (including inline SVG fill/stroke
+  // attributes, which resolve var() the same way) repaints for free.
+  useEffect(() => {
+    const root = document.documentElement;
+    const accent = settings.accentColor || '#00C805';
+    root.style.setProperty('--accent', accent);
+    // --accent-dk (hover states) and --accent-lt (wash backgrounds) are
+    // themselves derived from --accent everywhere in the CSS, but they're
+    // separate custom properties, not computed from it — a custom accent
+    // color needs its own hover/wash shades too, or hover states would stay
+    // pinned to the default green no matter what color the user picks.
+    root.style.setProperty('--accent-dk', `color-mix(in srgb, ${accent} 82%, black)`);
+    root.style.setProperty('--accent-lt', `color-mix(in srgb, ${accent} 9%, transparent)`);
+    root.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark');
+  }, [settings.accentColor, settings.theme]);
 
   // ── Add Transaction (v2) — a single global sheet every page opens ──────
   const [addTxOpen, setAddTxOpen]           = useState(false);
@@ -8256,7 +8637,8 @@ function App() {
     settings:   <Settings   settings={settings} setSettings={useCallback(s=>setSettings(s),[])}
                   accounts={accounts} setAccounts={setAccounts} goals={goals} setGoals={setGoals}
                   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} setTransactions={setTx}
-                  recurring={recurring} setRecurring={setRecurring} />,
+                  recurring={recurring} setRecurring={setRecurring}
+                  customCategories={customCategories} setCustomCategories={setCustomCategories} goTo={setTab} />,
   };
 
   return (
