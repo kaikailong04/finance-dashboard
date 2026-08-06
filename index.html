@@ -357,8 +357,10 @@ html{-webkit-text-size-adjust:100%}
   font-size:.7rem;font-weight:700;color:var(--t2);flex-shrink:0;letter-spacing:.04em;
 }
 .tx-body{flex:1;min-width:0}
-.tx-desc{font-size:.84rem;font-weight:500;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-desc{font-size:.84rem;font-weight:500;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:5px}
 .tx-meta{font-size:.68rem;color:var(--t3);margin-top:2px}
+.tx-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.tx-tag{font-size:.6rem;font-weight:600;color:var(--accent);background:var(--accent-lt);border-radius:99px;padding:1px 7px}
 .tx-amt{font-size:.875rem;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .tx-del{background:none;border:none;color:var(--t4);padding:4px;border-radius:var(--r-s);cursor:pointer}
 .tx-del:hover{background:var(--red-lt);color:var(--red)}
@@ -852,6 +854,45 @@ input.switch::before{
 input.switch:checked{background:var(--accent-lt);border-color:var(--accent)}
 input.switch:checked::before{transform:translateX(16px);background:var(--accent)}
 input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ── Undo-delete toast (Bonus) ── */
+.undo-toast{
+  position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  z-index:250;display:flex;align-items:center;gap:12px;
+  background:var(--s3);border:1px solid var(--border2);border-radius:99px;
+  padding:10px 10px 10px 18px;box-shadow:0 8px 24px rgba(0,0,0,.35);
+  font-size:.78rem;color:var(--t1);max-width:calc(100vw - 32px);
+  animation:undo-toast-in .18s ease;
+}
+.undo-toast span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.undo-toast button{background:none;border:0;font-family:inherit;cursor:pointer}
+.undo-toast>button:not(.undo-toast-x){color:var(--accent);font-weight:700;font-size:.78rem;padding:4px 8px}
+.undo-toast-x{color:var(--t3);display:flex;padding:4px}
+@keyframes undo-toast-in{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@media(max-width:700px){ .undo-toast{ bottom:calc(72px + env(safe-area-inset-bottom)); } }
+
+/* ── Tags (Bonus) ── */
+.tag-input-row{
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+  background:var(--s2);border:1px solid var(--border);border-radius:var(--r-s);
+  padding:8px 10px;
+}
+.tag-input-row input{flex:1;min-width:100px;background:none;border:none;padding:2px 0}
+.tag-input-row input:focus{outline:none}
+.tag-chip{
+  display:inline-flex;align-items:center;gap:5px;background:var(--accent-lt);color:var(--accent);
+  border-radius:99px;padding:3px 4px 3px 10px;font-size:.7rem;font-weight:600;white-space:nowrap;
+}
+.tag-chip button{background:none;border:0;color:inherit;font-size:.9rem;line-height:1;padding:2px 4px;cursor:pointer}
+
+/* ── Split transactions (Bonus) ── */
+.split-rows{display:flex;flex-direction:column;gap:8px}
+.split-row{display:flex;gap:8px;align-items:center}
+.split-row select{flex:1.3}
+.split-amt{position:relative;flex:1}
+.split-amt span{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:.78rem;pointer-events:none}
+.split-amt input{padding-left:20px;width:100%}
+.split-total{font-size:.68rem;margin-top:2px}
 
 /* ── Net worth account rows ── */
 .nwa-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 15px;border-bottom:1px solid var(--border)}
@@ -1912,6 +1953,32 @@ function loadTesseract() {
   }).catch(err => { _tesseractLoadPromise = null; throw err; });   // let a retry try again
   return _tesseractLoadPromise;
 }
+// Downscaled JPEG data URL — receipts saved with a transaction (Bonus:
+// "attach a receipt photo") go straight into localStorage as part of the
+// transaction record, so a full-resolution phone photo (several MB) would
+// blow the ~5-10MB origin quota after a handful of scans. Capped to a
+// longest-side of 900px / JPEG q=0.6, which is still plenty legible for a
+// receipt viewed later and typically lands well under 100KB.
+function fileToReceiptDataURL(file, maxDim=900, quality=0.6) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const c = canvas.getContext('2d');
+      c.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image.')); };
+    img.src = url;
+  });
+}
+
 // $-amount tokens anywhere in the OCR text, e.g. "12.99" or "$1,204.50".
 const RECEIPT_AMOUNT_RE = /\$?\s?(\d{1,3}(?:,\d{3})*\.\d{2}|\d+\.\d{2})/g;
 function parseReceiptText(text) {
@@ -2001,10 +2068,11 @@ function getFilteredTransactions(transactions, filters) {
       if (f.type === 'recurring' ? t.paymentMethod !== 'Recurring' : t.type !== f.type) return false;
     }
     if (f.paymentMethod && f.paymentMethod !== 'all' && (t.paymentMethod||'') !== f.paymentMethod) return false;
+    if (f.tag && f.tag !== 'all' && !(t.tags||[]).some(tg => tg.toLowerCase() === f.tag.toLowerCase())) return false;
     if (min != null && safeNum(t.amount) < min) return false;
     if (max != null && safeNum(t.amount) > max) return false;
     if (q) {
-      const hay = [t.description, t.merchant, t.notes, catLabel(categoryOf(t)), accountOf(t), t.toAccount]
+      const hay = [t.description, t.merchant, t.notes, catLabel(categoryOf(t)), accountOf(t), t.toAccount, ...(t.tags||[]).map(tg=>'#'+tg)]
         .filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
@@ -2453,6 +2521,15 @@ function deleteAccountAwareTransaction(tx, ctx) {
   const acct = (ctx.accounts || []).find(a => a.id === tx.accountId);
   applyCardRewards(acct, tx, -1, ctx);
   ctx.setTransactions(prev => prev.filter(t => t.id !== tx.id));
+}
+// Undo for the above — re-applies the SAME transaction object (same id),
+// rather than routing back through recordTransaction, which would mint a
+// new id and orphan anything (splits, tags) that referenced the old one.
+function restoreDeletedTransaction(tx, ctx) {
+  applyTransactionToAccounts(tx, +1, ctx);
+  const acct = (ctx.accounts || []).find(a => a.id === tx.accountId);
+  applyCardRewards(acct, tx, +1, ctx);
+  ctx.setTransactions(prev => [tx, ...prev]);
 }
 
 // ── Credit-card math (shared by Add Transaction's live snapshot and the
@@ -4394,6 +4471,19 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
   const [viewMonth, setViewMonth] = useState({y:now.getFullYear(),m:now.getMonth()});
   const ctx = { accounts, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions };
 
+  // ── Undo delete (Bonus) — deleting no longer needs a confirm() dialog;
+  // it happens immediately and reversibly, with a few seconds to undo
+  // before the toast clears and it's gone for real.
+  const [undoTx, setUndoTx]     = useState(null);   // the just-deleted transaction, or null
+  const undoTimerRef            = useRef(null);
+  const dismissUndo = () => { clearTimeout(undoTimerRef.current); setUndoTx(null); };
+  const handleUndo   = () => {
+    if (!undoTx) return;
+    restoreDeletedTransaction(undoTx, ctx);
+    dismissUndo();
+  };
+  useEffect(() => () => clearTimeout(undoTimerRef.current), []);   // clear on unmount
+
   const monthStr  = `${viewMonth.y}-${String(viewMonth.m+1).padStart(2,'0')}`;
   const monthTx   = transactions.filter(t=>t.date.startsWith(monthStr));
   const expenses  = monthTx.filter(t=>t.type==='expense');
@@ -4444,7 +4534,6 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
   // the redesigned Add Transaction sheet (accountId present), or the legacy
   // HYSA/Roth sync for anything logged before that existed.
   const del = id => {
-    if (!window.confirm('Delete this transaction?')) return;
     const t = transactions.find(x=>x.id===id);
     if (!t) return;
     if (t.accountId) {
@@ -4452,6 +4541,14 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
     } else {
       setTransactions(p=>p.filter(x=>x.id!==id));
       if (t.type === 'expense') syncSavings(t.category, safeNum(t.amount), -1);
+    }
+    // Only account-aware deletes can be undone (restoreDeletedTransaction
+    // replays the same balance math) — legacy no-accountId rows still
+    // delete instantly, same as before.
+    if (t.accountId) {
+      clearTimeout(undoTimerRef.current);
+      setUndoTx(t);
+      undoTimerRef.current = setTimeout(() => setUndoTx(null), 6000);
     }
   };
   const sorted = [...monthTx].sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -4462,6 +4559,14 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
 
   return (
     <div className="page">
+
+      {undoTx && (
+        <div className="undo-toast" role="status">
+          <span>Deleted "{undoTx.description || catLabel(categoryOf(undoTx))}"</span>
+          <button type="button" onClick={handleUndo}>Undo</button>
+          <button type="button" className="undo-toast-x" aria-label="Dismiss" onClick={dismissUndo}><Icon name="x" size={13}/></button>
+        </div>
+      )}
 
       {/* Hero header */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
@@ -4535,10 +4640,17 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
                           ? <div className="tx-icon"><Icon name="swap" size={14} color="var(--blue)"/></div>
                           : <MerchantLogo description={t.description}/>}
                         <div className="tx-body">
-                          <div className="tx-desc">{t.description}</div>
+                          <div className="tx-desc">
+                            {t.description}
+                            {t.receiptImage && <Icon name="receipt" size={11} color="var(--t4)"/>}
+                          </div>
                           <div className="tx-meta">
                             {catLabel(t.category)} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                            {t.splitGroupId && ` · split ${t.splitIndex+1}/${t.splitCount}`}
                           </div>
+                          {t.tags && t.tags.length > 0 && (
+                            <div className="tx-tags">{t.tags.map(tg => <span key={tg} className="tx-tag">#{tg}</span>)}</div>
+                          )}
                         </div>
                         <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
                           {t.type==='income'?'+':'-'}{currency(t.amount)}
@@ -7156,16 +7268,45 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
   const [accountId, setAccountId]     = useState(defaultAcct ? defaultAcct.id : '');
   const [toAccountId, setToAccountId] = useState((preset && preset.toAccountId) || '');
 
-  // ── Receipt Scanner (Priority 15) ──
+  // ── Tags (Bonus) — free-text labels, separate from category. A grocery
+  // run tagged "vacation" shows up under Groceries in Budget/Spending as
+  // always, but can also be pulled out later by tag (Search & Filters).
+  const [tags, setTags]         = useState([]);
+  const [tagInput, setTagInput] = useState('');
+  const addTag = () => {
+    const t = tagInput.trim().replace(/^#/,'');
+    if (t && !tags.some(x=>x.toLowerCase()===t.toLowerCase())) setTags(ts=>[...ts, t]);
+    setTagInput('');
+  };
+  const removeTag = t => setTags(ts=>ts.filter(x=>x!==t));
+
+  // ── Split Transactions (Bonus) — one purchase, multiple categories (e.g.
+  // a Target run that's half Groceries, half Shopping). Splits are saved as
+  // separate transaction rows sharing a splitGroupId, each its own
+  // recordTransaction call so Budget/Spending total them per-category
+  // exactly like any other transaction — no separate "split" code path
+  // anywhere else in the app.
+  const [splitMode, setSplitMode]   = useState(false);
+  const [splits, setSplits]         = useState([{ category:'groceries', amount:'' }, { category:'shopping', amount:'' }]);
+  const splitTotal = splits.reduce((s,r)=>s+(parseFloat(r.amount)||0), 0);
+  const updateSplit = (i, patch) => setSplits(rows => rows.map((r,idx)=>idx===i?{...r,...patch}:r));
+  const addSplitRow = () => setSplits(rows => [...rows, { category:'other', amount:'' }]);
+  const removeSplitRow = i => setSplits(rows => rows.filter((_,idx)=>idx!==i));
+
+  // ── Receipt Scanner (Priority 15) + receipt photo (Bonus) — the same scan
+  // flow now also keeps a downscaled copy of the image on the saved
+  // transaction, viewable later, not just used transiently for OCR.
   const [scanState, setScanState]     = useState('idle');   // idle | loading | scanning | done | error
   const [scanError, setScanError]     = useState('');
   const [scanPreview, setScanPreview] = useState(null);
+  const [receiptImage, setReceiptImage] = useState(null);   // downscaled data URL, saved with the transaction
   const receiptInputRef = useRef(null);
   const handleReceiptFile = async e => {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
     setScanPreview(URL.createObjectURL(file));
+    fileToReceiptDataURL(file).then(setReceiptImage).catch(()=>{});
     setScanState('loading'); setScanError('');
     try {
       const Tesseract = await loadTesseract();
@@ -7217,10 +7358,35 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
     return [...seen].slice(0, 40);
   }, [transactions]);
 
-  const valid = amt > 0 && (type === 'transfer' ? (accountId && toAccountId && accountId !== toAccountId) : !!accountId);
+  const isSplitting  = splitMode && type === 'expense';
+  const splitRowsOk  = splits.every(r => r.category && (parseFloat(r.amount)||0) > 0);
+  const splitMatches = Math.abs(round2(splitTotal) - round2(amt)) < 0.01;
+  const valid = amt > 0
+    && (type === 'transfer' ? (accountId && toAccountId && accountId !== toAccountId) : !!accountId)
+    && (!isSplitting || (splits.length >= 2 && splitRowsOk && splitMatches));
 
   const handleSave = () => {
     if (!valid) return;
+    if (isSplitting) {
+      // Each split is its own real transaction (own category, own amount) —
+      // Budget/Spending/Insights total them per-category automatically,
+      // with zero split-aware code anywhere else in the app. splitGroupId
+      // just lets the transaction list visually group them back together.
+      const splitGroupId = 'split_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+      const merch = merchant.trim();
+      splits.forEach((row, i) => {
+        recordTransaction({
+          date, type:'expense', amount: round2(parseFloat(row.amount)||0), category: row.category,
+          description: (merch || catLabel(row.category)) + ` (split ${i+1}/${splits.length})`,
+          merchant: merch, notes: notes.trim(), paymentMethod,
+          accountId, account: selectedAccount ? selectedAccount.name : '',
+          tags, splitGroupId, splitIndex: i, splitCount: splits.length,
+          ...(i===0 && receiptImage ? { receiptImage } : {}),
+        }, ctx);
+      });
+      onClose();
+      return;
+    }
     const partial = type === 'transfer' ? {
       date, type:'transfer', amount: round2(amt), category:'transfer',
       description: `Transfer · ${selectedAccount ? selectedAccount.name : ''} → ${toAccount ? toAccount.name : ''}`,
@@ -7232,6 +7398,8 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
       description: merchant.trim() || (type==='income' ? 'Income' : catLabel(category)),
       merchant: merchant.trim(), notes: notes.trim(), paymentMethod,
       accountId, account: selectedAccount ? selectedAccount.name : '',
+      ...(type==='expense' && tags.length ? { tags } : {}),
+      ...(type==='expense' && receiptImage ? { receiptImage } : {}),
     };
     recordTransaction(partial, ctx);
     onClose();
@@ -7314,15 +7482,47 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
               </div>
 
               {type === 'expense' && (
-                <div className="fg"><label>Category</label>
-                  <div className="cat-grid">
-                    {CATEGORIES.filter(c => c.id!=='hysa' && c.id!=='rothIRA').map(c => (
-                      <button key={c.id} type="button" className={'cat-chip'+(category===c.id?' on':'')} onClick={()=>setCategory(c.id)}>
-                        <span className="cat-chip-dot" style={{background:c.color}}>{c.abbr.slice(0,2)}</span>
-                        {c.label}
-                      </button>
-                    ))}
+                <div className="fg">
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <label style={{marginBottom:0}}>Category</label>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setSplitMode(s=>!s)}>
+                      <Icon name="swap" size={12}/>{splitMode ? 'Single category' : 'Split into categories'}
+                    </button>
                   </div>
+                  {!splitMode && (
+                    <div className="cat-grid">
+                      {CATEGORIES.filter(c => c.id!=='hysa' && c.id!=='rothIRA').map(c => (
+                        <button key={c.id} type="button" className={'cat-chip'+(category===c.id?' on':'')} onClick={()=>setCategory(c.id)}>
+                          <span className="cat-chip-dot" style={{background:c.color}}>{c.abbr.slice(0,2)}</span>
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {splitMode && (
+                    <div className="split-rows">
+                      {splits.map((row, i) => (
+                        <div key={i} className="split-row">
+                          <select value={row.category} onChange={e=>updateSplit(i,{category:e.target.value})}>
+                            {CATEGORIES.filter(c => c.id!=='hysa' && c.id!=='rothIRA').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                          </select>
+                          <div className="split-amt">
+                            <span>$</span>
+                            <input type="number" inputMode="decimal" step="0.01" min="0" placeholder="0.00"
+                              value={row.amount} onChange={e=>updateSplit(i,{amount:e.target.value})}/>
+                          </div>
+                          {splits.length > 2 && (
+                            <button type="button" className="btn-icon" aria-label="Remove split" onClick={()=>removeSplitRow(i)}><Icon name="x" size={14}/></button>
+                          )}
+                        </div>
+                      ))}
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={addSplitRow}>+ Add split</button>
+                      <div className="split-total" style={{color: splitMatches ? 'var(--t3)' : 'var(--red)'}}>
+                        Splits total {currency(splitTotal,2)} {amt>0 && `of ${currency(amt,2)}`}
+                        {!splitMatches && amt>0 && ' — must match the amount above'}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -7348,6 +7548,21 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
               <input type="text" placeholder="Optional" value={notes} onChange={e=>setNotes(e.target.value)}/>
             </div>
           </div>
+
+          {type === 'expense' && (
+            <div className="fg">
+              <label>Tags</label>
+              <div className="tag-input-row">
+                {tags.map(t => (
+                  <span key={t} className="tag-chip">#{t}<button type="button" aria-label={`Remove tag ${t}`} onClick={()=>removeTag(t)}>×</button></span>
+                ))}
+                <input type="text" placeholder={tags.length ? '' : 'vacation, work, reimbursable…'}
+                  value={tagInput} onChange={e=>setTagInput(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==='Enter'||e.key===','){ e.preventDefault(); addTag(); } }}
+                  onBlur={addTag}/>
+              </div>
+            </div>
+          )}
 
           {card && (
             <div className="cc-snapshot">
