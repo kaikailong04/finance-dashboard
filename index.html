@@ -1019,6 +1019,10 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 /* ── Insight list ── */
 .insight-row{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid rgba(0,200,5,.12);font-size:.82rem;color:var(--t1);line-height:1.5}
 .insight-row:last-child{border-bottom:none}
+
+/* ── Bills ── */
+.bill-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.bill-recur-tag{font-size:.55rem;color:var(--t3);border:1px solid var(--border2);border-radius:99px;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.05em}
   </style>
 </head>
 <body>
@@ -1256,7 +1260,7 @@ function usePersist(key, def, migrate) {
 // raw + reloading (rather than pushing into React state) means the normal
 // usePersist/migrate path runs exactly as it would for any other load, so
 // an export from an older build still migrates correctly on import.
-const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth', 'fd_accounts'];
+const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth', 'fd_accounts', 'fd_bills'];
 
 function exportBackup() {
   const data = {};
@@ -2065,6 +2069,89 @@ function creditNotifications(acct, ctx, transactions) {
   return notes;
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// BILLS (Priority 4) — a bill is either something the user tracks by hand
+// (rent, utilities, insurance, internet, phone, subscriptions) or, for
+// every credit card account, synthesized automatically from that card's
+// own due day and minimum payment. Nothing here is hardcoded per bill —
+// new credit cards get a bill row the same way new accounts get a
+// dashboard, with zero extra UI work.
+// ══════════════════════════════════════════════════════════════════════
+const BILL_CATEGORIES = [
+  { id:'rent',         label:'Rent',          icon:'bank' },
+  { id:'utilities',    label:'Utilities',     icon:'zap'  },
+  { id:'insurance',    label:'Insurance',     icon:'shield' },
+  { id:'internet',     label:'Internet',      icon:'wallet' },
+  { id:'phone',        label:'Phone',         icon:'wallet' },
+  { id:'subscription', label:'Subscription',  icon:'receipt' },
+  { id:'creditCard',   label:'Credit Card',   icon:'creditCard' },
+  { id:'other',        label:'Other',         icon:'dollar' },
+];
+const billCategoryInfo = id => BILL_CATEGORIES.find(c => c.id===id) || BILL_CATEGORIES[BILL_CATEGORIES.length-1];
+// Bill category → spending category, used only when a bill is paid (the
+// resulting transaction still has to land in a real CATEGORIES bucket so
+// Budget/Spending/Calendar keep counting it correctly).
+const BILL_SPEND_CATEGORY = { rent:'housing', utilities:'utilities', insurance:'other', internet:'utilities', phone:'utilities', subscription:'other', creditCard:'other', other:'other' };
+
+function defaultBillFields() {
+  return { id:'', name:'', category:'other', amount:0, recurring:true, dueDay:1, dueDate:'', accountId:null, autopay:false, notes:'', paidPeriods:[], paidDate:null, createdAt:Date.now() };
+}
+function currentPeriodKey(ref) { ref = ref || new Date(); return `${ref.getFullYear()}-${String(ref.getMonth()+1).padStart(2,'0')}`; }
+function billDueDateThisPeriod(bill, ref) {
+  ref = ref || new Date();
+  if (!bill.recurring) return bill.dueDate ? parseLocalDate(bill.dueDate) : ref;
+  const day = Math.min(Math.max(bill.dueDay||1,1), 28);
+  return new Date(ref.getFullYear(), ref.getMonth(), day);
+}
+// 'paid' | 'overdue' | 'upcoming' — computed fresh from today, never stored.
+function billStatus(bill, today) {
+  today = today || new Date();
+  const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (!bill.recurring) {
+    if (bill.paidDate) return 'paid';
+    return parseLocalDate(bill.dueDate) < todayMidnight ? 'overdue' : 'upcoming';
+  }
+  if ((bill.paidPeriods||[]).includes(currentPeriodKey(today))) return 'paid';
+  return billDueDateThisPeriod(bill, today) < todayMidnight ? 'overdue' : 'upcoming';
+}
+// Every credit card becomes a read-only bill row: due day + whatever is
+// actually owed toward the minimum this cycle. Paying it routes through the
+// same transfer flow as the Payment Center — never a plain expense, since a
+// card payment moves money between accounts rather than consuming it.
+function creditCardBills(accounts, ctx) {
+  return (accounts||[])
+    .filter(a => a.type === 'credit' && !a.archived)
+    .map(a => {
+      const card = a.card || defaultCardFields();
+      const balance = accountBalance(a, ctx);
+      return {
+        id: 'cc_'+a.id, name: a.name, category:'creditCard', icon:a.icon, color:a.color,
+        amount: minPaymentFor(card, balance), recurring:true, dueDay: card.dueDay,
+        autopay: card.autopay, isCreditCardBill:true, accountRef:a,
+        paid: hasPaidThisCycle(ctx.transactions, a, card),
+      };
+    });
+}
+// Records a real expense (paid from the bill's linked account, or the
+// default checking-like account) and stamps the bill as paid for this
+// period — the one place "marking a bill paid" is allowed to happen.
+function markBillPaid(bill, ctx) {
+  const source = bill.accountId ? (ctx.accounts||[]).find(a=>a.id===bill.accountId) : defaultPaymentSourceAccount(ctx.accounts);
+  if (source) {
+    recordTransaction({
+      date: ymd(new Date()), type:'expense', amount: round2(safeNum(bill.amount)),
+      category: BILL_SPEND_CATEGORY[bill.category] || 'other',
+      description: bill.name, merchant: bill.name, notes: `Bill payment · ${billCategoryInfo(bill.category).label}`,
+      paymentMethod:'Bank Transfer', accountId: source.id, account: source.name,
+    }, ctx);
+  }
+  ctx.setBills(list => list.map(b => b.id!==bill.id ? b : {
+    ...b,
+    paidPeriods: bill.recurring ? [...(b.paidPeriods||[]), currentPeriodKey()] : b.paidPeriods,
+    paidDate: bill.recurring ? b.paidDate : ymd(new Date()),
+  }));
+}
+
 // ── Chart palette ─────────────────────────────────────────────────────
 // Validated for this app's dark surface (#0d0d0d): lightness band, chroma
 // floor, adjacent-pair CVD separation, normal-vision floor and 3:1 contrast
@@ -2199,6 +2286,12 @@ function NavIcon({ name, active }) {
         <rect x="2" y="5" width="20" height="14" rx="2.5"/>
         <line x1="2" y1="10" x2="22" y2="10"/>
         <circle cx="6" cy="15" r="1.1" fill={active?'#00C805':'none'}/>
+      </svg>
+    ),
+    bills: (
+      <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
+        <path d="M5 2v20l2.5-1.7L10 22l2.5-1.7L15 22l2.5-1.7L19 22V2l-2.5 1.7L14 2l-2.5 1.7L9 2 6.5 3.7z"/>
+        <line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="16" y2="13"/>
       </svg>
     ),
     more: (
@@ -2624,6 +2717,7 @@ function ProjectedChart({ settings }) {
 const TABS = [
   { id:'dashboard', label:'Dashboard',  short:'Dash',   icon:'dash'   },
   { id:'accounts',  label:'Accounts',   short:'Accts',  icon:'accounts'},
+  { id:'bills',     label:'Bills',      short:'Bills',  icon:'bills'  },
   { id:'budget',    label:'Budget',     short:'Budget', icon:'budget' },
   { id:'spending',  label:'Spending',   short:'Spend',  icon:'spend'  },
   { id:'insights',  label:'Insights',   short:'Insights',icon:'insights'},
@@ -6093,6 +6187,220 @@ function AccountsPage({ accounts, setAccounts, transactions, settings, goals, ne
   );
 }
 
+function AddBillModal({ onClose, onSave, onDelete, accounts, bill }) {
+  const b = bill || defaultBillFields();
+  const [name, setName]           = useState(b.name);
+  const [category, setCategory]   = useState(b.category);
+  const [amount, setAmount]       = useState(b.amount ? String(b.amount) : '');
+  const [recurring, setRecurring] = useState(b.recurring);
+  const [dueDay, setDueDay]       = useState(b.dueDay || 1);
+  const [dueDate, setDueDate]     = useState(b.dueDate || ymd(new Date()));
+  const [accountId, setAccountId] = useState(b.accountId || '');
+  const [autopay, setAutopay]     = useState(b.autopay);
+  const [notes, setNotes]         = useState(b.notes || '');
+
+  const payAccounts = (accounts||[]).filter(a => !a.archived && a.type !== 'credit');
+  const valid = name.trim() && parseFloat(amount) > 0;
+
+  const save = () => {
+    if (!valid) return;
+    onSave({
+      ...b, id: b.id || ('bill_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
+      name: name.trim(), category, amount: round2(parseFloat(amount)||0), recurring,
+      dueDay: Math.min(Math.max(parseInt(dueDay)||1,1),28), dueDate,
+      accountId: accountId || null, autopay, notes: notes.trim(),
+      paidPeriods: b.paidPeriods || [], paidDate: b.paidDate || null,
+    });
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-card modal-card-lg">
+        <div className="modal-hd">
+          <div className="modal-title">{bill ? 'Edit Bill' : 'Add Bill'}</div>
+          <button className="btn-icon" onClick={onClose} aria-label="Close"><Icon name="x" size={18}/></button>
+        </div>
+        <div className="modal-body">
+          <div className="fgrid">
+            <div className="fg fspan"><label>Bill Name</label>
+              <input type="text" placeholder="e.g. Rent, Comcast Internet" value={name} onChange={e=>setName(e.target.value)} autoFocus/>
+            </div>
+            <div className="fg"><label>Category</label>
+              <select value={category} onChange={e=>setCategory(e.target.value)}>
+                {BILL_CATEGORIES.filter(c=>c.id!=='creditCard').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </div>
+            <div className="fg"><label>Amount</label>
+              <input type="number" min="0" step="0.01" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)}/>
+            </div>
+            <div className="fg"><label>Recurring</label>
+              <select value={recurring?'yes':'no'} onChange={e=>setRecurring(e.target.value==='yes')}>
+                <option value="yes">Every month</option>
+                <option value="no">One-time</option>
+              </select>
+            </div>
+            {recurring ? (
+              <div className="fg"><label>Due Day of Month</label>
+                <input type="number" min="1" max="28" value={dueDay} onChange={e=>setDueDay(e.target.value)}/>
+              </div>
+            ) : (
+              <div className="fg"><label>Due Date</label>
+                <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)}/>
+              </div>
+            )}
+            <div className="fg"><label>Pay From (optional)</label>
+              <select value={accountId} onChange={e=>setAccountId(e.target.value)}>
+                <option value="">Choose at payment time</option>
+                {payAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div className="fg"><label>Autopay</label>
+              <select value={autopay?'on':'off'} onChange={e=>setAutopay(e.target.value==='on')}>
+                <option value="off">Off</option><option value="on">On</option>
+              </select>
+            </div>
+            <div className="fg fspan"><label>Notes</label>
+              <input type="text" placeholder="Optional" value={notes} onChange={e=>setNotes(e.target.value)}/>
+            </div>
+          </div>
+          <button className="btn btn-primary btn-full" disabled={!valid} onClick={save}>{bill ? 'Save Changes' : 'Add Bill'}</button>
+          {bill && onDelete && (
+            <button className="btn btn-ghost btn-full" style={{color:'var(--red)'}}
+              onClick={()=>{ if(window.confirm(`Delete "${bill.name}"?`)){ onDelete(bill.id); onClose(); } }}>
+              Delete Bill
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BillRow({ icon, color, name, sub, amount, status, recurring, onPay, onEdit, payLabel }) {
+  const STATUS_BADGE = { overdue:'badge-red', upcoming:'badge-yellow', paid:'badge-green' };
+  const STATUS_TEXT  = { overdue:'Overdue', upcoming:'Upcoming', paid:'Paid' };
+  return (
+    <div className="v-row">
+      <div className="v-row-left">
+        <div className="v-row-icon" style={{background:(color||'var(--t3)')+'20'}}><Icon name={icon||'receipt'} size={17} color={color||'var(--t3)'}/></div>
+        <div>
+          <div className="v-row-name">{name}{recurring && <span className="bill-recur-tag">Recurring</span>}</div>
+          <div className="v-row-sub">{sub}</div>
+        </div>
+      </div>
+      <div className="bill-actions">
+        <span className={'badge '+STATUS_BADGE[status]}>{STATUS_TEXT[status]}</span>
+        <span className="v-row-val">{currency(amount,2)}</span>
+        {status !== 'paid' && onPay && <button className="btn btn-primary btn-sm" onClick={onPay}>{payLabel||'Mark Paid'}</button>}
+        {onEdit && <button className="btn-icon" onClick={onEdit} aria-label="Edit"><Icon name="edit" size={14}/></button>}
+      </div>
+    </div>
+  );
+}
+
+function BillsPage({ bills, setBills, accounts, transactions, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions, openAddTx, goToAccount }) {
+  const ctx = { accounts, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions, transactions, bills, setBills };
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [showRecurring, setShowRecurring] = useState(false);
+  const today = new Date();
+
+  const userRows = (bills||[]).map(b => ({
+    key:b.id, name:b.name, icon:billCategoryInfo(b.category).icon, color:'var(--t2)',
+    sub: b.recurring ? `${billCategoryInfo(b.category).label} · due day ${b.dueDay}` : `${billCategoryInfo(b.category).label} · due ${b.dueDate}`,
+    amount:b.amount, status:billStatus(b, today), recurring:b.recurring, raw:b,
+  }));
+  const ccRows = creditCardBills(accounts, ctx).map(cc => ({
+    key:cc.id, name:cc.name, icon:cc.icon, color:cc.color,
+    sub:`Credit Card · min payment · due day ${cc.dueDay}`,
+    amount:cc.amount, status: cc.paid ? 'paid' : billStatus({recurring:true,dueDay:cc.dueDay}, today),
+    recurring:true, raw:cc, isCreditCardBill:true,
+  }));
+  const allRows = [...userRows, ...ccRows];
+
+  const overdue  = allRows.filter(r=>r.status==='overdue').sort((a,b)=>a.raw.dueDay-b.raw.dueDay || a.name.localeCompare(b.name));
+  const upcoming = allRows.filter(r=>r.status==='upcoming').sort((a,b)=>(a.raw.dueDay||0)-(b.raw.dueDay||0));
+  const paid     = allRows.filter(r=>r.status==='paid');
+  const recurringRows = allRows.filter(r=>r.recurring);
+
+  const totalDue = [...overdue, ...upcoming].reduce((s,r)=>s+safeNum(r.amount),0);
+
+  const handlePay = row => {
+    if (row.isCreditCardBill) {
+      // A card payment is a transfer, not a plain expense — hand off to the
+      // same Payment Center flow the Credit Card Dashboard uses.
+      const source = defaultPaymentSourceAccount(accounts, row.raw.accountRef);
+      if (source) openAddTx(source.id, { type:'transfer', amount: row.amount, toAccountId: row.raw.accountRef.id });
+      else goToAccount && goToAccount(row.raw.accountRef.id);
+      return;
+    }
+    markBillPaid(row.raw, ctx);
+  };
+
+  const Section = ({ title, rows, emptyMsg }) => (
+    <div>
+      <div className="eyebrow" style={{marginBottom:12}}>{title}{rows.length>0 && <span style={{color:'var(--t4)',marginLeft:6}}>({rows.length})</span>}</div>
+      <div className="card-flush">
+        {rows.length===0 ? <p className="empty">{emptyMsg}</p> : rows.map(r => (
+          <BillRow key={r.key} icon={r.icon} color={r.color} name={r.name} sub={r.sub} amount={r.amount}
+            status={r.status} recurring={r.recurring}
+            payLabel={r.isCreditCardBill ? 'Pay' : 'Mark Paid'}
+            onPay={()=>handlePay(r)}
+            onEdit={r.isCreditCardBill ? (goToAccount ? ()=>goToAccount(r.raw.accountRef.id) : null) : ()=>setEditing(r.raw)}/>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="page">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',flexWrap:'wrap',gap:12}}>
+        <div>
+          <div className="eyebrow" style={{marginBottom:8}}>Due This Period</div>
+          <div className="mega" style={{color:overdue.length>0?'var(--red)':'var(--t1)'}}>{currency(totalDue)}</div>
+          <div style={{fontSize:'.8rem',color:'var(--t3)',marginTop:8}}>
+            {overdue.length>0 ? `${overdue.length} overdue` : 'nothing overdue'} · {upcoming.length} upcoming
+          </div>
+        </div>
+        <button className="add-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14} color="#000" strokeWidth={2.5}/>Add Bill</button>
+      </div>
+
+      <Section title="Overdue" rows={overdue} emptyMsg="Nothing overdue."/>
+      <Section title="Upcoming" rows={upcoming} emptyMsg="No bills due soon."/>
+      <Section title="Paid This Period" rows={paid} emptyMsg="Nothing marked paid yet this period."/>
+
+      <div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>setShowRecurring(s=>!s)}>
+          <Icon name={showRecurring?'chevronUp':'chevronDown'} size={13}/>
+          {showRecurring?'Hide':'Manage'} Recurring Bills ({recurringRows.length})
+        </button>
+        {showRecurring && (
+          <div className="card-flush" style={{marginTop:12}}>
+            {recurringRows.length===0 ? <p className="empty">No recurring bills yet.</p> : recurringRows.map(r => (
+              <BillRow key={r.key} icon={r.icon} color={r.color} name={r.name} sub={r.sub} amount={r.amount}
+                status={r.status} recurring={false}
+                payLabel={r.isCreditCardBill ? 'Pay' : 'Mark Paid'}
+                onPay={r.status!=='paid' ? ()=>handlePay(r) : null}
+                onEdit={r.isCreditCardBill ? (goToAccount ? ()=>goToAccount(r.raw.accountRef.id) : null) : ()=>setEditing(r.raw)}/>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showAdd && (
+        <AddBillModal accounts={accounts} onClose={()=>setShowAdd(false)}
+          onSave={bill => setBills(list => [...list, bill])}/>
+      )}
+      {editing && (
+        <AddBillModal accounts={accounts} bill={editing} onClose={()=>setEditing(null)}
+          onSave={bill => setBills(list => list.map(b => b.id===bill.id ? bill : b))}
+          onDelete={id => setBills(list => list.filter(b => b.id!==id))}/>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [tab,setTab]           = useState('dashboard');
   const [settings,setSettings] = usePersist('fd_settings',    DEFAULT_SETTINGS, migrateSettings);
@@ -6103,6 +6411,7 @@ function App() {
   // Dynamic account registry — seeded once on first run (see seedAccounts);
   // every screen below renders off this list, never a hardcoded name.
   const [accounts,setAccounts] = usePersist('fd_accounts',     seedAccounts());
+  const [bills,setBills]       = usePersist('fd_bills',        []);
 
   // ── Add Transaction (v2) — a single global sheet every page opens ──────
   const [addTxOpen, setAddTxOpen]           = useState(false);
@@ -6149,6 +6458,9 @@ function App() {
     accounts:   <AccountsPage accounts={accounts} setAccounts={setAccounts} transactions={transactions} settings={settings} goals={goals}
                   netWorth={nwData} setGoals={setGoals} setNetWorth={setNwData} setTransactions={setTx}
                   openAddTx={openAddTx} deepLinkAccountId={acctDeepLink} onConsumeDeepLink={()=>setAcctDeepLink(null)} />,
+    bills:      <BillsPage   bills={bills} setBills={setBills} accounts={accounts} transactions={transactions} settings={settings} goals={goals}
+                  netWorth={nwData} setGoals={setGoals} setNetWorth={setNwData} setAccounts={setAccounts} setTransactions={setTx}
+                  openAddTx={openAddTx} goToAccount={goToAccount} />,
     budget:     <Budget     settings={settings} transactions={transactions} />,
     spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} goals={goals} setGoals={setGoals}
                   accounts={accounts} setAccounts={setAccounts} netWorth={nwData} setNetWorth={setNwData} openAddTx={openAddTx} />,
