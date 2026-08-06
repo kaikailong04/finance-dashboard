@@ -952,6 +952,73 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
   .modal-card-lg{max-width:100%;border-radius:20px 20px 0 0;max-height:92vh;animation:sheet-up .22s cubic-bezier(.2,.8,.2,1)}
 }
 @keyframes sheet-up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+
+/* ══════════════════════════════════════════════════════════════════
+   CREDIT CARD DASHBOARD (Priority 3): statement timeline, payment
+   center, early payment assistant, rewards breakdown, notifications.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Statement timeline ── */
+.timeline{display:flex;overflow-x:auto;gap:0;padding-bottom:4px}
+.timeline-step{
+  flex:1 0 128px;min-width:128px;position:relative;padding:0 10px 0 0;
+}
+.timeline-step::before{
+  content:'';position:absolute;top:13px;left:-50%;width:100%;height:2px;background:var(--border2);z-index:0;
+}
+.timeline-step:first-child::before{display:none}
+.timeline-dot{
+  width:26px;height:26px;border-radius:50%;background:var(--s2);border:2px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;position:relative;z-index:1;margin-bottom:10px;
+}
+.timeline-step.done .timeline-dot{background:var(--accent);border-color:var(--accent)}
+.timeline-step.active .timeline-dot{border-color:var(--accent);box-shadow:0 0 0 4px rgba(0,200,5,.15)}
+.timeline-step.done::before{background:var(--accent)}
+.timeline-lbl{font-size:.72rem;font-weight:700;color:var(--t1)}
+.timeline-sub{font-size:.68rem;color:var(--t3);margin:2px 0 6px;font-variant-numeric:tabular-nums}
+.timeline-desc{font-size:.64rem;color:var(--t3);line-height:1.45}
+@media(max-width:700px){ .timeline{gap:14px} }
+
+/* ── Payment center ── */
+.pay-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+.pay-actions{display:flex;gap:8px;flex-wrap:wrap}
+.early-pay-box{
+  margin-top:16px;padding:16px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r-s);
+}
+.early-pay-chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.ep-chip{
+  background:var(--s3);border:1px solid var(--border);border-radius:99px;
+  padding:7px 14px;font-size:.74rem;font-weight:700;color:var(--t2);cursor:pointer;font-family:inherit;
+}
+.ep-chip.on{background:var(--accent);color:#000;border-color:var(--accent)}
+.early-pay-preview{display:flex;align-items:center;gap:14px;margin:14px 0}
+.ep-before,.ep-after{text-align:center;flex:1}
+.ep-arrow{color:var(--t3)}
+.ep-preview-val{font-size:1.3rem;font-weight:800;font-variant-numeric:tabular-nums}
+.ep-preview-lbl{font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-top:2px}
+.pay-history-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:.78rem}
+.pay-history-row:last-child{border-bottom:none}
+
+/* ── Rewards breakdown ── */
+.reward-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.reward-row:last-child{border-bottom:none}
+.reward-name{flex:0 0 118px;font-size:.78rem;color:var(--t2)}
+.reward-bar-track{flex:1;height:6px;background:var(--s3);border-radius:99px;overflow:hidden}
+.reward-bar-fill{height:100%;border-radius:99px;background:var(--accent)}
+.reward-val{flex:0 0 64px;text-align:right;font-size:.78rem;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* ── Notifications ── */
+.notif-row{display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+.notif-row:last-child{border-bottom:none}
+.notif-icon{
+  width:30px;height:30px;border-radius:9px;background:var(--accent-lt);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;margin-top:1px;
+}
+.notif-text{font-size:.8rem;color:var(--t1);line-height:1.4}
+
+/* ── Insight list ── */
+.insight-row{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid rgba(0,200,5,.12);font-size:.82rem;color:var(--t1);line-height:1.5}
+.insight-row:last-child{border-bottom:none}
   </style>
 </head>
 <body>
@@ -1702,6 +1769,9 @@ const accountTypeInfo   = id => ACCOUNT_TYPES.find(t => t.id === id) || ACCOUNT_
 const isLiabilityType   = id => !!accountTypeInfo(id).liability;
 const ACCOUNT_COLORS    = ['#00C805','#3b82f6','#7B74FF','#F5A623','#06b6d4','#FF5000','#ec4899','#84cc16','#94a3b8','#f97316'];
 
+const REWARD_BUCKETS = ['dining','groceries','entertainment','streaming','other'];
+const zeroRewardBuckets = () => Object.fromEntries(REWARD_BUCKETS.map(k => [k,0]));
+
 function defaultCardFields(overrides) {
   return {
     network:'Visa', creditLimit:0, apr:0,
@@ -1710,6 +1780,8 @@ function defaultCardFields(overrides) {
     autopay:false, statementBalance:0,
     rewards:{ dining:0, groceries:0, entertainment:0, streaming:0, other:1 },  // % cashback
     cashbackLifetime:0, cashbackMonth:0, cashbackMonthKey:'',
+    // Same totals, broken out by category — powers the Rewards Dashboard.
+    rewardsEarnedMonth: zeroRewardBuckets(), rewardsEarnedLifetime: zeroRewardBuckets(),
     ...overrides,
   };
 }
@@ -1801,27 +1873,41 @@ function applyTransactionToAccounts(tx, sign, ctx) {
   if (tx.type === 'income')  adjustAccountBalance(acct, isLiabilityType(acct.type) ? -amt :  amt, ctx);
 }
 
-// Category → reward bucket. Falls back to the card's flat "other" rate.
+// Category → reward bucket. Only categories with an obvious match get their
+// own bucket — everything else (gas, shopping, travel, utilities…) falls to
+// "Other" rather than being force-fit into "Entertainment"/"Streaming",
+// which would misleadingly label things like a flight as entertainment.
+function rewardBucketForCategory(category) {
+  if (category === 'dining')    return 'dining';
+  if (category === 'groceries') return 'groceries';
+  return 'other';
+}
+// Falls back to the card's flat "other" rate.
 function rewardRateForCategory(card, category) {
   if (!card) return 0;
-  const map = { dining:'dining', groceries:'groceries', travel:'entertainment', shopping:'entertainment' };
-  return safeNum((card.rewards || {})[map[category] || 'other']);
+  return safeNum((card.rewards || {})[rewardBucketForCategory(category)]);
 }
-// Tracks lifetime + current-calendar-month cashback on the card itself.
+// Tracks lifetime + current-calendar-month cashback on the card itself, both
+// as a flat total (existing UI) and broken out by category (Rewards Dashboard).
 function applyCardRewards(acct, tx, sign, ctx) {
   if (!acct || acct.type !== 'credit' || tx.type !== 'expense') return;
-  const rate = rewardRateForCategory(acct.card, tx.category);
+  const bucket = rewardBucketForCategory(tx.category);
+  const rate   = rewardRateForCategory(acct.card, tx.category);
   if (!rate) return;
   const earn = round2(safeNum(tx.amount) * (rate/100)) * sign;
   const monthKey = (tx.date || '').slice(0, 7);
   ctx.setAccounts(list => list.map(a => {
     if (a.id !== acct.id) return a;
     const card = a.card || defaultCardFields();
-    const sameMonth = card.cashbackMonthKey === monthKey;
+    const sameMonth  = card.cashbackMonthKey === monthKey;
+    const monthBase  = sameMonth ? (card.rewardsEarnedMonth || zeroRewardBuckets()) : zeroRewardBuckets();
+    const lifeBase   = card.rewardsEarnedLifetime || zeroRewardBuckets();
     return { ...a, card: { ...card,
       cashbackLifetime: round2(safeNum(card.cashbackLifetime) + earn),
       cashbackMonth:    round2((sameMonth ? safeNum(card.cashbackMonth) : 0) + earn),
       cashbackMonthKey: monthKey,
+      rewardsEarnedMonth:    { ...monthBase, [bucket]: round2(safeNum(monthBase[bucket]) + earn) },
+      rewardsEarnedLifetime: { ...lifeBase,  [bucket]: round2(safeNum(lifeBase[bucket]) + earn) },
     } };
   }));
 }
@@ -1876,6 +1962,107 @@ function fmtShortDate(d) { return d.toLocaleDateString('en-US',{month:'short',da
 function transactionsForAccount(transactions, acct) {
   if (!acct) return [];
   return (transactions||[]).filter(t => t.accountId ? (t.accountId===acct.id || t.toAccountId===acct.id) : t.account===acct.name);
+}
+
+// ── Credit Card Dashboard (Priority 3) ──────────────────────────────────
+// Most recent PAST (or today's) occurrence of a day-of-month — the mirror
+// image of nextOccurrenceOfDay, used to find when the current billing
+// cycle started.
+function lastOccurrenceOfDay(day, ref) {
+  ref = ref || new Date();
+  const clamped = Math.min(Math.max(day||1,1), 28);
+  let d = new Date(ref.getFullYear(), ref.getMonth(), clamped);
+  if (d > new Date(ref.getFullYear(), ref.getMonth(), ref.getDate())) d = new Date(ref.getFullYear(), ref.getMonth()-1, clamped);
+  return d;
+}
+// Payments made toward a card — any transfer whose destination is this account.
+function paymentHistoryForCard(transactions, acct) {
+  return (transactions||[])
+    .filter(t => t.type === 'transfer' && t.toAccountId === acct.id)
+    .sort((a,b) => new Date(b.date) - new Date(a.date));
+}
+function hasPaidThisCycle(transactions, acct, card) {
+  const since = lastOccurrenceOfDay(card.statementCloseDay);
+  return paymentHistoryForCard(transactions, acct).some(t => txDateKey(t) >= ymd(since));
+}
+// Recommended payment to reach a target utilization percentage.
+function suggestedEarlyPayment(balance, limit, targetPct) {
+  const target = round2(limit * (targetPct/100));
+  return round2(Math.max(balance - target, 0));
+}
+// Six-step visual timeline explaining how a purchase becomes a reported
+// balance — the PRD's core "utilization mostly matters before you apply
+// for new credit" education, made concrete with this card's real dates.
+function statementTimelineSteps(card, balance, paidThisCycle) {
+  const today = new Date();
+  const nextClose = nextOccurrenceOfDay(card.statementCloseDay, today);
+  const dueDate   = nextOccurrenceOfDay(card.dueDay, today);
+  const daysToClose = Math.round((nextClose - today) / 86400000);
+  const daysToDue    = Math.round((dueDate - today) / 86400000);
+  return [
+    { key:'purchases', label:'Purchases', status:'done', sub:'Ongoing',
+      desc:'Every purchase adds to your current balance right away.' },
+    { key:'current', label:'Current Balance', status:'done', sub:currency(balance,2),
+      desc:`${currency(balance,2)} owed right now — what you'd pay to zero out the card today.` },
+    { key:'close', label:'Statement Closes', status: daysToClose<=5?'active':'upcoming', sub:fmtShortDate(nextClose),
+      desc:'Your balance on this date becomes the statement balance.' },
+    { key:'reported', label:'Reported Balance', status: daysToClose<=5?'active':'upcoming', sub:'To the bureaus',
+      desc:'Only the statement balance is typically reported — not your current balance or any early payment made before it closes.' },
+    { key:'due', label:'Payment Due', status: paidThisCycle?'done':(daysToDue<=5?'active':'upcoming'), sub:fmtShortDate(dueDate),
+      desc:'Pay at least the statement balance by this date to avoid interest.' },
+    { key:'paid', label:'Paid', status: paidThisCycle?'done':'upcoming', sub: paidThisCycle?'Posted':'Not yet',
+      desc:'Early payments reduce reported utilization but are optional — paying the statement balance by the due date is all that’s required to avoid interest.' },
+  ];
+}
+// Never-shaming, plain-language reads of this card's numbers — the same
+// shape of sentence the fuller AI Spending Coach (a later pass) will use
+// app-wide.
+function creditSmartInsights(acct, ctx) {
+  const card = acct.card || defaultCardFields();
+  const balance = accountBalance(acct, ctx);
+  const util = creditUtilization(balance, card.creditLimit);
+  const out = [];
+  if (balance <= 0) {
+    out.push('No balance carried — nothing to pay down.');
+  } else if (util <= 10) {
+    out.push(`You're already below 10% utilization (${util.toFixed(0)}%). No early payment needed.`);
+  } else {
+    const early = suggestedEarlyPayment(balance, card.creditLimit, 10);
+    const close = nextOccurrenceOfDay(card.statementCloseDay);
+    out.push(`You're at ${util.toFixed(0)}% utilization. If you're applying for new credit soon, paying ${currency(early,0)} before ${fmtShortDate(close)} would reduce utilization to 10%.`);
+  }
+  if (safeNum(card.cashbackMonth) > 0) out.push(`You've earned ${currency(card.cashbackMonth,2)} in rewards this month.`);
+  out.push(card.autopay
+    ? 'Autopay is on — your statement balance will be paid automatically by the due date.'
+    : 'Autopay is off — turn it on, or set a reminder, so you never miss the due date.');
+  return out;
+}
+// Computed, in-app alerts — this is a PWA with no push-notification backend,
+// so these surface on the dashboard itself rather than as OS notifications.
+function creditNotifications(acct, ctx, transactions) {
+  const card = acct.card || defaultCardFields();
+  const balance = accountBalance(acct, ctx);
+  const today = new Date();
+  const nextClose = nextOccurrenceOfDay(card.statementCloseDay, today);
+  const dueDate   = nextOccurrenceOfDay(card.dueDay, today);
+  const daysToClose = Math.round((nextClose - today) / 86400000);
+  const daysToDue    = Math.round((dueDate - today) / 86400000);
+  const util = creditUtilization(balance, card.creditLimit);
+  const notes = [];
+  if (daysToClose <= 5) notes.push({ icon:'archive', text:`Statement closes in ${daysToClose} day${daysToClose===1?'':'s'} (${fmtShortDate(nextClose)}).` });
+  if (daysToDue <= 5)   notes.push({ icon:'lock', text:`Payment due in ${daysToDue} day${daysToDue===1?'':'s'} (${fmtShortDate(dueDate)}).` });
+  if (util > 10)        notes.push({ icon:'trending', text:'A suggested early payment is available below to bring utilization under 10%.' });
+  if (safeNum(card.cashbackMonth) > 0) notes.push({ icon:'dollar', text:`${currency(card.cashbackMonth,2)} in rewards earned this month.` });
+  const lastPayment = paymentHistoryForCard(transactions, acct)[0];
+  if (lastPayment) {
+    // Calendar-day difference, not a raw ms/24h divide — comparing midnight
+    // to midnight so a same-day payment always reads "today" regardless of
+    // what time it is right now.
+    const daysAgo = Math.round((parseLocalDate(ymd(today)) - parseLocalDate(txDateKey(lastPayment))) / 86400000);
+    if (daysAgo <= 3) notes.push({ icon:'check', text:`Payment of ${currency(lastPayment.amount,2)} posted ${daysAgo<=0?'today':daysAgo+' day'+(daysAgo===1?'':'s')+' ago'}.` });
+  }
+  if (!notes.length) notes.push({ icon:'check', text:'Nothing needs your attention right now.' });
+  return notes;
 }
 
 // ── Chart palette ─────────────────────────────────────────────────────
@@ -5046,6 +5233,12 @@ function accountsMatchingPaymentMethod(accounts, method) {
   if (method === 'Cash')        return list.filter(a => a.type === 'cash');
   return list;   // Bank Transfer / Apple Pay / Venmo / PayPal can draw from any account
 }
+// The account a card payment should draw from by default — the checking
+// account if there is one, otherwise whatever non-credit account exists.
+function defaultPaymentSourceAccount(accounts, excludeAcct) {
+  const list = (accounts||[]).filter(a => !a.archived && a.type!=='credit' && (!excludeAcct || a.id!==excludeAcct.id));
+  return list.find(a => a.type==='checking') || list[0] || null;
+}
 
 function UtilizationRing({ pct, size=132, label='Utilization' }) {
   const clamped = Math.max(0, Math.min(safeNum(pct), 100));
@@ -5097,7 +5290,7 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
   const [notes, setNotes]             = useState('');
   const [paymentMethod, setPaymentMethod] = useState((preset && preset.paymentMethod) || inferredMethod);
   const [accountId, setAccountId]     = useState(defaultAcct ? defaultAcct.id : '');
-  const [toAccountId, setToAccountId] = useState('');
+  const [toAccountId, setToAccountId] = useState((preset && preset.toAccountId) || '');
 
   const eligible = useMemo(() => accountsMatchingPaymentMethod(visibleAccounts, paymentMethod), [visibleAccounts, paymentMethod]);
   useEffect(() => {
@@ -5450,6 +5643,145 @@ function AccountFormModal({ onClose, onSave, accounts }) {
   );
 }
 
+function StatementTimeline({ card, balance, paidThisCycle }) {
+  const steps = statementTimelineSteps(card, balance, paidThisCycle);
+  return (
+    <div className="timeline">
+      {steps.map(s => (
+        <div key={s.key} className={'timeline-step '+s.status}>
+          <div className="timeline-dot">{s.status==='done' && <Icon name="check" size={12} color="#000"/>}</div>
+          <div className="timeline-lbl">{s.label}</div>
+          <div className="timeline-sub">{s.sub}</div>
+          <div className="timeline-desc">{s.desc}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const REWARD_BUCKET_LABEL = { dining:'Dining Cashback', groceries:'Grocery Cashback', entertainment:'Entertainment', streaming:'Streaming', other:'Other' };
+function RewardsBreakdown({ card }) {
+  const monthly  = card.rewardsEarnedMonth || zeroRewardBuckets();
+  const maxMonth = Math.max(...REWARD_BUCKETS.map(k => safeNum(monthly[k])), 0.01);
+  const totalMonth = round2(REWARD_BUCKETS.reduce((s,k) => s+safeNum(monthly[k]), 0));
+  return (
+    <>
+      {REWARD_BUCKETS.map(k => (
+        <div key={k} className="reward-row">
+          <div className="reward-name">{REWARD_BUCKET_LABEL[k]}</div>
+          <div className="reward-bar-track"><div className="reward-bar-fill" style={{width:`${Math.min((safeNum(monthly[k])/maxMonth)*100,100)}%`}}/></div>
+          <div className="reward-val">{currency(safeNum(monthly[k]),2)}</div>
+        </div>
+      ))}
+      <div className="b-total-row" style={{marginTop:10,borderRadius:'var(--r-s)'}}>
+        <div><div className="b-total-lbl">Total Rewards (This Month)</div><div className="b-surplus">{currency(totalMonth,2)}</div></div>
+        <div style={{textAlign:'right'}}><div className="b-total-lbl">Lifetime Rewards</div><div className="b-surplus" style={{color:'var(--t1)'}}>{currency(safeNum(card.cashbackLifetime),2)}</div></div>
+      </div>
+    </>
+  );
+}
+
+function CreditNotificationsList({ notes }) {
+  return (
+    <div>
+      {notes.map((n,i) => (
+        <div key={i} className="notif-row">
+          <span className="notif-icon"><Icon name={n.icon} size={14} color="var(--accent)"/></span>
+          <span className="notif-text">{n.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Payment Center + Early Payment Assistant. Every payment action funnels
+// through the same transfer flow as everything else in the app — a "Make
+// Early Payment" tap is just a pre-filled transfer from a bank account to
+// this card, so it updates the balance, net worth, and utilization exactly
+// like a manually logged payment would.
+function CreditPaymentCenter({ acct, card, balance, transactions, accounts, onOpenAdd }) {
+  const [pct, setPct]           = useState(10);
+  const [useCustom, setUseCustom] = useState(false);
+  const [customAmt, setCustomAmt] = useState('');
+
+  const dueDate = nextOccurrenceOfDay(card.dueDay);
+  const minPay  = minPaymentFor(card, balance);
+  const suggested   = useCustom ? (parseFloat(customAmt)||0) : suggestedEarlyPayment(balance, card.creditLimit, pct);
+  const afterBalance = Math.max(round2(balance - suggested), 0);
+  const beforeUtil = creditUtilization(balance, card.creditLimit);
+  const afterUtil  = creditUtilization(afterBalance, card.creditLimit);
+  const history    = paymentHistoryForCard(transactions, acct);
+  const paySource  = defaultPaymentSourceAccount(accounts, acct);
+
+  const pay = amount => {
+    if (!(amount > 0) || !paySource) return;
+    onOpenAdd(paySource.id, { type:'transfer', amount, toAccountId: acct.id });
+  };
+
+  return (
+    <div className="card">
+      <div className="card-label">Payment Center</div>
+      <div className="pay-grid">
+        <div className="stat"><div className="stat-label">Current Balance</div><div className="stat-val" style={{fontSize:'1.2rem'}}>{currency(balance,2)}</div></div>
+        <div className="stat"><div className="stat-label">Statement Balance</div><div className="stat-val" style={{fontSize:'1.2rem'}}>{currency(safeNum(card.statementBalance),2)}</div></div>
+        <div className="stat"><div className="stat-label">Minimum Payment</div><div className="stat-val" style={{fontSize:'1.2rem'}}>{currency(minPay,2)}</div></div>
+        <div className="stat"><div className="stat-label">Next Due Date</div><div className="stat-val" style={{fontSize:'1.2rem'}}>{fmtShortDate(dueDate)}</div></div>
+      </div>
+      <div style={{fontSize:'.74rem',color:'var(--t3)',marginBottom:12}}>
+        Autopay is <b style={{color:card.autopay?'var(--accent)':'var(--t2)'}}>{card.autopay?'on':'off'}</b>
+        {!paySource && ' · add a checking or cash account to make payments from here'}
+      </div>
+      <div className="pay-actions">
+        <button className="btn btn-ghost btn-sm" disabled={!paySource || !(safeNum(card.statementBalance)>0)} onClick={()=>pay(safeNum(card.statementBalance))}>Pay Statement</button>
+        <button className="btn btn-ghost btn-sm" disabled={!paySource || !(balance>0)} onClick={()=>pay(balance)}>Pay Current Balance</button>
+      </div>
+
+      <div className="early-pay-box">
+        <div className="card-label" style={{marginBottom:8}}>Early Payment Assistant</div>
+        <div style={{fontSize:'.76rem',color:'var(--t3)',lineHeight:1.5}}>
+          Utilization mostly matters right before you apply for new credit — pick a target and we’ll calculate the payment.
+        </div>
+        <div className="early-pay-chips">
+          {[5,10,20,30].map(p => (
+            <button key={p} type="button" className={'ep-chip'+(!useCustom && pct===p?' on':'')} onClick={()=>{ setUseCustom(false); setPct(p); }}>{p}%</button>
+          ))}
+          <button type="button" className={'ep-chip'+(useCustom?' on':'')} onClick={()=>setUseCustom(true)}>Custom</button>
+        </div>
+        {useCustom && (
+          <div className="fg" style={{maxWidth:180,marginBottom:10}}>
+            <input type="number" min="0" step="1" placeholder="0.00" value={customAmt} onChange={e=>setCustomAmt(e.target.value)}/>
+          </div>
+        )}
+        <div className="early-pay-preview">
+          <div className="ep-before">
+            <div className="ep-preview-val" style={{color:utilizationColor(beforeUtil)}}>{beforeUtil.toFixed(0)}%</div>
+            <div className="ep-preview-lbl">Before</div>
+          </div>
+          <span className="ep-arrow"><Icon name="chevronRight" size={18} color="var(--t3)"/></span>
+          <div className="ep-after">
+            <div className="ep-preview-val" style={{color:utilizationColor(afterUtil)}}>{afterUtil.toFixed(0)}%</div>
+            <div className="ep-preview-lbl">After</div>
+          </div>
+        </div>
+        <div style={{fontSize:'.78rem',color:'var(--t2)',marginBottom:10}}>Suggested payment: <b style={{color:'var(--t1)'}}>{currency(suggested,2)}</b></div>
+        <button className="btn btn-primary btn-full" disabled={!paySource || !(suggested>0)} onClick={()=>pay(suggested)}>Make Early Payment</button>
+      </div>
+
+      {history.length > 0 && (
+        <div style={{marginTop:16}}>
+          <div className="card-label">Payment History</div>
+          {history.slice(0,6).map(t => (
+            <div key={t.id} className="pay-history-row">
+              <span style={{color:'var(--t2)'}}>{txDateKey(t)} · from {t.account||'—'}</span>
+              <span style={{fontWeight:700,color:'var(--accent)'}}>{currency(t.amount,2)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions, onBack, onOpenAdd }) {
   const ctx = { accounts, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions };
   const [renaming, setRenaming]       = useState(false);
@@ -5572,6 +5904,37 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
         </div>
       )}
 
+      {card && (
+        <div>
+          <div className="section-head">Statement Timeline</div>
+          <div className="card">
+            <StatementTimeline card={card} balance={balance} paidThisCycle={hasPaidThisCycle(transactions, acct, card)}/>
+          </div>
+        </div>
+      )}
+
+      {card && (
+        <CreditPaymentCenter acct={acct} card={card} balance={balance} transactions={transactions} accounts={accounts} onOpenAdd={onOpenAdd}/>
+      )}
+
+      {card && (
+        <div>
+          <div className="section-head">Rewards Dashboard</div>
+          <div className="card-flush" style={{padding:'6px 20px'}}>
+            <RewardsBreakdown card={card}/>
+          </div>
+        </div>
+      )}
+
+      {card && (
+        <div>
+          <div className="section-head">Notifications</div>
+          <div className="card-flush" style={{padding:'2px 20px'}}>
+            <CreditNotificationsList notes={creditNotifications(acct, ctx, transactions)}/>
+          </div>
+        </div>
+      )}
+
       <div>
         <div className="section-head">Balance History</div>
         <div className="card">
@@ -5589,7 +5952,11 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
 
       <div className="card" style={{borderColor:'rgba(0,200,5,.2)',background:'rgba(0,200,5,.03)'}}>
         <div className="card-label">AI Insights</div>
-        <div style={{fontSize:'.84rem',color:'var(--t1)',lineHeight:1.5}}>{accountInsight(acct, ctx, stats)}</div>
+        {card ? (
+          <div>{creditSmartInsights(acct, ctx).map((line,i) => <div key={i} className="insight-row">{line}</div>)}</div>
+        ) : (
+          <div style={{fontSize:'.84rem',color:'var(--t1)',lineHeight:1.5}}>{accountInsight(acct, ctx, stats)}</div>
+        )}
       </div>
 
       <div>
@@ -5644,7 +6011,7 @@ function AccountsPage({ accounts, setAccounts, transactions, settings, goals, ne
   if (openAcct) {
     return <AccountDetail acct={openAcct} accounts={accounts} transactions={transactions} settings={settings} goals={goals}
       netWorth={netWorth} setGoals={setGoals} setNetWorth={setNetWorth} setAccounts={setAccounts} setTransactions={setTransactions}
-      onBack={()=>setOpenId(null)} onOpenAdd={id=>openAddTx(id)}/>;
+      onBack={()=>setOpenId(null)} onOpenAdd={(id,preset)=>openAddTx(id,preset)}/>;
   }
 
   const move = (id, dir) => {
