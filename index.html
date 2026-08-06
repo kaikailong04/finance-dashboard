@@ -545,16 +545,19 @@ html{-webkit-text-size-adjust:100%}
   padding:13px 20px;border-bottom:1px solid var(--border);
 }
 .v-row:last-child{border-bottom:none}
-.v-row-left{display:flex;align-items:center;gap:13px}
+/* flex:1;min-width:0 here (+ nowrap/ellipsis below) is the same fix as
+   .acct-body: without it, a long label (an account name, a merchant) had
+   no bounded box to truncate against and could run into .v-row-val. */
+.v-row-left{display:flex;align-items:center;gap:13px;flex:1;min-width:0}
 .v-row-icon{
   width:38px;height:38px;border-radius:11px;
   display:flex;align-items:center;justify-content:center;flex-shrink:0;
 }
-.v-row-name{font-size:.9rem;font-weight:500;color:var(--t2)}
-.v-row-sub{font-size:.72rem;color:var(--t3);margin-top:2px}
+.v-row-name{font-size:.9rem;font-weight:500;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;min-width:0}
+.v-row-sub{font-size:.72rem;color:var(--t3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;min-width:0}
 .v-row-val{
   font-size:.9rem;font-weight:700;
-  font-variant-numeric:tabular-nums;text-align:right;
+  font-variant-numeric:tabular-nums;text-align:right;flex-shrink:0;
 }
 
 /* ── Flush card (no inner padding, rows self-pad) ────────────────── */
@@ -961,9 +964,15 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   width:44px;height:44px;border-radius:12px;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;
 }
-.acct-body{flex:1;min-width:0}
-.acct-name{font-size:.92rem;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.acct-sub{font-size:.7rem;color:var(--t3);margin-top:2px}
+/* display:flex here (not just flex:1) is load-bearing — without it these were
+   plain inline spans, so a long name + subtitle just ran together as one
+   inline run of text instead of stacking, and acct-name's nowrap/ellipsis
+   had no block box to truncate against, so a long account name (e.g.
+   "Capital One 360 High Yield Savings") visually overlapped the balance
+   instead of ellipsizing. */
+.acct-body{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.acct-name{font-size:.92rem;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.acct-sub{font-size:.7rem;color:var(--t3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .acct-right{text-align:right;flex-shrink:0}
 .acct-bal{font-size:.98rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--t1)}
 .acct-chg{font-size:.66rem;margin-top:2px;font-variant-numeric:tabular-nums}
@@ -3757,7 +3766,7 @@ function AccountsStrip({ accounts, settings, goals, netWorth, goTo }) {
                 <div className="v-row-icon" style={{background:a.color+'20'}}><Icon name={a.icon} size={16} color={a.color}/></div>
                 <div className="v-row-name">{a.name}</div>
               </div>
-              <div className="v-row-val" style={{color:liability&&bal>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}{currency(bal)}</div>
+              <div className="v-row-val" style={{color:liability&&bal>0?'var(--red)':'var(--t1)'}}>{liability&&bal>0?'−':''}{currency(bal)}</div>
             </div>
           );
         })}
@@ -8671,7 +8680,7 @@ function AccountsPage({ accounts, setAccounts, transactions, settings, goals, ne
                         <span className="acct-sub">{accountTypeInfo(a.type).label}{a.institution?` · ${a.institution}`:''}</span>
                       </span>
                       <span className="acct-right">
-                        <span className="acct-bal" style={{color:liability&&bal>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}{currency(bal,2)}</span>
+                        <span className="acct-bal" style={{color:liability&&bal>0?'var(--red)':'var(--t1)'}}>{liability&&bal>0?'−':''}{currency(bal,2)}</span>
                         {chg !== 0 && <span className="acct-chg" style={{color:chg>=0?'var(--accent)':'var(--red)'}}>{chg>=0?'+':'−'}{currency(Math.abs(chg))} this mo</span>}
                       </span>
                     </button>
