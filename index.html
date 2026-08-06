@@ -2638,8 +2638,12 @@ function utilizationColor(pct) {
   if (pct <= 50) return '#f97316';
   return '#FF5000';
 }
+// A card with nothing owed has no minimum payment — full stop. Before this
+// guard, Math.max(minPaymentFlat, balance*pct) floored the result at the
+// flat minimum (defaults to $35) even at balance=0, so a paid-off card
+// still showed a "$35 due" bill every cycle with nothing to actually pay.
 function minPaymentFor(card, balance) {
-  if (!card) return 0;
+  if (!card || !(balance > 0)) return 0;
   return round2(Math.max(card.minPaymentFlat || 0, balance * ((card.minPaymentPct||0)/100)));
 }
 // Next calendar occurrence of a day-of-month (statement close / due date),
@@ -2823,7 +2827,10 @@ function creditCardBills(accounts, ctx) {
         autopay: card.autopay, isCreditCardBill:true, accountRef:a,
         paid: hasPaidThisCycle(ctx.transactions, a, card),
       };
-    });
+    })
+    // Nothing owed → nothing due. A paid-off card doesn't get a bill row
+    // at all this cycle, rather than a $0.00 one cluttering the list.
+    .filter(cc => cc.amount > 0);
 }
 // Records a real expense (paid from the bill's linked account, or the
 // default checking-like account) and stamps the bill as paid for this
