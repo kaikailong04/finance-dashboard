@@ -894,6 +894,21 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .split-amt input{padding-left:20px;width:100%}
 .split-total{font-size:.68rem;margin-top:2px}
 
+/* ── Achievements (Bonus) ── */
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.ach-badge{
+  display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r-s);
+  padding:12px 6px;opacity:.45;filter:grayscale(1);
+}
+.ach-badge.on{opacity:1;filter:none;border-color:var(--accent)}
+.ach-badge-icon{
+  width:34px;height:34px;border-radius:50%;background:var(--wash-3);
+  display:flex;align-items:center;justify-content:center;
+}
+.ach-badge.on .ach-badge-icon{background:var(--accent)}
+.ach-badge-lbl{font-size:.6rem;font-weight:600;color:var(--t2);line-height:1.3}
+
 /* ── Net worth account rows ── */
 .nwa-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 15px;border-bottom:1px solid var(--border)}
 .nwa-row:last-child{border-bottom:0}
@@ -2268,6 +2283,60 @@ function netWorthChangeForYear(netWorth, year) {
   const prev = [...hist].filter(h => h.month < `${year}-01`).sort((a,b)=>a.month.localeCompare(b.month)).slice(-1)[0];
   return prev ? { hasPrev:true, value: round2(cur.netWorth - prev.netWorth) } : { hasPrev:false, value:null };
 }
+
+// ── Achievements (Bonus) — every badge is DERIVED, never its own stored
+// "unlocked" flag, so there's nothing to get out of sync: reopen the app a
+// year later and the same badges recompute from the same underlying data.
+const ACHIEVEMENT_DEFS = [
+  { id:'nw1k',      label:'First $1,000',        icon:'trending',   group:'Net Worth', desc:'Reach $1,000 in net worth.' },
+  { id:'nw10k',     label:'First $10,000',       icon:'trending',   group:'Net Worth', desc:'Reach $10,000 in net worth.' },
+  { id:'nw100k',    label:'Six Figures',          icon:'trending',   group:'Net Worth', desc:'Reach $100,000 in net worth.' },
+  { id:'debtfree',  label:'Debt-Free',            icon:'shield',     group:'Net Worth', desc:'Zero liabilities with a positive net worth.' },
+  { id:'efund',     label:'Emergency Fund Funded',icon:'piggy',      group:'Savings',   desc:'Hit your HYSA goal.' },
+  { id:'firstpay',  label:'First Paycheck',       icon:'dollar',     group:'Habits',    desc:'Log your first income transaction.' },
+  { id:'tx100',     label:'100 Transactions',     icon:'receipt',    group:'Habits',    desc:'Log 100 transactions.' },
+  { id:'streak6',   label:'6-Month Streak',       icon:'zap',        group:'Habits',    desc:'Log at least one transaction every month for 6 months straight.' },
+  { id:'budget3',   label:'3 Months Under Budget',icon:'target',     group:'Budgeting', desc:'Stay at or under your total budget for 3 months in a row.' },
+  { id:'goalDone',  label:'Goal Achieved',        icon:'check',      group:'Goals',     desc:'Fully fund a custom goal.' },
+];
+function computeAchievements({ transactions, netWorth, goals, settings, customGoals, accounts }) {
+  const tx = transactions || [];
+  const hist = (netWorth && netWorth.history) || [];
+  const snap = getNetWorthSnapshot((netWorth||{}).accounts, goals, accounts, { settings, goals, netWorth });
+  const bestNW = Math.max(snap.netWorth, ...hist.map(h=>safeNum(h.netWorth)), -Infinity);
+
+  const hasIncome = tx.some(isIncomeTransaction);
+  const txCount = tx.length;
+
+  // Month-key helpers, reused by both streak checks below.
+  const now = new Date();
+  const monthKeyOffset = n => { const d = new Date(now.getFullYear(), now.getMonth()-n, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+  const txMonths = new Set(tx.map(t => (t.date||'').slice(0,7)));
+  const streak6 = Array.from({length:6}, (_,i)=>monthKeyOffset(i)).every(k => txMonths.has(k));
+
+  const budget3 = Array.from({length:3}, (_,i)=>i).every(i => {
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    const phase = getPhaseInfo(settings.startDate, d);
+    const isRentFree = phase.isEarly || phase.isPreEmployment;
+    const bud = isRentFree ? settings.earlyBudget : settings.laterBudget;
+    const total = Object.values(bud||{}).reduce((s,v)=>s+(safeNum(v)),0);
+    const ms = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const spent = tx.filter(t=>t.type==='expense' && (t.date||'').startsWith(ms)).reduce((s,t)=>s+safeNum(t.amount),0);
+    return total > 0 && spent <= total;
+  });
+
+  const goalCtxForAch = { settings, goals, accounts, netWorth };
+  const goalDone = (customGoals||[]).some(g => goalProgress(g, goalCtxForAch).complete);
+
+  const checks = {
+    nw1k: bestNW >= 1000, nw10k: bestNW >= 10000, nw100k: bestNW >= 100000,
+    debtfree: snap.liabilities === 0 && snap.assets > 0,
+    efund: (settings.hysaGoal||0) > 0 && (goals.hysaBalance||0) >= settings.hysaGoal,
+    firstpay: hasIncome, tx100: txCount >= 100, streak6, budget3, goalDone,
+  };
+  return ACHIEVEMENT_DEFS.map(d => ({ ...d, achieved: !!checks[d.id] }));
+}
+
 // Net worth from STORED BALANCES only. Contribution history explains how a
 // balance grew; adding it on top would double-count, so it is never summed
 // here. `dynamicAccounts` (optional, the fd_accounts registry) folds in
@@ -4928,6 +4997,32 @@ function CustomGoalCard({ goal, ctx, onEdit, onContribute }) {
   );
 }
 
+function AchievementsGrid({ achievements }) {
+  const unlocked = achievements.filter(a=>a.achieved).length;
+  const groups = [...new Set(achievements.map(a=>a.group))];
+  return (
+    <div>
+      <div className="cal-head">
+        <div className="section-head" style={{padding:0,marginBottom:0}}>Achievements</div>
+        <span style={{fontSize:'.7rem',color:'var(--t3)'}}>{unlocked} / {achievements.length} unlocked</span>
+      </div>
+      {groups.map(group => (
+        <div key={group} style={{marginBottom:14}}>
+          <div style={{fontSize:'.62rem',fontWeight:700,color:'var(--t4)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:8}}>{group}</div>
+          <div className="ach-grid">
+            {achievements.filter(a=>a.group===group).map(a => (
+              <div key={a.id} className={'ach-badge'+(a.achieved?' on':'')} title={a.desc}>
+                <div className="ach-badge-icon"><Icon name={a.icon} size={18} color={a.achieved?'#000':'var(--t4)'}/></div>
+                <div className="ach-badge-lbl">{a.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Goals({ settings, goals, setGoals, commissions, transactions, accounts, netWorth, customGoals, setCustomGoals }) {
   const now   = new Date();
   const phase = getPhaseInfo(settings.startDate);
@@ -5193,6 +5288,8 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
           </div>
         )}
       </div>
+
+      <AchievementsGrid achievements={computeAchievements({ transactions, netWorth, goals, settings, customGoals, accounts })}/>
 
       {showAddGoal && (
         <GoalFormModal accounts={accounts} onClose={()=>setShowAddGoal(false)}
@@ -8911,6 +9008,18 @@ function BillsPage({ bills, setBills, accounts, transactions, settings, goals, n
 
   const totalDue = [...overdue, ...upcoming].reduce((s,r)=>s+safeNum(r.amount),0);
 
+  // Subscription reminders (Bonus) — no cancellation workflow is possible
+  // without a real merchant/billing integration, but "here's everything
+  // renewing and what it costs you" is the useful, honest version of this:
+  // an audit, not an auto-cancel button.
+  const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const subscriptions = (bills||[]).filter(b => b.category === 'subscription' && b.recurring);
+  const subsMonthlyTotal = subscriptions.reduce((s,b)=>s+safeNum(b.amount),0);
+  const renewingSoon = subscriptions
+    .map(b => ({ b, days: Math.round((billDueDateThisPeriod(b, today) - todayMidnight) / 86400000) }))
+    .filter(({ b, days }) => days >= 0 && days <= 7 && billStatus(b, today) !== 'paid')
+    .sort((a,b) => a.days - b.days);
+
   const handlePay = row => {
     if (row.isCreditCardBill) {
       // A card payment is a transfer, not a plain expense — hand off to the
@@ -8950,6 +9059,31 @@ function BillsPage({ bills, setBills, accounts, transactions, settings, goals, n
         </div>
         <button className="add-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14} color="#000" strokeWidth={2.5}/>Add Bill</button>
       </div>
+
+      {subscriptions.length > 0 && (
+        <div className="card">
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:renewingSoon.length?12:0}}>
+            <div className="card-label" style={{margin:0}}>Subscriptions</div>
+            <span style={{fontSize:'.78rem',fontWeight:700,color:'var(--t1)'}}>{currency(subsMonthlyTotal,2)}<span style={{fontSize:'.62rem',fontWeight:600,color:'var(--t3)'}}>/mo · {subscriptions.length}</span></span>
+          </div>
+          {renewingSoon.length > 0 && (
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {renewingSoon.map(({ b, days }) => (
+                <div key={b.id} className="v-row" style={{padding:'8px 10px',background:'var(--yellow-lt)',borderRadius:'var(--r-s)'}}>
+                  <div className="v-row-left">
+                    <div className="v-row-icon" style={{background:'var(--yellow-lt)'}}><Icon name="receipt" size={15} color="var(--yellow)"/></div>
+                    <div>
+                      <div className="v-row-name">{b.name}</div>
+                      <div style={{fontSize:'.64rem',color:'var(--t3)'}}>Renews in {days===0?'today':`${days} day${days===1?'':'s'}`} · {currency(b.amount,2)}</div>
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setEditing(b)}>Review</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <Section title="Overdue" rows={overdue} emptyMsg="Nothing overdue."/>
       <Section title="Upcoming" rows={upcoming} emptyMsg="No bills due soon."/>
