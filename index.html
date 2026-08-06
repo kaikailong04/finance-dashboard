@@ -1296,6 +1296,10 @@ const DEFAULT_SETTINGS = {
     billReminders:    true,   // "due soon" cards on Dashboard / Bills
     budgetAlerts:     true,   // over-budget callouts on Spending / Dashboard
   },
+
+  // ── Bonus features ──────────────────────────────────────────────────
+  taxDeductibleCategories: [],   // category ids the user has flagged as tax-deductible
+  budgetRollover: false,         // unspent budget carries into next month, per category
 };
 
 const DEFAULT_GOALS = {
@@ -1497,7 +1501,7 @@ function csvEscape(v) {
   const s = String(v == null ? '' : v);
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
 }
-function exportTransactionsCSV(transactions) {
+function exportTransactionsCSV(transactions, filename) {
   const rows = [CSV_COLUMNS.join(',')];
   for (const t of [...(transactions||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''))) {
     rows.push([
@@ -1509,7 +1513,7 @@ function exportTransactionsCSV(transactions) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `finance-transactions-${dateKey(new Date())}.csv`;
+  a.download = filename || `finance-transactions-${dateKey(new Date())}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -2251,6 +2255,17 @@ function netWorthChangeForMonth(netWorth, monthKey) {
   const cur  = hist.find(h => h.month === monthKey);
   if (!cur) return null;
   const prev = [...hist].filter(h => h.month < monthKey).sort((a,b) => a.month.localeCompare(b.month)).slice(-1)[0];
+  return prev ? { hasPrev:true, value: round2(cur.netWorth - prev.netWorth) } : { hasPrev:false, value:null };
+}
+// Year in Review (Bonus) — latest snapshot IN the year vs. the latest
+// snapshot before it (year-end vs. prior year-end), same "read off saved
+// snapshots, never reconstruct" rule as the monthly version above.
+function netWorthChangeForYear(netWorth, year) {
+  const hist = (netWorth && netWorth.history) || [];
+  const inYear = [...hist].filter(h => h.month && h.month.startsWith(String(year))).sort((a,b)=>a.month.localeCompare(b.month));
+  const cur = inYear[inYear.length-1];
+  if (!cur) return null;
+  const prev = [...hist].filter(h => h.month < `${year}-01`).sort((a,b)=>a.month.localeCompare(b.month)).slice(-1)[0];
   return prev ? { hasPrev:true, value: round2(cur.netWorth - prev.netWorth) } : { hasPrev:false, value:null };
 }
 // Net worth from STORED BALANCES only. Contribution history explains how a
@@ -4514,7 +4529,43 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
     hysa:      budget.hysa||0,   rothIRA: budget.rothIRA||0, other:0,
   };
 
-  const totalBudget = Object.values(catBudget).reduce((s,v)=>s+v, 0);
+  // Budget Rollover (Bonus) — walk back through however many prior months
+  // have data (capped at 12, so a long-lived account doesn't scan its whole
+  // history every render) and carry each category's (budget − spent) into
+  // this month. Can go negative — overspending one month borrows from the
+  // next, same as an envelope budget — but only for categories that
+  // actually HAVE a budget line (lim=0 categories never accrue rollover).
+  const rolloverByCat = useMemo(() => {
+    if (!settings.budgetRollover) return {};
+    const out = {};
+    for (let back=1; back<=12; back++) {
+      const d = new Date(viewMonth.y, viewMonth.m - back, 1);
+      const ms = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const mTx = transactions.filter(t=>t.date.startsWith(ms) && t.type==='expense');
+      const mByCat = {};
+      for (const t of mTx) mByCat[t.category] = (mByCat[t.category]||0) + safeNum(t.amount);
+      const mPhase = getPhaseInfo(settings.startDate, d);
+      const mIsRentFree = mPhase.isEarly || mPhase.isPreEmployment;
+      const mBud = mIsRentFree ? settings.earlyBudget : settings.laterBudget;
+      const mCatBudget = mIsRentFree ? {
+        housing:mBud.utilitiesAndFee||0, groceries:mBud.groceries, gas:mBud.gas, dining:mBud.outToEat,
+        shopping:mBud.shopping, travel:mBud.funTravel, utilities:mBud.utilitiesAndFee||0, other:0,
+      } : {
+        housing:mBud.rentAndFee||0, groceries:mBud.groceries, gas:mBud.gas, dining:mBud.outToEat,
+        shopping:mBud.shopping, travel:mBud.funTravel, utilities:mBud.utilities||0, other:0,
+      };
+      for (const cat of Object.keys(mCatBudget)) {
+        if (!mCatBudget[cat]) continue;
+        out[cat] = round2((out[cat]||0) + mCatBudget[cat] - (mByCat[cat]||0));
+      }
+    }
+    return out;
+  }, [settings, transactions, viewMonth.y, viewMonth.m]);
+  const effectiveCatBudget = settings.budgetRollover
+    ? Object.fromEntries(Object.entries(catBudget).map(([k,v]) => [k, v>0 ? round2(v + (rolloverByCat[k]||0)) : v]))
+    : catBudget;
+
+  const totalBudget = Object.values(effectiveCatBudget).reduce((s,v)=>s+v, 0);
 
   // Logging a HYSA or Roth IRA transaction here is a real contribution, so it
   // syncs the same goals balance the paycheck flow and Commission tracker
@@ -4555,7 +4606,7 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
   const monthLabel = new Date(viewMonth.y,viewMonth.m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
 
   // Categories that have either spending or a budget allocation
-  const activeCats = CATEGORIES.filter(c=>byCategory[c.id]>0||catBudget[c.id]>0);
+  const activeCats = CATEGORIES.filter(c=>byCategory[c.id]>0||effectiveCatBudget[c.id]>0);
 
   return (
     <div className="page">
@@ -4602,14 +4653,18 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
           {activeCats.length === 0
             ? <p className="empty">No expenses logged yet.</p>
             : activeCats.map(cat => {
-                const s   = byCategory[cat.id]||0;
-                const lim = catBudget[cat.id]||0;
+                const s    = byCategory[cat.id]||0;
+                const lim  = effectiveCatBudget[cat.id]||0;
+                const roll = settings.budgetRollover ? (rolloverByCat[cat.id]||0) : 0;
                 const p_  = lim>0 ? Math.min((s/lim)*100,100) : 0;
                 const cls = p_>=100?'over':p_>=80?'warn':'';
                 return (
                   <div key={cat.id} className="sp-cat">
                     <div className="sp-top">
-                      <span className="sp-name">{cat.label}</span>
+                      <span className="sp-name">
+                        {cat.label}
+                        {roll !== 0 && <span style={{fontSize:'.6rem',fontWeight:600,marginLeft:6,color:roll>0?'var(--accent)':'var(--red)'}}>{roll>0?'+':'−'}{currency(Math.abs(roll),0)} rolled</span>}
+                      </span>
                       <span className="sp-nums">
                         <span className="sp-spent">{currency(s)}</span>
                         {lim>0 && <span className="sp-bgt"> / {currency(lim)}</span>}
@@ -5249,6 +5304,176 @@ function MonthlyReviewModal({ onClose, monthLabel, monthKey, year, month, income
   );
 }
 
+// ── Year in Review (Bonus) — same shape as Monthly Review, one level up:
+// totals, top category, and a month-by-month spending trend for the whole
+// calendar year, all derived from transactions/netWorth already in memory
+// (no new stored aggregate — a year is just twelve months' worth of the
+// same numbers Monthly Review already computes one at a time).
+function YearlyReviewModal({ onClose, year, transactions, netWorth, accounts, settings }) {
+  const yearTx    = useMemo(() => (transactions||[]).filter(t => txDateKey(t).startsWith(String(year))), [transactions, year]);
+  const income    = useMemo(() => yearTx.filter(isIncomeTransaction).reduce((s,t)=>s+safeNum(t.amount),0), [yearTx]);
+  const spendRows = useMemo(() => spendingRows(yearTx), [yearTx]);
+  const totalSpend= spendRows.reduce((s,r)=>s+r.delta,0);
+  const savings   = round2(income - totalSpend);
+  const savingsRate = income > 0 ? safePct(savings, income) : 0;
+
+  const byCat = useMemo(() => {
+    const m = {};
+    for (const { t, delta } of spendRows) { const c = categoryOf(t); m[c] = (m[c]||0) + delta; }
+    return m;
+  }, [spendRows]);
+  const topCatEnt = Object.entries(byCat).sort((a,b)=>b[1]-a[1])[0] || null;
+
+  const largestTx = useMemo(() => {
+    let best = null;
+    for (const { t, delta } of spendRows) if (delta > 0 && (!best || delta > best.amount)) best = { amount:delta, description:t.description, date:txDateKey(t) };
+    return best;
+  }, [spendRows]);
+
+  // Month-by-month net (income − spend) for the trend line.
+  const monthly = useMemo(() => {
+    const rows = Array.from({length:12}, (_,m) => ({ key:`${year}-${String(m+1).padStart(2,'0')}`, income:0, spend:0 }));
+    for (const t of yearTx) {
+      const m = +txDateKey(t).slice(5,7) - 1;
+      if (m<0||m>11) continue;
+      if (isIncomeTransaction(t)) rows[m].income += safeNum(t.amount);
+    }
+    for (const { t, delta } of spendRows) {
+      const m = +txDateKey(t).slice(5,7) - 1;
+      if (m>=0 && m<=11) rows[m].spend += delta;
+    }
+    return rows;
+  }, [yearTx, spendRows, year]);
+  const bestMonth = monthly.reduce((best,r) => {
+    const net = round2(r.income - r.spend);
+    return (!best || net > best.net) ? { ...r, net } : best;
+  }, null);
+
+  // Tax Categories (Bonus) — total of every deductible-flagged category
+  // (Settings → Categories → "Tax"), for filing season.
+  const taxCatIds = (settings && settings.taxDeductibleCategories) || [];
+  const taxRows = useMemo(() => {
+    if (!taxCatIds.length) return [];
+    const m = {};
+    for (const { t, delta } of spendRows) {
+      const c = categoryOf(t);
+      if (taxCatIds.includes(c)) m[c] = (m[c]||0) + delta;
+    }
+    return Object.entries(m).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  }, [spendRows, taxCatIds]);
+  const taxTotal = taxRows.reduce((s,[,v])=>s+v, 0);
+  const exportTaxCSV = () => {
+    const taxTx = yearTx.filter(t => t.type==='expense' && taxCatIds.includes(categoryOf(t)));
+    exportTransactionsCSV(taxTx, `tax-deductible-${year}.csv`);
+  };
+
+  const nwChange = netWorthChangeForYear(netWorth, year);
+  const cashback = round2((accounts||[]).filter(a=>a.type==='credit').reduce((s,a) => {
+    const card = a.card || defaultCardFields();
+    const byMonth = card.rewardsByMonth || {};
+    let total = 0;
+    for (const k of Object.keys(byMonth)) if (k.startsWith(String(year))) total += estimatedRewardValue(card, byMonth[k]);
+    return s + total;
+  }, 0));
+
+  return (
+    <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-card modal-card-lg">
+        <div className="modal-hd">
+          <div className="modal-title">Year in Review · {year}</div>
+          <button className="btn-icon" onClick={onClose} aria-label="Close"><Icon name="x" size={18}/></button>
+        </div>
+        <div className="modal-body">
+          <div style={{display:'flex',alignItems:'center',gap:18}}>
+            <div className="grade-badge" style={{color: income<=0?'var(--t3)':savingsRate>=20?'#00C805':savingsRate>=0?'#F5A623':'#FF5000'}}>
+              {income<=0?'—':savingsRate>=20?'A':savingsRate>=0?'B':'C'}
+            </div>
+            <div>
+              <div style={{fontSize:'.7rem',color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>Savings Rate</div>
+              <div style={{fontSize:'.84rem',color:'var(--t2)'}}>{income>0?`${savingsRate.toFixed(0)}% of ${currency(income,0)} income saved`:'No income logged this year'}</div>
+            </div>
+          </div>
+
+          <div style={{marginTop:18}}>
+            <LineTrendChart
+              labels={monthly.map(r=>new Date(+r.key.slice(0,4),+r.key.slice(5,7)-1,1).toLocaleDateString('en-US',{month:'short'}))}
+              series={[
+                { key:'income', label:'Income',   color:VIZ_SERIES[2], points:monthly.map(r=>r.income) },
+                { key:'spend',  label:'Spending',  color:VIZ_SERIES[1], points:monthly.map(r=>r.spend) },
+              ]}
+              emptyMsg="No activity logged yet this year."/>
+          </div>
+
+          <div className="ins-cards" style={{marginTop:18}}>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Net Savings</span>
+              <span className="ins-card-val" style={{color:savings>=0?'var(--accent)':'var(--red)'}}>{savings>=0?'':'−'}{currency(Math.abs(savings),0)}</span>
+              <span className="ins-card-sub">{currency(income,0)} in · {currency(totalSpend,0)} out</span>
+            </div>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Net Worth Change</span>
+              <span className="ins-card-val" style={{color: nwChange && nwChange.hasPrev ? (nwChange.value>=0?'var(--accent)':'var(--red)') : 'var(--t3)'}}>
+                {nwChange && nwChange.hasPrev ? `${nwChange.value>=0?'+':'−'}${currency(Math.abs(nwChange.value),0)}` : '—'}
+              </span>
+              <span className="ins-card-sub">{nwChange ? (nwChange.hasPrev ? 'vs. prior year-end' : 'no earlier snapshot yet') : 'no Net Worth snapshot saved this year'}</span>
+            </div>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Cashback / Rewards Earned</span>
+              <span className="ins-card-val" style={{color:'var(--accent)'}}>{currency(cashback,2)}</span>
+              <span className="ins-card-sub">across all cards, est. $</span>
+            </div>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Largest Purchase</span>
+              <span className="ins-card-val">{largestTx?money2(largestTx.amount):'—'}</span>
+              <span className="ins-card-sub">{largestTx?(largestTx.description||'Uncategorized'):'None this year'}</span>
+            </div>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Top Category</span>
+              <span className="ins-card-val">{topCatEnt?catLabel(topCatEnt[0]):'—'}</span>
+              <span className="ins-card-sub">{topCatEnt?money2(topCatEnt[1]):'No spending logged'}</span>
+            </div>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Best Month</span>
+              <span className="ins-card-val" style={{color:bestMonth && bestMonth.net>0 ? 'var(--accent)' : 'var(--t1)'}}>
+                {bestMonth && (bestMonth.income||bestMonth.spend) ? new Date(+bestMonth.key.slice(0,4),+bestMonth.key.slice(5,7)-1,1).toLocaleDateString('en-US',{month:'long'}) : '—'}
+              </span>
+              <span className="ins-card-sub">{bestMonth ? `${bestMonth.net>=0?'+':'−'}${currency(Math.abs(bestMonth.net),0)} net` : ''}</span>
+            </div>
+          </div>
+
+          {taxCatIds.length > 0 && (
+            <div style={{marginTop:18}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                <div className="eyebrow" style={{marginBottom:0}}>Tax Deductible — {year}</div>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={exportTaxCSV} disabled={!taxRows.length}>Export CSV</button>
+              </div>
+              <div className="card-flush">
+                {taxRows.length===0 ? (
+                  <p className="empty">No deductible-category spending logged this year.</p>
+                ) : taxRows.map(([cat,val]) => (
+                  <div key={cat} className="v-row">
+                    <div className="v-row-name">{catLabel(cat)}</div>
+                    <div className="v-row-val">{currency(val,2)}</div>
+                  </div>
+                ))}
+                {taxRows.length > 0 && (
+                  <div className="v-row" style={{fontWeight:700}}>
+                    <div className="v-row-name">Total</div>
+                    <div className="v-row-val" style={{color:'var(--accent)'}}>{currency(taxTotal,2)}</div>
+                  </div>
+                )}
+              </div>
+              <div style={{fontSize:'.6rem',color:'var(--t4)',marginTop:8}}>
+                Categories marked "Tax" in Settings → Categories. Not tax advice — check with a professional before filing.
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SpendingInsights({ settings, transactions, setTransactions, goTo, accounts, netWorth, goals, bills }) {
   const today = new Date();
   const [cursor, setCursor] = useState(() => ({ y: today.getFullYear(), m: today.getMonth() }));
@@ -5261,6 +5486,7 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
   const [useRange, setUseRange] = useState(false);
   const [filters, setFilters]   = useState({ from:'', to:'', category:'all', merchant:'all', account:'all', status:'all', search:'', minAmount:'', maxAmount:'', paymentMethod:'all', type:'all' });
   const [showReview, setShowReview] = useState(false);
+  const [showYearReview, setShowYearReview] = useState(false);
 
   const monthKey = `${cursor.y}-${String(cursor.m+1).padStart(2,'0')}`;
   const setF = (k,v) => setFilters(f => ({ ...f, [k]: v }));
@@ -5322,6 +5548,12 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
   const daysIn    = new Date(cursor.y, cursor.m+1, 0).getDate();
   const todayKey  = dateKey(today);
   const peakKey   = peakDay ? peakDay[0] : null;
+  // Heat map (Bonus) — each day's spending relative to the month's own
+  // peak day, not some fixed dollar scale, so a light month and a heavy
+  // month both show real contrast instead of one being all-pale or
+  // all-saturated.
+  const maxDayTotal = peakDay ? peakDay[1].total : 0;
+  const heatOf = total => maxDayTotal > 0 ? Math.min(total / maxDayTotal, 1) : 0;
   const cells = [
     ...Array.from({length:firstDow}, (_,i) => ({ key:`e${i}`, empty:true })),
     ...Array.from({length:daysIn}, (_,i) => {
@@ -5512,7 +5744,10 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
           <div className="page-sub">{periodLabel} · {spendCount} purchase{spendCount===1?'':'s'}</div>
         </div>
         {!useRange && (
-          <button className="btn btn-ghost btn-sm" onClick={()=>setShowReview(true)}><Icon name="receipt" size={13}/>Monthly Review</button>
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setShowReview(true)}><Icon name="receipt" size={13}/>Monthly Review</button>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setShowYearReview(true)}><Icon name="archive" size={13}/>Year in Review</button>
+          </div>
         )}
       </div>
 
@@ -5521,6 +5756,10 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
           monthLabel={`${MONTH_NAMES[cursor.m]} ${cursor.y}`} monthKey={monthKey} year={cursor.y} month={cursor.m}
           income={income} totalSpend={totalSpend} largestTx={largestTx} topCatEnt={topCatEnt}
           monthBudgetTotal={monthBudgetTotal} netWorth={netWorth} accounts={accounts} monthTx={filtered}/>
+      )}
+      {showYearReview && (
+        <YearlyReviewModal onClose={()=>setShowYearReview(false)} year={cursor.y}
+          transactions={transactions} netWorth={netWorth} accounts={accounts} settings={settings}/>
       )}
 
       {/* ── AI Spending Coach ── */}
@@ -5780,12 +6019,14 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
           {cells.map(c => {
             if (c.empty) return <div key={c.key} className="cal-cell cal-cell-empty" aria-hidden="true"/>;
             const has = c.total > 0;
+            const heat = has ? heatOf(c.total) : 0;
             const cls = ['cal-cell', !has&&'cal-cell-quiet', c.key===todayKey&&'cal-cell-today',
                          c.key===selDate&&'cal-cell-sel', has&&c.key===peakKey&&'cal-cell-peak']
                         .filter(Boolean).join(' ');
             return (
               <button key={c.key} className={cls} onClick={()=>setSelDate(s=>s===c.key?null:c.key)}
                 aria-pressed={c.key===selDate}
+                style={has ? { background:`color-mix(in srgb, var(--red) ${(8+heat*42).toFixed(0)}%, transparent)` } : undefined}
                 aria-label={`${parseLocalDate(c.key).toLocaleDateString('en-US',{month:'long',day:'numeric'})}: ${has?`${money2(c.total)} across ${c.count} transaction${c.count===1?'':'s'}`:'no spending'}${c.key===peakKey&&has?' — highest spending day':''}`}>
                 <span className="cal-daynum">{c.day}</span>
                 {has && <span className="cal-dot" aria-hidden="true"/>}
@@ -6391,19 +6632,14 @@ function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoal
           Add Transaction, Budget, Spending, Insights. */}
       <div className="card">
         <div className="card-label">Categories</div>
-        <div style={{fontSize:'.66rem',color:'var(--t4)',marginBottom:8}}>Built-in — always available, can't be removed</div>
-        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:16}}>
-          {BUILTIN_CATEGORIES.filter(c=>c.id!=='hysa'&&c.id!=='rothIRA').map(c => (
-            <span key={c.id} style={{
-              display:'inline-block',padding:'5px 11px',borderRadius:99,
-              background:'var(--wash-2)',border:'1px solid var(--border)',
-              color:'var(--t2)',fontSize:'.7rem',fontWeight:600,
-            }}>{c.label}</span>
-          ))}
+        <div style={{fontSize:'.66rem',color:'var(--t4)',marginBottom:8}}>
+          Check "Tax" for any category you write off — Year in Review totals it up for filing.
         </div>
-        {(customCategories||[]).length > 0 && (
-          <div className="card-flush" style={{marginBottom:14}}>
-            {customCategories.map(c => (
+        <div className="card-flush" style={{marginBottom:16}}>
+          {[...BUILTIN_CATEGORIES.filter(c=>c.id!=='hysa'&&c.id!=='rothIRA'&&c.id!=='other'), ...(customCategories||[])].map(c => {
+            const isTax = (local.taxDeductibleCategories||[]).includes(c.id);
+            const isCustom = (customCategories||[]).some(x=>x.id===c.id);
+            return (
               <div key={c.id} className="v-row">
                 <div className="v-row-left">
                   <div className="v-row-icon" style={{background:c.color+'22'}}>
@@ -6411,13 +6647,26 @@ function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoal
                   </div>
                   <div className="v-row-name">{c.label}</div>
                 </div>
-                <button type="button" className="btn-icon" aria-label={`Remove ${c.label}`} onClick={()=>removeCustomCategory(c.id)}>
-                  <Icon name="trash" size={14}/>
-                </button>
+                <div style={{display:'flex',alignItems:'center',gap:12}}>
+                  <label style={{display:'flex',alignItems:'center',gap:5,fontSize:'.66rem',color:'var(--t3)',cursor:'pointer'}}>
+                    <input type="checkbox" checked={isTax} onChange={e=>{
+                      const on = e.target.checked;
+                      commitLocal({ ...localRef.current, taxDeductibleCategories:
+                        on ? [...(localRef.current.taxDeductibleCategories||[]), c.id]
+                           : (localRef.current.taxDeductibleCategories||[]).filter(id=>id!==c.id) });
+                    }}/>
+                    Tax
+                  </label>
+                  {isCustom && (
+                    <button type="button" className="btn-icon" aria-label={`Remove ${c.label}`} onClick={()=>removeCustomCategory(c.id)}>
+                      <Icon name="trash" size={14}/>
+                    </button>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
           <input type="text" placeholder="New category name" value={newCatLabel}
             onChange={e=>setNewCatLabel(e.target.value)}
@@ -6550,6 +6799,17 @@ function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoal
             <SettingField {...fld('commissionHYSAPct','HYSA %')} prefix="%" />
             <SettingField {...fld('commissionPersonalPct','Personal %')} prefix="%" />
           </div>
+        </div>
+
+        <div className="card">
+          <label className="toggle-row" style={{padding:0,border:0}}>
+            <div>
+              <div className="toggle-row-lbl">Budget Rollover</div>
+              <div className="toggle-row-sub">Unspent budget in a category carries into next month; overspending borrows from it</div>
+            </div>
+            <input type="checkbox" className="switch" checked={!!local.budgetRollover}
+              onChange={e=>setStr('budgetRollover', e.target.checked)}/>
+          </label>
         </div>
 
         <div className="card">
