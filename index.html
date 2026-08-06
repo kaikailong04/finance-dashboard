@@ -1024,6 +1024,13 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .bill-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .bill-recur-tag{font-size:.55rem;color:var(--t3);border:1px solid var(--border2);border-radius:99px;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.05em}
 
+/* ── Swipe-to-delete (Priority 13) ── */
+.swipe-del{
+  width:84px;height:100%;background:var(--red);border:none;color:#fff;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.swipe-del:hover{background:#e04600}
+
 /* ── Dashboard Quick Actions ── */
 .qa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(76px,1fr));gap:10px}
 .qa-btn{
@@ -2142,6 +2149,9 @@ function recordTransaction(partial, ctx) {
   const acct = (ctx.accounts || []).find(a => a.id === tx.accountId);
   applyCardRewards(acct, tx, +1, ctx);
   ctx.setTransactions(prev => [tx, ...prev]);
+  // A light confirm tick — every save flow (Add Transaction, Mark Paid, Log
+  // Now, Payment Center) funnels through here, so one haptic covers all of them.
+  if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(8);
   return tx;
 }
 // Reverses every effect a recordTransaction call applied, then removes it.
@@ -2557,6 +2567,85 @@ function Bar({ value, max, color='var(--blue)', lg=false }) {
   return (
     <div className={'track'+(lg?' track-lg':'')}>
       <div className="fill" style={{width:`${p}%`,background:color}} />
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ANIMATION PRIMITIVES (Priority 13) — reused across the app rather than
+// hand-rolled per screen. All three respect prefers-reduced-motion.
+// ══════════════════════════════════════════════════════════════════════
+const prefersReducedMotion = () => typeof window !== 'undefined' && window.matchMedia
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Eases a displayed number from its previous value to `value` — used on the
+// handful of hero figures (Dashboard take-home, Net Worth, account
+// balances) where a jump actually means something just changed.
+function CountUp({ value, duration=600, format }) {
+  const numeric = safeNum(value);
+  const [display, setDisplay] = useState(numeric);
+  const prevRef = useRef(numeric);
+  const rafRef  = useRef(null);
+  useEffect(() => {
+    const from = prevRef.current, to = numeric;
+    if (from === to || prefersReducedMotion()) { setDisplay(to); prevRef.current = to; return; }
+    const start = performance.now();
+    cancelAnimationFrame(rafRef.current);
+    const step = now => {
+      const t = Math.min((now-start)/duration, 1);
+      const eased = 1 - Math.pow(1-t, 3);            // ease-out cubic
+      setDisplay(from + (to-from)*eased);
+      if (t < 1) rafRef.current = requestAnimationFrame(step);
+      else prevRef.current = to;
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [numeric, duration]);
+  return format ? format(display) : Math.round(display);
+}
+
+// Smooth-height expand/collapse — a CSS grid-rows animation, so it never
+// needs to measure the content's pixel height in JS.
+function Collapse({ open, children }) {
+  return (
+    <div style={{ display:'grid', gridTemplateRows: open ? '1fr' : '0fr',
+      transition: prefersReducedMotion() ? 'none' : 'grid-template-rows .25s cubic-bezier(.4,0,.2,1)' }}>
+      <div style={{ overflow:'hidden', minHeight:0 }}>{children}</div>
+    </div>
+  );
+}
+
+// Swipe-left-to-reveal-delete, iOS Mail style — reveals a red action rather
+// than deleting on release, so a swipe is never itself the destructive act.
+function SwipeableRow({ onDelete, deleteLabel='Delete', children }) {
+  const [dragX, setDragX]       = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const startX   = useRef(null);
+  const baseX    = useRef(0);
+  const onDown = e => { startX.current = e.clientX; baseX.current = dragX; setDragging(true); };
+  const onMove = e => {
+    if (startX.current == null) return;
+    const dx = Math.min(0, Math.max(baseX.current + (e.clientX - startX.current), -84));
+    setDragX(dx);
+  };
+  const endDrag = () => {
+    if (startX.current == null) return;
+    startX.current = null; setDragging(false);
+    setDragX(dragX < -40 ? -84 : 0);
+  };
+  return (
+    <div style={{ position:'relative', overflow:'hidden' }}>
+      <div style={{ position:'absolute', right:0, top:0, bottom:0, width:84, display:'flex' }}>
+        <button className="swipe-del" onClick={onDelete} aria-label={deleteLabel}>
+          <Icon name="trash" size={16} color="#fff"/>
+        </button>
+      </div>
+      <div
+        onPointerDown={onDown} onPointerMove={dragging?onMove:undefined} onPointerUp={endDrag} onPointerLeave={dragging?endDrag:undefined}
+        style={{ transform:`translateX(${dragX}px)`, transition: dragging ? 'none' : 'transform .2s cubic-bezier(.4,0,.2,1)',
+          background:'var(--s1)', touchAction:'pan-y', position:'relative' }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -3543,7 +3632,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
       {/* Hero ─ take-home */}
       <div>
         <div className="eyebrow" style={{marginBottom:8}}>Monthly Take-Home</div>
-        <div className="mega" style={{color:'var(--t1)'}}>{currency(netMonthly)}</div>
+        <div className="mega" style={{color:'var(--t1)'}}><CountUp value={netMonthly} format={v=>currency(v)}/></div>
         <div style={{fontSize:'.85rem',color:'var(--accent)',marginTop:10,fontWeight:500,display:'flex',alignItems:'center',gap:5}}>
           <Icon name="trendUp" size={14} color="var(--accent)" strokeWidth={2}/>
           {currency(settings.grossOTE*12-settings.grossBase*12)} OTE upside / yr
@@ -4127,21 +4216,23 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
             : <div className="tx-list">
                 {sorted.map(t=>{
                   return (
-                    <div key={t.id} className="tx-row">
-                      {t.type==='transfer'
-                        ? <div className="tx-icon"><Icon name="swap" size={14} color="var(--blue)"/></div>
-                        : <MerchantLogo description={t.description}/>}
-                      <div className="tx-body">
-                        <div className="tx-desc">{t.description}</div>
-                        <div className="tx-meta">
-                          {catLabel(t.category)} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                    <SwipeableRow key={t.id} onDelete={()=>del(t.id)} deleteLabel={`Delete ${t.description||'transaction'}`}>
+                      <div className="tx-row">
+                        {t.type==='transfer'
+                          ? <div className="tx-icon"><Icon name="swap" size={14} color="var(--blue)"/></div>
+                          : <MerchantLogo description={t.description}/>}
+                        <div className="tx-body">
+                          <div className="tx-desc">{t.description}</div>
+                          <div className="tx-meta">
+                            {catLabel(t.category)} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                          </div>
                         </div>
+                        <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
+                          {t.type==='income'?'+':'-'}{currency(t.amount)}
+                        </div>
+                        <button className="tx-del btn-icon-del" onClick={()=>del(t.id)}>×</button>
                       </div>
-                      <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
-                        {t.type==='income'?'+':'-'}{currency(t.amount)}
-                      </div>
-                      <button className="tx-del btn-icon-del" onClick={()=>del(t.id)}>×</button>
-                    </div>
+                    </SwipeableRow>
                   );
                 })}
               </div>
@@ -5895,7 +5986,7 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
           <div className="eyebrow" style={{marginBottom:8}}>
             Net Worth · {now.toLocaleDateString('en-US',{month:'long',year:'numeric'})}
           </div>
-          <div className="mega" style={{color:isPos?'var(--accent)':'var(--red)'}}>{currency(nw)}</div>
+          <div className="mega" style={{color:isPos?'var(--accent)':'var(--red)'}}><CountUp value={nw} format={v=>currency(v)}/></div>
           <div style={{fontSize:'.8rem',color:'var(--t3)',marginTop:8,fontVariantNumeric:'tabular-nums'}}>
             {currency(totalAssets)} assets — {currency(totalLiab)} liabilities
           </div>
@@ -6872,7 +6963,7 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
           <div className="acct-hero-sub">{accountTypeInfo(acct.type).label}{acct.institution?` · ${acct.institution}`:''}</div>
         </div>
         <div style={{textAlign:'right'}}>
-          <div className="mega" style={{fontSize:'2rem',color:liability&&balance>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}{currency(balance,2)}</div>
+          <div className="mega" style={{fontSize:'2rem',color:liability&&balance>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}<CountUp value={balance} format={v=>currency(v,2)}/></div>
         </div>
       </div>
 
@@ -6885,7 +6976,7 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
         <button className="btn btn-ghost btn-sm" style={{color:'var(--red)'}} onClick={doDelete}><Icon name="trash" size={13}/>Delete</button>
       </div>
 
-      {customizing && (
+      <Collapse open={customizing}>
         <div className="card">
           <div className="card-label">Icon</div>
           <div className="picker-grid" style={{marginBottom:16}}>
@@ -6902,7 +6993,7 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
             ))}
           </div>
         </div>
-      )}
+      </Collapse>
 
       {card && (
         <div className="card">
@@ -6931,11 +7022,11 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
           <button className="btn btn-ghost btn-sm" style={{marginTop:14}} onClick={()=>setEditingCard(e=>!e)}>
             <Icon name="edit" size={13}/>{editingCard?'Done Editing':'Edit Card Details'}
           </button>
-          {editingCard && (
+          <Collapse open={editingCard}>
             <div style={{marginTop:14}}>
               <CreditCardFieldsForm card={card} onChange={c=>patch({card:c})}/>
             </div>
-          )}
+          </Collapse>
         </div>
       )}
 
@@ -7150,7 +7241,7 @@ function AccountsPage({ accounts, setAccounts, transactions, settings, goals, ne
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',flexWrap:'wrap',gap:12}}>
         <div>
           <div className="eyebrow" style={{marginBottom:8}}>{showArchived?'Archived Accounts':'Total Across Accounts'}</div>
-          <div className="mega" style={{color:netTotal>=0?'var(--t1)':'var(--red)'}}>{currency(netTotal)}</div>
+          <div className="mega" style={{color:netTotal>=0?'var(--t1)':'var(--red)'}}><CountUp value={netTotal} format={v=>currency(v)}/></div>
         </div>
         <div style={{display:'flex',gap:8}}>
           {accounts.some(a=>a.type==='credit'&&!a.archived) &&
@@ -7579,7 +7670,7 @@ function BillsPage({ bills, setBills, accounts, transactions, settings, goals, n
           <Icon name={showRecurring?'chevronUp':'chevronDown'} size={13}/>
           {showRecurring?'Hide':'Manage'} Recurring Bills ({recurringRows.length})
         </button>
-        {showRecurring && (
+        <Collapse open={showRecurring}>
           <div className="card-flush" style={{marginTop:12}}>
             {recurringRows.length===0 ? <p className="empty">No recurring bills yet.</p> : recurringRows.map(r => (
               <BillRow key={r.key} icon={r.icon} color={r.color} name={r.name} sub={r.sub} amount={r.amount}
@@ -7589,7 +7680,7 @@ function BillsPage({ bills, setBills, accounts, transactions, settings, goals, n
                 onEdit={r.isCreditCardBill ? (goToAccount ? ()=>goToAccount(r.raw.accountRef.id) : null) : ()=>setEditing(r.raw)}/>
             ))}
           </div>
-        )}
+        </Collapse>
       </div>
 
       {showAdd && (
