@@ -1024,6 +1024,23 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .bill-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .bill-recur-tag{font-size:.55rem;color:var(--t3);border:1px solid var(--border2);border-radius:99px;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.05em}
 
+/* ── Quick Add (long-press the FAB) ── */
+.quick-menu-overlay{position:fixed;inset:0;z-index:149;background:transparent}
+.quick-menu{
+  position:fixed;right:24px;bottom:calc(28px + 56px + 14px + env(safe-area-inset-bottom));z-index:150;
+  background:var(--s1);border:1px solid var(--border2);border-radius:var(--r);
+  box-shadow:0 12px 40px rgba(0,0,0,.5);padding:8px;min-width:216px;
+  animation:modal-pop .15s cubic-bezier(.2,.8,.2,1);
+}
+.quick-menu-item{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:none;border:0;border-radius:var(--r-s);padding:9px 10px;
+  color:var(--t1);font-size:.82rem;font-family:inherit;cursor:pointer;
+}
+.quick-menu-item:hover{background:var(--s2)}
+.quick-menu-icon{width:30px;height:30px;border-radius:9px;background:var(--s3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+@media(max-width:700px){ .quick-menu{ right:18px; bottom:calc(80px + 56px + 14px + env(safe-area-inset-bottom)); } }
+
 /* ── Monthly Review ── */
 .grade-badge{
   width:76px;height:76px;border-radius:50%;flex-shrink:0;
@@ -5977,6 +5994,18 @@ const QUICK_ADD_PRESETS = [
   { label:'Gas',       icon:'fuel',   category:'gas',       merchant:'' },
   { label:'Shopping',  icon:'bag',    category:'shopping',  merchant:'' },
 ];
+// Long-press the FAB — the same five quick chips plus the three
+// transaction-type shortcuts that don't fit "expense + category".
+const QUICK_ADD_MENU = [
+  { label:'Coffee',    icon:'coffee',     preset:{ type:'expense', category:'dining', merchant:'Coffee Shop' } },
+  { label:'Dining',    icon:'fork',       preset:{ type:'expense', category:'dining' } },
+  { label:'Groceries', icon:'cart',       preset:{ type:'expense', category:'groceries' } },
+  { label:'Gas',       icon:'fuel',       preset:{ type:'expense', category:'gas' } },
+  { label:'Shopping',  icon:'bag',        preset:{ type:'expense', category:'shopping' } },
+  { label:'Transfer',  icon:'swap',       preset:{ type:'transfer' } },
+  { label:'Income',    icon:'trendUp',    preset:{ type:'income' } },
+  { label:'Credit Card Payment', icon:'creditCard', preset:{ type:'transfer', isCardPayment:true } },
+];
 function accountsMatchingPaymentMethod(accounts, method) {
   const list = accounts || [];
   if (method === 'Credit Card') return list.filter(a => a.type === 'credit');
@@ -7372,6 +7401,33 @@ function App() {
   }, []);
   const goToAccount = useCallback(id => { setAcctDeepLink(id); setTab('accounts'); }, []);
 
+  // ── Quick Add (Priority 11) — long-press the FAB for a shortcut menu ───
+  const [quickMenuOpen, setQuickMenuOpen] = useState(false);
+  const fabPressTimer = useRef(null);
+  const fabLongPressed = useRef(false);
+  const armFabLongPress = () => {
+    fabLongPressed.current = false;
+    fabPressTimer.current = setTimeout(() => {
+      fabLongPressed.current = true;
+      if (navigator.vibrate) navigator.vibrate(10);
+      setQuickMenuOpen(true);
+    }, 480);
+  };
+  const disarmFabLongPress = () => { if (fabPressTimer.current) clearTimeout(fabPressTimer.current); };
+  const handleFabClick = () => {
+    if (fabLongPressed.current) { fabLongPressed.current = false; return; }   // the long-press already opened the menu
+    openAddTx(null, null);
+  };
+  const runQuickAction = item => {
+    setQuickMenuOpen(false);
+    if (item.preset.isCardPayment) {
+      const card = (accounts||[]).find(a => a.type==='credit' && !a.archived);
+      const source = defaultPaymentSourceAccount(accounts, card);
+      if (card && source) { openAddTx(source.id, { type:'transfer', toAccountId:card.id }); return; }
+    }
+    openAddTx(null, item.preset);
+  };
+
   // ── App-wide goal-ETA tracking ────────────────────────────────────────
   // Runs on ANY balance change (paycheck, commission split, manual update).
   // Records each goal's precise days-to-target and, when the ETA moves sooner,
@@ -7448,10 +7504,27 @@ function App() {
       </nav>
 
       {/* Persistent entry point to the redesigned Add Transaction sheet —
-          reachable from every tab, not just Spending. */}
-      <button className="fab" onClick={()=>openAddTx(null,null)} aria-label="Add transaction">
+          reachable from every tab, not just Spending. Long-press for the
+          Quick Add shortcut menu. */}
+      <button className="fab" onClick={handleFabClick}
+        onPointerDown={armFabLongPress} onPointerUp={disarmFabLongPress} onPointerLeave={disarmFabLongPress}
+        onContextMenu={e=>e.preventDefault()}
+        aria-label="Add transaction — long-press for quick actions">
         <Icon name="plus" size={24} color="#000" strokeWidth={2.5}/>
       </button>
+      {quickMenuOpen && (
+        <>
+          <div className="quick-menu-overlay" onClick={()=>setQuickMenuOpen(false)}/>
+          <div className="quick-menu" role="menu" aria-label="Quick add">
+            {QUICK_ADD_MENU.map(item => (
+              <button key={item.label} type="button" className="quick-menu-item" role="menuitem" onClick={()=>runQuickAction(item)}>
+                <span className="quick-menu-icon"><Icon name={item.icon} size={15} color="var(--t2)"/></span>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {addTxOpen && (
         <AddTransactionModal
           accounts={accounts} transactions={transactions} settings={settings} goals={goals} netWorth={nwData}
