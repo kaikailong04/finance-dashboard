@@ -1595,6 +1595,73 @@ function normalizeMerchantName(description) {
     .join(' ');
 }
 
+// ── Merchant logos (Priority 5) ─────────────────────────────────────────
+// This app has no logo-fetching backend and no network access to an image
+// CDN, so real brand marks aren't available or reproduced here. Instead,
+// recognized merchants get their real brand COLOR plus a generic category
+// pictogram (coffee cup, shopping bag, plane…) — never a redrawn logo mark —
+// which is the same "no image yet" convention every finance app falls back
+// to. Unrecognized merchants get a plain two-letter monogram. Keyed off the
+// same normalizeMerchantName() every other merchant-facing view already
+// uses, so a logo always matches what the text next to it says.
+const MERCHANT_BRANDS = {
+  'starbucks':          { color:'#00704A', icon:'coffee' },
+  'dunkin':             { color:'#FF671F', icon:'coffee' },
+  'amazon':             { color:'#FF9900', icon:'bag' },
+  "trader joe's":       { color:'#D3212C', icon:'cart' },
+  'target':             { color:'#CC0000', icon:'cart' },
+  'publix':             { color:'#007A33', icon:'cart' },
+  'walmart':            { color:'#0071CE', icon:'cart' },
+  'costco':             { color:'#005DAA', icon:'cart' },
+  'whole foods':        { color:'#00674B', icon:'cart' },
+  'kroger':             { color:'#003DA5', icon:'cart' },
+  'uber':               { color:'#000000', icon:'car'  },
+  'lyft':               { color:'#FF00BF', icon:'car'  },
+  'doordash':           { color:'#FF3008', icon:'bag'  },
+  'grubhub':            { color:'#FF8000', icon:'bag'  },
+  'instacart':          { color:'#43B02A', icon:'cart' },
+  'netflix':            { color:'#E50914', icon:'play' },
+  'hulu':                { color:'#1CE783', icon:'play' },
+  'disney':             { color:'#113CCF', icon:'play' },
+  'hbo max':             { color:'#9B30FF', icon:'play' },
+  'spotify':            { color:'#1DB954', icon:'music'},
+  'apple':              { color:'#A3AAAE', icon:null   },   // monogram — see note above
+  'apple music':        { color:'#FA243C', icon:'music'},
+  'venmo':              { color:'#3D95CE', icon:'dollar'},
+  'paypal':             { color:'#0070BA', icon:'dollar'},
+  'cash app':           { color:'#00D632', icon:'dollar'},
+  'chipotle':            { color:'#A81612', icon:'fork' },
+  "mcdonald's":          { color:'#FFC72C', icon:'fork' },
+  'chick-fil-a':          { color:'#DD0031', icon:'fork' },
+  'shell':               { color:'#FFD500', icon:'fuel' },
+  'chevron':             { color:'#0060AF', icon:'fuel' },
+  'exxon':               { color:'#EE2A24', icon:'fuel' },
+  'bp':                   { color:'#00914A', icon:'fuel' },
+  'delta':               { color:'#003268', icon:'plane'},
+  'american airlines':   { color:'#0078D2', icon:'plane'},
+  'united airlines':     { color:'#005DAA', icon:'plane'},
+  'southwest':           { color:'#304CB2', icon:'plane'},
+};
+function MerchantLogo({ description, size=32 }) {
+  const name  = normalizeMerchantName(description);
+  const brand = MERCHANT_BRANDS[name.toLowerCase()];
+  const base  = { width:size, height:size, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 };
+  if (brand) {
+    return (
+      <div style={{ ...base, background:brand.color }} aria-hidden="true">
+        {brand.icon
+          ? <Icon name={brand.icon} size={Math.round(size*0.52)} color="#fff" strokeWidth={2}/>
+          : <span style={{ color:'#fff', fontWeight:800, fontSize:size*0.4 }}>{name.charAt(0)}</span>}
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...base, background:'var(--s3)', color:'var(--t2)', fontWeight:700, fontSize:size*0.32, letterSpacing:'-.02em' }} aria-hidden="true">
+      {name.slice(0,2).toUpperCase()}
+    </div>
+  );
+}
+
 // ── Selectors ─────────────────────────────────────────────────────────
 // All of them take the transaction list explicitly and return fresh objects,
 // so there is no hidden cache to go stale.
@@ -2223,6 +2290,9 @@ function Icon({ name, size=20, color='currentColor', strokeWidth=1.6 }) {
     dots:      <svg style={s} viewBox="0 0 24 24" {...p} fill={color} stroke="none"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>,
     coffee:    <svg style={s} viewBox="0 0 24 24" {...p}><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>,
     lock:      <svg style={s} viewBox="0 0 24 24" {...p}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>,
+    car:       <svg style={s} viewBox="0 0 24 24" {...p}><path d="M5 17h14M5 17a2 2 0 01-2-2v-2l2-5a2 2 0 012-2h6a2 2 0 012 2l2 5v2a2 2 0 01-2 2M5 17a2 2 0 104 0M15 17a2 2 0 104 0"/></svg>,
+    play:      <svg style={s} viewBox="0 0 24 24" {...p} fill={color} stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>,
+    music:     <svg style={s} viewBox="0 0 24 24" {...p}><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>,
   };
   return icons[name] || null;
 }
@@ -3138,7 +3208,9 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
                 const cat = CATEGORIES.find(c=>c.id===t.category);
                 return (
                   <div key={t.id} className="tx-row">
-                    <div className="tx-icon">{t.kind==='paycheck' ? 'PAY' : (cat?.abbr||'OTH')}</div>
+                    {t.kind==='paycheck' ? <div className="tx-icon">PAY</div>
+                      : t.type==='transfer' ? <div className="tx-icon"><Icon name="swap" size={14} color="var(--blue)"/></div>
+                      : <MerchantLogo description={t.description}/>}
                     <div className="tx-body">
                       <div className="tx-desc">{t.description}</div>
                       <div className="tx-meta">{(t.kind==='paycheck' ? 'Paycheck' : (cat?.label||'Other'))} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
@@ -3463,10 +3535,11 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
             ? <p className="empty">No transactions this month.</p>
             : <div className="tx-list">
                 {sorted.map(t=>{
-                  const cat=CATEGORIES.find(c=>c.id===t.category);
                   return (
                     <div key={t.id} className="tx-row">
-                      <div className="tx-icon">{cat?.abbr||'OTH'}</div>
+                      {t.type==='transfer'
+                        ? <div className="tx-icon"><Icon name="swap" size={14} color="var(--blue)"/></div>
+                        : <MerchantLogo description={t.description}/>}
                       <div className="tx-body">
                         <div className="tx-desc">{t.description}</div>
                         <div className="tx-meta">
@@ -4157,7 +4230,11 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo }) {
             const counted = isSpendingTransaction(t, transactions, (transactions||[]).indexOf(t));
             return (
               <div key={t.id} className="day-tx">
-                <div style={{minWidth:0}}>
+                <div style={{display:'flex',gap:12,alignItems:'flex-start',minWidth:0,flex:1}}>
+                  {t.type==='transfer'
+                    ? <div className="tx-icon" style={{marginTop:1}}><Icon name="swap" size={14} color="var(--blue)"/></div>
+                    : <MerchantLogo description={t.description} size={30}/>}
+                  <div style={{minWidth:0,flex:1}}>
                   <div className="day-tx-name">{t.description || catLabel(categoryOf(t))}</div>
                   <div className="day-tx-meta">
                     <span>{catLabel(categoryOf(t))}</span>
@@ -4170,6 +4247,7 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo }) {
                     {t.pending && <span className="pill pill-pending">Pending</span>}
                     {refund && <span className="pill pill-refund">Refund</span>}
                     {!counted && !refund && t.type==='expense' && <span className="pill">Not spending</span>}
+                  </div>
                   </div>
                 </div>
                 <div className="day-tx-amt" style={{color:refund?'var(--accent)':t.type==='income'?'var(--accent)':'var(--t1)'}}>
@@ -5483,8 +5561,11 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
             <>
               <div className="fg">
                 <label>{type==='income' ? 'Source' : 'Merchant'}</label>
-                <input type="text" placeholder={type==='income' ? 'Paycheck, refund…' : 'Where did you spend?'}
-                  value={merchant} onChange={e=>setMerchant(e.target.value)} list="merchant-suggestions"/>
+                <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                  {type==='expense' && merchant.trim() && <MerchantLogo description={merchant} size={30}/>}
+                  <input type="text" placeholder={type==='income' ? 'Paycheck, refund…' : 'Where did you spend?'}
+                    value={merchant} onChange={e=>setMerchant(e.target.value)} list="merchant-suggestions" style={{flex:1}}/>
+                </div>
                 <datalist id="merchant-suggestions">
                   {merchantOptions.map(m => <option key={m} value={m}/>)}
                 </datalist>
@@ -6060,7 +6141,9 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
             <div className="tx-list" style={{padding:'4px 20px'}}>
               {acctTx.slice(0,12).map(t => (
                 <div className="tx-row" key={t.id}>
-                  <div className="tx-icon">{(t.description||catLabel(categoryOf(t))).slice(0,3).toUpperCase()}</div>
+                  {t.type==='transfer'
+                    ? <div className="tx-icon"><Icon name="swap" size={14} color="var(--blue)"/></div>
+                    : <MerchantLogo description={t.description}/>}
                   <div className="tx-body">
                     <div className="tx-desc">{t.description || catLabel(categoryOf(t))}</div>
                     <div className="tx-meta">{txDateKey(t)} · {t.type==='transfer' ? (t.accountId===acct.id?`to ${t.toAccount||'—'}`:`from ${t.account||'—'}`) : catLabel(categoryOf(t))}</div>
