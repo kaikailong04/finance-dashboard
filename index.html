@@ -1260,7 +1260,7 @@ function usePersist(key, def, migrate) {
 // raw + reloading (rather than pushing into React state) means the normal
 // usePersist/migrate path runs exactly as it would for any other load, so
 // an export from an older build still migrates correctly on import.
-const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth', 'fd_accounts', 'fd_bills'];
+const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth', 'fd_accounts', 'fd_bills', 'fd_recurring'];
 
 function exportBackup() {
   const data = {};
@@ -2286,6 +2286,56 @@ function markBillPaid(bill, ctx) {
   }));
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// RECURRING TRANSACTIONS (Priority 8) — templates for the money movements
+// Bills doesn't cover: paychecks, Roth/HYSA contributions, subscription
+// charges, or anything else that repeats on a schedule. A browser PWA has
+// no reliable way to run code while it's closed (no background sync on
+// iOS Safari), so nothing here silently posts a transaction on its own —
+// a due template surfaces on the Dashboard and logs on one tap, the same
+// trust model the existing paycheck flow already uses.
+// ══════════════════════════════════════════════════════════════════════
+const RECURRING_FREQUENCIES = [
+  { id:'weekly',    label:'Weekly'     },
+  { id:'biweekly',  label:'Every 2 weeks' },
+  { id:'monthly',   label:'Monthly'    },
+  { id:'yearly',    label:'Yearly'     },
+];
+function defaultRecurringFields() {
+  return { id:'', name:'', type:'expense', amount:0, category:'other', accountId:null, toAccountId:null,
+    frequency:'monthly', nextDate: ymd(new Date()), active:true, lastLoggedDate:null, notes:'' };
+}
+function advanceRecurringDate(dateStr, frequency) {
+  const d = parseLocalDate(dateStr);
+  if (frequency === 'weekly')   return ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate()+7));
+  if (frequency === 'biweekly') return ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate()+14));
+  if (frequency === 'yearly')   return ymd(new Date(d.getFullYear()+1, d.getMonth(), d.getDate()));
+  return ymd(new Date(d.getFullYear(), d.getMonth()+1, d.getDate()));                    // monthly
+}
+function recurringIsDue(r, today) {
+  return !!r.active && parseLocalDate(r.nextDate) <= (today || new Date());
+}
+// Logs the transaction (expense/income/transfer, through the same engine as
+// everything else) and rolls the template forward to its next occurrence —
+// the one place a recurring template is allowed to touch a balance.
+function logRecurringTransaction(r, ctx) {
+  const nameOf = id => ((ctx.accounts||[]).find(a=>a.id===id) || {}).name || '';
+  const partial = r.type === 'transfer' ? {
+    date: ymd(new Date()), type:'transfer', amount: round2(safeNum(r.amount)), category:'transfer',
+    description: r.name, merchant:'', notes: r.notes||'', paymentMethod:'Recurring',
+    accountId: r.accountId, account: nameOf(r.accountId), toAccountId: r.toAccountId, toAccount: nameOf(r.toAccountId),
+  } : {
+    date: ymd(new Date()), type: r.type, amount: round2(safeNum(r.amount)),
+    category: r.type==='income' ? 'income' : r.category,
+    description: r.name, merchant: r.name, notes: r.notes||'', paymentMethod:'Recurring',
+    accountId: r.accountId, account: nameOf(r.accountId),
+  };
+  recordTransaction(partial, ctx);
+  ctx.setRecurring(list => list.map(x => x.id!==r.id ? x : {
+    ...x, nextDate: advanceRecurringDate(x.nextDate, x.frequency), lastLoggedDate: ymd(new Date()),
+  }));
+}
+
 // ── Chart palette ─────────────────────────────────────────────────────
 // Validated for this app's dark surface (#0d0d0d): lightness band, chroma
 // floor, adjacent-pair CVD separation, normal-vision floor and 3:1 contrast
@@ -2878,7 +2928,7 @@ const CATEGORIES = [
 ];
 
 // ── Dashboard ─────────────────────────────────────────────────────────
-function Dashboard({ settings, transactions, goals, commissions, setGoals, setTransactions, goTo }) {
+function Dashboard({ settings, transactions, goals, commissions, setGoals, setTransactions, goTo, accounts, setAccounts, netWorth, setNetWorth, recurring, setRecurring }) {
   const phase = getPhaseInfo(settings.startDate);
   const now   = new Date();
 
@@ -3048,6 +3098,9 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
           {currency(settings.grossOTE*12-settings.grossBase*12)} OTE upside / yr
         </div>
       </div>
+
+      <DueRecurringCard recurring={recurring} accounts={accounts}
+        ctxBase={{ settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions, setRecurring }}/>
 
       {/* Projected Net Worth chart */}
       <ProjectedChart settings={settings} />
@@ -4842,7 +4895,7 @@ function SettingDerived({ label, value, hint }) {
   );
 }
 
-function Settings({ settings, setSettings }) {
+function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoals, netWorth, setNetWorth, transactions, setTransactions, recurring, setRecurring }) {
   const [local,setLocal]=useState(settings);
   const [saved,setSaved]=useState(false);
   const [importMsg,setImportMsg]=useState(null);   // {type:'error'|'ok', text}
@@ -4910,6 +4963,9 @@ function Settings({ settings, setSettings }) {
           <button type="button" className="btn btn-ghost" onClick={handleReset}>Reset</button>
         </div>
       </div>
+
+      <RecurringSection recurring={recurring} setRecurring={setRecurring} accounts={accounts}
+        ctxBase={{ settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions }}/>
 
       {/* This app has no account or server — each device holds a fully
           separate copy of everything. Export/import is the manual bridge:
@@ -6593,6 +6649,185 @@ function AccountsPage({ accounts, setAccounts, transactions, settings, goals, ne
   );
 }
 
+function RecurringFormModal({ onClose, onSave, onDelete, accounts, template }) {
+  const r = template || defaultRecurringFields();
+  const [name, setName]           = useState(r.name);
+  const [type, setType]           = useState(r.type);
+  const [amount, setAmount]       = useState(r.amount ? String(r.amount) : '');
+  const [category, setCategory]   = useState(r.category);
+  const [accountId, setAccountId] = useState(r.accountId || '');
+  const [toAccountId, setToAccountId] = useState(r.toAccountId || '');
+  const [frequency, setFrequency] = useState(r.frequency);
+  const [nextDate, setNextDate]   = useState(r.nextDate);
+  const [notes, setNotes]         = useState(r.notes || '');
+
+  const visibleAccounts = (accounts||[]).filter(a=>!a.archived);
+  const valid = name.trim() && parseFloat(amount) > 0 && accountId && (type!=='transfer' || (toAccountId && toAccountId!==accountId));
+
+  const save = () => {
+    if (!valid) return;
+    onSave({
+      ...r, id: r.id || ('rec_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
+      name: name.trim(), type, amount: round2(parseFloat(amount)||0),
+      category: type==='transfer' ? 'transfer' : category,
+      accountId, toAccountId: type==='transfer' ? toAccountId : null,
+      frequency, nextDate, active: r.active != null ? r.active : true, notes: notes.trim(),
+    });
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-card modal-card-lg">
+        <div className="modal-hd">
+          <div className="modal-title">{template ? 'Edit Recurring' : 'Add Recurring Transaction'}</div>
+          <button className="btn-icon" onClick={onClose} aria-label="Close"><Icon name="x" size={18}/></button>
+        </div>
+        <div className="modal-body">
+          <div className="type-toggle" role="group" aria-label="Type">
+            <button type="button" className={type==='expense'?'on':''} onClick={()=>setType('expense')}>Expense</button>
+            <button type="button" className={'income'+(type==='income'?' on':'')} onClick={()=>setType('income')}>Income</button>
+            <button type="button" className={'transfer'+(type==='transfer'?' on':'')} onClick={()=>setType('transfer')}>Transfer</button>
+          </div>
+          <div className="fgrid">
+            <div className="fg fspan"><label>Name</label>
+              <input type="text" placeholder="e.g. Netflix, Paycheck, Roth Contribution" value={name} onChange={e=>setName(e.target.value)} autoFocus/>
+            </div>
+            <div className="fg"><label>Amount</label>
+              <input type="number" min="0" step="0.01" placeholder="0.00" value={amount} onChange={e=>setAmount(e.target.value)}/>
+            </div>
+            <div className="fg"><label>Frequency</label>
+              <select value={frequency} onChange={e=>setFrequency(e.target.value)}>
+                {RECURRING_FREQUENCIES.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+              </select>
+            </div>
+            {type !== 'transfer' && (
+              <div className="fg"><label>Category</label>
+                <select value={category} onChange={e=>setCategory(e.target.value)}>
+                  {CATEGORIES.filter(c=>c.id!=='hysa' && c.id!=='rothIRA').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="fg"><label>{type==='transfer' ? 'From Account' : 'Account'}</label>
+              <select value={accountId} onChange={e=>setAccountId(e.target.value)}>
+                <option value="">Choose account</option>
+                {visibleAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            {type === 'transfer' && (
+              <div className="fg"><label>To Account</label>
+                <select value={toAccountId} onChange={e=>setToAccountId(e.target.value)}>
+                  <option value="">Choose account</option>
+                  {visibleAccounts.filter(a=>a.id!==accountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="fg"><label>Next Date</label>
+              <input type="date" value={nextDate} onChange={e=>setNextDate(e.target.value)}/>
+            </div>
+            <div className="fg fspan"><label>Notes</label>
+              <input type="text" placeholder="Optional" value={notes} onChange={e=>setNotes(e.target.value)}/>
+            </div>
+          </div>
+          <button className="btn btn-primary btn-full" disabled={!valid} onClick={save}>{template?'Save Changes':'Add Recurring Transaction'}</button>
+          {template && onDelete && (
+            <button className="btn btn-ghost btn-full" style={{color:'var(--red)'}}
+              onClick={()=>{ if(window.confirm(`Delete "${r.name}"?`)){ onDelete(r.id); onClose(); } }}>
+              Delete
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecurringRow({ r, accounts, isDue, onEdit, onToggleActive, onLogNow }) {
+  const acctName = id => ((accounts||[]).find(a=>a.id===id) || {}).name || '—';
+  const freqLabel = (RECURRING_FREQUENCIES.find(f=>f.id===r.frequency) || {}).label || r.frequency;
+  return (
+    <div className="v-row">
+      <div className="v-row-left">
+        <div className="v-row-icon" style={{background:r.type==='income'?'rgba(0,200,5,.12)':r.type==='transfer'?'rgba(59,130,246,.12)':'var(--s3)'}}>
+          <Icon name={r.type==='income'?'trendUp':r.type==='transfer'?'swap':'receipt'} size={16}
+            color={r.type==='income'?'var(--accent)':r.type==='transfer'?'var(--blue)':'var(--t2)'}/>
+        </div>
+        <div>
+          <div className="v-row-name">{r.name}{!r.active && <span className="bill-recur-tag">Paused</span>}</div>
+          <div className="v-row-sub">{freqLabel} · {r.type==='transfer' ? `${acctName(r.accountId)} → ${acctName(r.toAccountId)}` : acctName(r.accountId)} · next {r.nextDate}</div>
+        </div>
+      </div>
+      <div className="bill-actions">
+        <span className="v-row-val">{currency(r.amount,2)}</span>
+        {isDue && r.active && <button className="btn btn-primary btn-sm" onClick={onLogNow}>Log Now</button>}
+        <button className="btn btn-ghost btn-sm" onClick={onToggleActive}>{r.active?'Pause':'Resume'}</button>
+        <button className="btn-icon" onClick={onEdit} aria-label="Edit"><Icon name="edit" size={14}/></button>
+      </div>
+    </div>
+  );
+}
+
+function RecurringSection({ recurring, setRecurring, accounts, ctxBase }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const today = new Date();
+  const ctx = { ...ctxBase, accounts, setRecurring };
+  const sorted = [...(recurring||[])].sort((a,b) => a.nextDate.localeCompare(b.nextDate));
+  return (
+    <div className="card">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <div className="card-label" style={{marginBottom:0}}>Recurring Transactions</div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>setShowAdd(true)}><Icon name="plus" size={13}/>Add</button>
+      </div>
+      {sorted.length === 0
+        ? <p className="empty">Nothing set up yet — paychecks, rent, subscriptions, Roth/HYSA contributions, credit card payments…</p>
+        : sorted.map(r => (
+            <RecurringRow key={r.id} r={r} accounts={accounts} isDue={recurringIsDue(r, today)}
+              onEdit={()=>setEditing(r)}
+              onToggleActive={()=>setRecurring(list => list.map(x => x.id===r.id ? { ...x, active:!x.active } : x))}
+              onLogNow={()=>logRecurringTransaction(r, ctx)}/>
+          ))}
+      {showAdd && (
+        <RecurringFormModal accounts={accounts} onClose={()=>setShowAdd(false)}
+          onSave={t => setRecurring(list => [...list, t])}/>
+      )}
+      {editing && (
+        <RecurringFormModal accounts={accounts} template={editing} onClose={()=>setEditing(null)}
+          onSave={t => setRecurring(list => list.map(x => x.id===t.id ? t : x))}
+          onDelete={id => setRecurring(list => list.filter(x => x.id!==id))}/>
+      )}
+    </div>
+  );
+}
+
+// Compact "needs your attention" card for the Dashboard — only renders when
+// something is actually due, and every log-now action is one explicit tap.
+function DueRecurringCard({ recurring, accounts, ctxBase }) {
+  const today = new Date();
+  const due = (recurring||[]).filter(r => recurringIsDue(r, today));
+  if (!due.length) return null;
+  const ctx = { ...ctxBase, accounts, setRecurring: ctxBase.setRecurring };
+  return (
+    <div className="card" style={{borderColor:'rgba(59,130,246,.25)',background:'rgba(59,130,246,.04)'}}>
+      <div className="card-label">Due Recurring ({due.length})</div>
+      {due.map(r => (
+        <div key={r.id} className="v-row">
+          <div className="v-row-left">
+            <div className="v-row-icon" style={{background:'var(--s3)'}}>
+              <Icon name={r.type==='income'?'trendUp':r.type==='transfer'?'swap':'receipt'} size={16} color="var(--t2)"/>
+            </div>
+            <div><div className="v-row-name">{r.name}</div><div className="v-row-sub">was due {r.nextDate}</div></div>
+          </div>
+          <div className="bill-actions">
+            <span className="v-row-val">{currency(r.amount,2)}</span>
+            <button className="btn btn-primary btn-sm" onClick={()=>logRecurringTransaction(r, ctx)}>Log</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AddBillModal({ onClose, onSave, onDelete, accounts, bill }) {
   const b = bill || defaultBillFields();
   const [name, setName]           = useState(b.name);
@@ -6818,6 +7053,7 @@ function App() {
   // every screen below renders off this list, never a hardcoded name.
   const [accounts,setAccounts] = usePersist('fd_accounts',     seedAccounts());
   const [bills,setBills]       = usePersist('fd_bills',        []);
+  const [recurring,setRecurring] = usePersist('fd_recurring',  []);
 
   // ── Add Transaction (v2) — a single global sheet every page opens ──────
   const [addTxOpen, setAddTxOpen]           = useState(false);
@@ -6860,7 +7096,8 @@ function App() {
   }, [goals, settings]);
 
   const pages = {
-    dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} goTo={setTab} />,
+    dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} goTo={setTab}
+                  accounts={accounts} setAccounts={setAccounts} netWorth={nwData} setNetWorth={setNwData} recurring={recurring} setRecurring={setRecurring} />,
     accounts:   <AccountsPage accounts={accounts} setAccounts={setAccounts} transactions={transactions} settings={settings} goals={goals}
                   netWorth={nwData} setGoals={setGoals} setNetWorth={setNwData} setTransactions={setTx}
                   openAddTx={openAddTx} deepLinkAccountId={acctDeepLink} onConsumeDeepLink={()=>setAcctDeepLink(null)} />,
@@ -6875,7 +7112,10 @@ function App() {
     goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} transactions={transactions} />,
     commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} setGoals={setGoals} />,
     networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} setGoals={setGoals} settings={settings} />,
-    settings:   <Settings   settings={settings} setSettings={useCallback(s=>setSettings(s),[])} />,
+    settings:   <Settings   settings={settings} setSettings={useCallback(s=>setSettings(s),[])}
+                  accounts={accounts} setAccounts={setAccounts} goals={goals} setGoals={setGoals}
+                  netWorth={nwData} setNetWorth={setNwData} transactions={transactions} setTransactions={setTx}
+                  recurring={recurring} setRecurring={setRecurring} />,
   };
 
   return (
