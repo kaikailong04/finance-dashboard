@@ -1794,6 +1794,27 @@ function getBudgetVsActual(transactions, budgets) {
     })
     .sort((a, b) => b.pctUsed - a.pctUsed);
 }
+// One composite 0-100 read of "how's this month going", combining the same
+// numbers the rest of the app already tracks — budget adherence, savings
+// rate, the worst credit utilization across any card, and overdue bills.
+// Never a black box: every point lost here traces to a specific, visible
+// number elsewhere in the app.
+function financialHealthScore({ budgetPctUsed, savingsRate, maxUtilization, overdueBillsCount }) {
+  let score = 100;
+  if (budgetPctUsed > 100) score -= Math.min((budgetPctUsed - 100) * 0.7, 35);
+  else if (budgetPctUsed > 90) score -= 6;
+  if (savingsRate < 10) score -= Math.min((10 - savingsRate) * 1.5, 20);
+  else if (savingsRate >= 20) score += 5;
+  if (maxUtilization > 30) score -= Math.min((maxUtilization - 30) * 0.4, 20);
+  score -= Math.min((overdueBillsCount||0) * 8, 24);
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+function healthLabel(score) {
+  if (score >= 90) return { label:'Excellent',       color:'#00C805' };
+  if (score >= 75) return { label:'Good',            color:'#00C805' };
+  if (score >= 60) return { label:'Fair',             color:'#F5A623' };
+  return                  { label:'Needs Attention',  color:'#FF5000' };
+}
 // Net worth from STORED BALANCES only. Contribution history explains how a
 // balance grew; adding it on top would double-count, so it is never summed here.
 function getNetWorthSnapshot(accounts, goals) {
@@ -3838,7 +3859,7 @@ function categoryBudgetsFor(settings, ref) {
   };
 }
 
-function SpendingInsights({ settings, transactions, setTransactions, goTo }) {
+function SpendingInsights({ settings, transactions, setTransactions, goTo, accounts, netWorth, goals, bills }) {
   const today = new Date();
   const [cursor, setCursor] = useState(() => ({ y: today.getFullYear(), m: today.getMonth() }));
   const [selDate, setSelDate]   = useState(null);
@@ -3944,6 +3965,98 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo }) {
   const bva     = useMemo(() => getBudgetVsActual(filtered, budgets), [filtered, budgets]);
   const monthBudgetTotal = Object.values(budgets).reduce((s,v)=>s+safeNum(v),0);
 
+  // ══════════════════════════════════════════════════════════════════
+  // AI SPENDING COACH (Priority 6) — every figure here is derived from
+  // the exact same `filtered`/`byCat`/`budgets` this page already
+  // computes, plus one month-back comparison, so nothing can disagree
+  // with the numbers shown elsewhere on this page.
+  // ══════════════════════════════════════════════════════════════════
+  const prevMonthDate = new Date(cursor.y, cursor.m-1, 1);
+  const prevMonthKey  = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth()+1).padStart(2,'0')}`;
+  const prevByCat = useMemo(
+    () => getCategorySpendingTotals(getFilteredTransactions(transactions, { month: prevMonthKey })),
+    [transactions, prevMonthKey]);
+  // Biggest month-over-month mover among categories with real spend in both
+  // months — "Dining is down 12%" reads directly off this.
+  const biggestMove = useMemo(() => {
+    const moves = Object.keys(byCat)
+      .map(id => {
+        const cur = safeNum(byCat[id]?.total), prev = safeNum(prevByCat[id]?.total);
+        return { id, cur, prev, pct: prev>0 ? round2(((cur-prev)/prev)*100) : null };
+      })
+      .filter(m => m.prev > 0 && m.cur > 0);
+    return moves.sort((a,b) => Math.abs(b.pct) - Math.abs(a.pct))[0] || null;
+  }, [byCat, prevByCat]);
+
+  const weekendTotals = useMemo(() => {
+    let we = 0, wd = 0;
+    for (const { t, delta } of spendingRows(filtered)) {
+      const day = parseLocalDate(txDateKey(t)).getDay();
+      if (day===0 || day===6) we += delta; else wd += delta;
+    }
+    return { we: round2(we), wd: round2(wd) };
+  }, [filtered]);
+  const prevWeekendTotal = useMemo(() => {
+    let we = 0;
+    for (const { t, delta } of spendingRows(getFilteredTransactions(transactions, { month: prevMonthKey })))
+      if ([0,6].includes(parseLocalDate(txDateKey(t)).getDay())) we += delta;
+    return round2(we);
+  }, [transactions, prevMonthKey]);
+  const weekendChangePct = prevWeekendTotal > 0 ? round2(((weekendTotals.we - prevWeekendTotal)/prevWeekendTotal)*100) : null;
+
+  const WEEKDAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const weekdayTotals = useMemo(() => {
+    const totals = [0,0,0,0,0,0,0];
+    for (const { t, delta } of spendingRows(filtered)) totals[parseLocalDate(txDateKey(t)).getDay()] += delta;
+    return totals;
+  }, [filtered]);
+  const maxWeekdayIdx = weekdayTotals.reduce((best,v,i) => v > weekdayTotals[best] ? i : best, 0);
+
+  const diningLimit     = safeNum(budgets.dining);
+  const diningSpent     = safeNum(byCat.dining?.total);
+  const diningRemaining = round2(diningLimit - diningSpent);
+
+  // Health score inputs — savings rate mirrors the Dashboard's own
+  // definition (HYSA + Roth out of take-home) so the two never disagree.
+  const budgetPctUsed = monthBudgetTotal > 0 ? safePct(totalSpend, monthBudgetTotal) : 0;
+  const netMonthlyIncome = monthlyNetIncome(settings);
+  const activeBudget     = activeBudgetFor(settings);
+  const savingsRate      = netMonthlyIncome > 0 ? safePct(safeNum(activeBudget.hysa)+safeNum(activeBudget.rothIRA), netMonthlyIncome) : 0;
+  const acctCtx = { settings, goals, netWorth };
+  const maxUtilization = (accounts||[]).filter(a=>a.type==='credit' && !a.archived).reduce((max,a) => {
+    const card = a.card || defaultCardFields();
+    return Math.max(max, creditUtilization(accountBalance(a, acctCtx), card.creditLimit));
+  }, 0);
+  const overdueBillsCount = useMemo(() => {
+    const billsCtx = { accounts, settings, goals, netWorth, transactions };
+    const ccOverdue   = creditCardBills(accounts, billsCtx).filter(cc => !cc.paid && billStatus({recurring:true,dueDay:cc.dueDay})==='overdue').length;
+    const userOverdue = (bills||[]).filter(b => billStatus(b)==='overdue').length;
+    return ccOverdue + userOverdue;
+  }, [accounts, bills, settings, goals, netWorth, transactions]);
+  const healthScore = financialHealthScore({ budgetPctUsed, savingsRate, maxUtilization, overdueBillsCount });
+  const healthInfo   = healthLabel(healthScore);
+
+  const recommendations = useMemo(() => {
+    const out = [];
+    if (biggestMove && biggestMove.pct <= -10)
+      out.push(`${catLabel(biggestMove.id)} is down ${Math.abs(biggestMove.pct).toFixed(0)}% from last month — nice work.`);
+    if (biggestMove && biggestMove.pct >= 15)
+      out.push(`${catLabel(biggestMove.id)} is up ${biggestMove.pct.toFixed(0)}% from last month — worth a look if that wasn't planned.`);
+    if (diningLimit > 0) {
+      out.push(diningRemaining < 0
+        ? `Dining is ${currency(Math.abs(diningRemaining),0)} over budget this month.`
+        : `You have ${currency(diningRemaining,0)} left in your dining budget this month.`);
+    }
+    if (weekendChangePct != null && weekendChangePct > 15)
+      out.push(`Weekend spending is up ${weekendChangePct.toFixed(0)}% from last month.`);
+    if (overdueBillsCount > 0)
+      out.push(`${overdueBillsCount} bill${overdueBillsCount===1?'':'s'} overdue — check the Bills tab.`);
+    if (maxUtilization > 30)
+      out.push(`A credit card is above 30% utilization — an early payment could help before you apply for anything new.`);
+    if (!out.length) out.push('Nothing stands out this month — spending looks steady.');
+    return out;
+  }, [biggestMove, diningLimit, diningRemaining, weekendChangePct, overdueBillsCount, maxUtilization]);
+
   // ── Day detail ──
   const dayTx = useMemo(() => {
     if (!selDate) return [];
@@ -4006,6 +4119,65 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo }) {
         <div>
           <h2 className="page-title">Spending Insights</h2>
           <div className="page-sub">{periodLabel} · {spendCount} purchase{spendCount===1?'':'s'}</div>
+        </div>
+      </div>
+
+      {/* ── AI Spending Coach ── */}
+      <div>
+        <div className="section-head" style={{padding:'0 0 10px'}}>AI Spending Coach</div>
+        <div className="ins-cards">
+          <div className="ins-card">
+            <span className="ins-card-lbl">Financial Health</span>
+            <span className="ins-card-val" style={{color:healthInfo.color}}>{healthScore} · {healthInfo.label}</span>
+            <span className="ins-card-sub">budget, savings rate, utilization &amp; bills</span>
+          </div>
+          <div className="ins-card">
+            <span className="ins-card-lbl">Avg Spend / Day</span>
+            <span className="ins-card-val">{money2(avgDaily)}</span>
+            <span className="ins-card-sub">{daysElapsed} day{daysElapsed===1?'':'s'} this period</span>
+          </div>
+          <div className="ins-card">
+            <span className="ins-card-lbl">Most Expensive Day</span>
+            <span className="ins-card-val">{weekdayTotals[maxWeekdayIdx]>0 ? WEEKDAY_NAMES[maxWeekdayIdx] : '—'}</span>
+            <span className="ins-card-sub">{money2(weekdayTotals[maxWeekdayIdx])} total this period</span>
+          </div>
+          <div className="ins-card">
+            <span className="ins-card-lbl">Weekend Spending</span>
+            <span className="ins-card-val">{money2(weekendTotals.we)}</span>
+            <span className="ins-card-sub">{weekendChangePct==null ? 'no prior month to compare' : `${weekendChangePct>=0?'+':''}${weekendChangePct.toFixed(0)}% vs last month`}</span>
+          </div>
+          {merchants[0] && (
+            <div className="ins-card">
+              <span className="ins-card-lbl">Top Merchant</span>
+              <span className="ins-card-val">{money2(merchants[0].total)}</span>
+              <span className="ins-card-sub">at {merchants[0].name}</span>
+            </div>
+          )}
+          {largestTx && (
+            <div className="ins-card">
+              <span className="ins-card-lbl">Largest Purchase</span>
+              <span className="ins-card-val">{money2(largestTx.amount)}</span>
+              <span className="ins-card-sub">{largestTx.description || 'Uncategorized'}</span>
+            </div>
+          )}
+          {diningLimit > 0 && (
+            <div className="ins-card">
+              <span className="ins-card-lbl">Dining Budget Left</span>
+              <span className="ins-card-val" style={{color:diningRemaining<0?'var(--red)':'var(--t1)'}}>{diningRemaining<0?'−':''}{money2(Math.abs(diningRemaining))}</span>
+              <span className="ins-card-sub">of {money2(diningLimit)} budgeted</span>
+            </div>
+          )}
+          {biggestMove && (
+            <div className="ins-card">
+              <span className="ins-card-lbl">{catLabel(biggestMove.id)} Trend</span>
+              <span className="ins-card-val" style={{color:biggestMove.pct<0?'var(--accent)':'var(--red)'}}>{biggestMove.pct>=0?'+':''}{biggestMove.pct.toFixed(0)}%</span>
+              <span className="ins-card-sub">vs last month</span>
+            </div>
+          )}
+        </div>
+        <div className="card" style={{borderColor:'rgba(0,200,5,.2)',background:'rgba(0,200,5,.03)',marginTop:12}}>
+          <div className="card-label">Recommendations</div>
+          {recommendations.map((r,i) => <div key={i} className="insight-row">{r}</div>)}
         </div>
       </div>
 
@@ -6547,7 +6719,8 @@ function App() {
     budget:     <Budget     settings={settings} transactions={transactions} />,
     spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} goals={goals} setGoals={setGoals}
                   accounts={accounts} setAccounts={setAccounts} netWorth={nwData} setNetWorth={setNwData} openAddTx={openAddTx} />,
-    insights:   <SpendingInsights settings={settings} transactions={transactions} setTransactions={setTx} goTo={setTab} />,
+    insights:   <SpendingInsights settings={settings} transactions={transactions} setTransactions={setTx} goTo={setTab}
+                  accounts={accounts} netWorth={nwData} goals={goals} bills={bills} />,
     goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} transactions={transactions} />,
     commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} setGoals={setGoals} />,
     networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} setGoals={setGoals} settings={settings} />,
