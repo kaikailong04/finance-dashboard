@@ -1023,6 +1023,19 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 /* ── Bills ── */
 .bill-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .bill-recur-tag{font-size:.55rem;color:var(--t3);border:1px solid var(--border2);border-radius:99px;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.05em}
+
+/* ── Monthly Review ── */
+.grade-badge{
+  width:76px;height:76px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:2rem;font-weight:800;border:3px solid currentColor;
+}
+.mr-bars{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.mr-bar-row{display:flex;align-items:center;gap:10px}
+.mr-bar-lbl{width:76px;flex-shrink:0;font-size:.7rem;color:var(--t3)}
+.mr-bar-track{flex:1;height:10px;background:var(--s3);border-radius:99px;overflow:hidden}
+.mr-bar-fill{height:100%;border-radius:99px}
+.mr-bar-val{width:84px;flex-shrink:0;text-align:right;font-size:.78rem;font-weight:700;font-variant-numeric:tabular-nums}
   </style>
 </head>
 <body>
@@ -1814,6 +1827,47 @@ function healthLabel(score) {
   if (score >= 75) return { label:'Good',            color:'#00C805' };
   if (score >= 60) return { label:'Fair',             color:'#F5A623' };
   return                  { label:'Needs Attention',  color:'#FF5000' };
+}
+
+// ── Monthly Review (Priority 9) ─────────────────────────────────────────
+// Letter grade off the same % of budget used every other budget view
+// already computes — never a separate, competing definition of "on track".
+function budgetGrade(pctUsed) {
+  if (pctUsed <= 0)   return { grade:'—', color:'var(--t3)' };
+  if (pctUsed <= 70)  return { grade:'A', color:'#00C805' };
+  if (pctUsed <= 90)  return { grade:'B', color:'#00C805' };
+  if (pctUsed <= 100) return { grade:'C', color:'#F5A623' };
+  if (pctUsed <= 115) return { grade:'D', color:'#f97316' };
+  return                     { grade:'F', color:'#FF5000' };
+}
+// Splits the month into 7-day chunks and finds the one with the best net
+// cash flow (income minus real spending) — "Best Saving Week".
+function bestSavingWeek(monthTx, year, month) {
+  const daysIn = new Date(year, month+1, 0).getDate();
+  const weeks = [];
+  for (let start=1; start<=daysIn; start+=7) weeks.push({ start, end:Math.min(start+6,daysIn), net:0 });
+  for (const { t, delta } of spendingRows(monthTx)) {
+    const day = +txDateKey(t).slice(8,10);
+    const w = weeks.find(w => day>=w.start && day<=w.end);
+    if (w) w.net -= delta;
+  }
+  for (const t of monthTx) {
+    if (!isIncomeTransaction(t)) continue;
+    const day = +txDateKey(t).slice(8,10);
+    const w = weeks.find(w => day>=w.start && day<=w.end);
+    if (w) w.net += safeNum(t.amount);
+  }
+  return weeks.reduce((best,w) => (!best || w.net>best.net) ? w : best, null);
+}
+// Reads off the SAME saved snapshots the Net Worth page's own month-over-
+// month delta uses — never a second, reconstructed estimate. Returns null
+// (not a number) when no snapshot covers this month, rather than guessing.
+function netWorthChangeForMonth(netWorth, monthKey) {
+  const hist = (netWorth && netWorth.history) || [];
+  const cur  = hist.find(h => h.month === monthKey);
+  if (!cur) return null;
+  const prev = [...hist].filter(h => h.month < monthKey).sort((a,b) => a.month.localeCompare(b.month)).slice(-1)[0];
+  return prev ? { hasPrev:true, value: round2(cur.netWorth - prev.netWorth) } : { hasPrev:false, value:null };
 }
 // Net worth from STORED BALANCES only. Contribution history explains how a
 // balance grew; adding it on top would double-count, so it is never summed here.
@@ -3958,6 +4012,75 @@ function categoryBudgetsFor(settings, ref) {
   };
 }
 
+function MonthlyReviewModal({ onClose, monthLabel, monthKey, year, month, income, totalSpend, largestTx, topCatEnt, monthBudgetTotal, netWorth, accounts, monthTx }) {
+  const savings = round2(income - totalSpend);
+  const budgetPctUsed = monthBudgetTotal > 0 ? safePct(totalSpend, monthBudgetTotal) : 0;
+  const grade = budgetGrade(budgetPctUsed);
+  const nwChange = netWorthChangeForMonth(netWorth, monthKey);
+  const cashback = round2((accounts||[]).filter(a=>a.type==='credit').reduce((s,a) => {
+    const card = a.card || defaultCardFields();
+    return s + estimatedRewardValue(card, (card.rewardsByMonth||{})[monthKey]);
+  }, 0));
+  const bestWeek = bestSavingWeek(monthTx, year, month);
+  const maxBar = Math.max(income, totalSpend, Math.abs(savings), 1);
+
+  return (
+    <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-card modal-card-lg">
+        <div className="modal-hd">
+          <div className="modal-title">Monthly Review · {monthLabel}</div>
+          <button className="btn-icon" onClick={onClose} aria-label="Close"><Icon name="x" size={18}/></button>
+        </div>
+        <div className="modal-body">
+          <div style={{display:'flex',alignItems:'center',gap:18}}>
+            <div className="grade-badge" style={{color:grade.color}}>{grade.grade}</div>
+            <div>
+              <div style={{fontSize:'.7rem',color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>Budget Grade</div>
+              <div style={{fontSize:'.84rem',color:'var(--t2)'}}>{monthBudgetTotal>0 ? `${budgetPctUsed.toFixed(0)}% of ${currency(monthBudgetTotal,0)} budget used` : 'No budget set for this scenario'}</div>
+            </div>
+          </div>
+
+          <div className="mr-bars">
+            <div className="mr-bar-row"><div className="mr-bar-lbl">Income</div><div className="mr-bar-track"><div className="mr-bar-fill" style={{width:`${Math.min(safePct(income,maxBar),100)}%`,background:'var(--accent)'}}/></div><div className="mr-bar-val">{currency(income,0)}</div></div>
+            <div className="mr-bar-row"><div className="mr-bar-lbl">Expenses</div><div className="mr-bar-track"><div className="mr-bar-fill" style={{width:`${Math.min(safePct(totalSpend,maxBar),100)}%`,background:'var(--red)'}}/></div><div className="mr-bar-val">{currency(totalSpend,0)}</div></div>
+            <div className="mr-bar-row"><div className="mr-bar-lbl">Savings</div><div className="mr-bar-track"><div className="mr-bar-fill" style={{width:`${Math.min(safePct(Math.abs(savings),maxBar),100)}%`,background:savings>=0?'var(--blue)':'var(--red)'}}/></div><div className="mr-bar-val" style={{color:savings>=0?'var(--t1)':'var(--red)'}}>{savings>=0?'':'−'}{currency(Math.abs(savings),0)}</div></div>
+          </div>
+
+          <div className="ins-cards" style={{marginTop:18}}>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Net Worth Change</span>
+              <span className="ins-card-val" style={{color: nwChange && nwChange.hasPrev ? (nwChange.value>=0?'var(--accent)':'var(--red)') : 'var(--t3)'}}>
+                {nwChange && nwChange.hasPrev ? `${nwChange.value>=0?'+':'−'}${currency(Math.abs(nwChange.value),0)}` : '—'}
+              </span>
+              <span className="ins-card-sub">{nwChange ? (nwChange.hasPrev ? 'vs prior snapshot' : 'no earlier snapshot yet') : 'no Net Worth snapshot saved this month'}</span>
+            </div>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Cashback / Rewards Earned</span>
+              <span className="ins-card-val" style={{color:'var(--accent)'}}>{currency(cashback,2)}</span>
+              <span className="ins-card-sub">across all cards, est. $</span>
+            </div>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Largest Purchase</span>
+              <span className="ins-card-val">{largestTx ? money2(largestTx.amount) : '—'}</span>
+              <span className="ins-card-sub">{largestTx ? (largestTx.description||'Uncategorized') : 'None this month'}</span>
+            </div>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Top Category</span>
+              <span className="ins-card-val">{topCatEnt ? catLabel(topCatEnt[0]) : '—'}</span>
+              <span className="ins-card-sub">{topCatEnt ? money2(topCatEnt[1].total) : 'No spending logged'}</span>
+            </div>
+            <div className="ins-card">
+              <span className="ins-card-lbl">Best Saving Week</span>
+              <span className="ins-card-val" style={{color:bestWeek && bestWeek.net>0 ? 'var(--accent)' : 'var(--t1)'}}>{bestWeek ? `Days ${bestWeek.start}–${bestWeek.end}` : '—'}</span>
+              <span className="ins-card-sub">{bestWeek ? `${bestWeek.net>=0?'+':'−'}${currency(Math.abs(bestWeek.net),0)} net` : ''}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SpendingInsights({ settings, transactions, setTransactions, goTo, accounts, netWorth, goals, bills }) {
   const today = new Date();
   const [cursor, setCursor] = useState(() => ({ y: today.getFullYear(), m: today.getMonth() }));
@@ -3969,6 +4092,7 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
   const [topN, setTopN]         = useState(5);
   const [useRange, setUseRange] = useState(false);
   const [filters, setFilters]   = useState({ from:'', to:'', category:'all', merchant:'all', account:'all', status:'all' });
+  const [showReview, setShowReview] = useState(false);
 
   const monthKey = `${cursor.y}-${String(cursor.m+1).padStart(2,'0')}`;
   const setF = (k,v) => setFilters(f => ({ ...f, [k]: v }));
@@ -4219,7 +4343,17 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
           <h2 className="page-title">Spending Insights</h2>
           <div className="page-sub">{periodLabel} · {spendCount} purchase{spendCount===1?'':'s'}</div>
         </div>
+        {!useRange && (
+          <button className="btn btn-ghost btn-sm" onClick={()=>setShowReview(true)}><Icon name="receipt" size={13}/>Monthly Review</button>
+        )}
       </div>
+
+      {showReview && (
+        <MonthlyReviewModal onClose={()=>setShowReview(false)}
+          monthLabel={`${MONTH_NAMES[cursor.m]} ${cursor.y}`} monthKey={monthKey} year={cursor.y} month={cursor.m}
+          income={income} totalSpend={totalSpend} largestTx={largestTx} topCatEnt={topCatEnt}
+          monthBudgetTotal={monthBudgetTotal} netWorth={netWorth} accounts={accounts} monthTx={filtered}/>
+      )}
 
       {/* ── AI Spending Coach ── */}
       <div>
