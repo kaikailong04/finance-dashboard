@@ -1024,6 +1024,16 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .bill-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .bill-recur-tag{font-size:.55rem;color:var(--t3);border:1px solid var(--border2);border-radius:99px;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.05em}
 
+/* ── Goal celebration confetti (Priority 16) ── */
+.confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden;border-radius:inherit;z-index:1}
+.confetti-piece{position:absolute;top:-12px;width:7px;height:12px;opacity:0;animation:confetti-fall 1.7s ease-in forwards;border-radius:1px}
+@keyframes confetti-fall{
+  0%{transform:translateY(0) rotate(0deg);opacity:1}
+  100%{transform:translateY(220px) rotate(560deg);opacity:0}
+}
+@media(prefers-reduced-motion:reduce){ .confetti-piece{animation:none;display:none} }
+.gc-relative{position:relative;overflow:hidden}
+
 /* ── Receipt Scanner (Priority 15) ── */
 .scan-box{display:flex;flex-direction:column;gap:10px}
 .scan-status{display:flex;align-items:center;gap:10px;padding:2px 2px}
@@ -1315,7 +1325,7 @@ function usePersist(key, def, migrate) {
 // raw + reloading (rather than pushing into React state) means the normal
 // usePersist/migrate path runs exactly as it would for any other load, so
 // an export from an older build still migrates correctly on import.
-const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth', 'fd_accounts', 'fd_bills', 'fd_recurring'];
+const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth', 'fd_accounts', 'fd_bills', 'fd_recurring', 'fd_customgoals'];
 
 function exportBackup() {
   const data = {};
@@ -4352,9 +4362,215 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
 }
 
 // ── Goals ─────────────────────────────────────────────────────────────
-function Goals({ settings, goals, setGoals, commissions, transactions }) {
+// ══════════════════════════════════════════════════════════════════════
+// CUSTOM GOALS (Priority 16) — Emergency Fund, Vacation, Car, House,
+// Wedding, Investments, Debt Payoff, or anything else, alongside the
+// built-in HYSA/Roth/401(k) cards above. Either tracked by hand or linked
+// to a real account balance (never a second number competing with it).
+// ══════════════════════════════════════════════════════════════════════
+const GOAL_CATEGORIES = [
+  { id:'emergency',  label:'Emergency Fund', icon:'shield',     color:'#00C805' },
+  { id:'vacation',   label:'Vacation',       icon:'plane',      color:'#06b6d4' },
+  { id:'car',        label:'Car',            icon:'car',        color:'#F5A623' },
+  { id:'house',      label:'House',          icon:'bank',       color:'#7B74FF' },
+  { id:'wedding',    label:'Wedding',        icon:'zap',        color:'#ec4899' },
+  { id:'investment', label:'Investments',    icon:'trending',   color:'#3b82f6' },
+  { id:'debt',       label:'Debt Payoff',    icon:'creditCard', color:'#FF5000' },
+  { id:'other',      label:'Other',          icon:'target',     color:'#94a3b8' },
+];
+const goalCategoryInfo = id => GOAL_CATEGORIES.find(c => c.id===id) || GOAL_CATEGORIES[GOAL_CATEGORIES.length-1];
+function defaultCustomGoalFields() {
+  return { id:'', name:'', category:'other', targetAmount:0, currentAmount:0, accountId:null,
+    monthlyContribution:0, targetDate:'', notes:'', createdAt:Date.now(), celebrated:false };
+}
+function goalProgress(goal, ctx) {
+  const linkedAcct = goal.accountId ? (ctx.accounts||[]).find(a => a.id===goal.accountId) : null;
+  const current = linkedAcct ? accountBalance(linkedAcct, ctx) : safeNum(goal.currentAmount);
+  const target  = safeNum(goal.targetAmount);
+  const pct     = target > 0 ? Math.min((current/target)*100, 100) : 0;
+  const remaining = Math.max(round2(target-current), 0);
+  const rate = safeNum(goal.monthlyContribution);
+  const monthsLeft = rate > 0 && remaining > 0 ? Math.ceil(remaining/rate) : null;
+  let projectedDate = null;
+  if (monthsLeft != null) { projectedDate = new Date(); projectedDate.setMonth(projectedDate.getMonth()+monthsLeft); }
+  return { current, target, pct, remaining, monthsLeft, projectedDate, complete: target > 0 && current >= target, linkedAcct };
+}
+// Straight-line projection from today's balance at the current monthly
+// contribution rate — the same "keep doing what you're doing" forecast
+// the Cash Flow Forecast uses, just for one goal instead of three buckets.
+function goalForecastSeries(goal, ctx, months=12) {
+  const { current, target } = goalProgress(goal, ctx);
+  const rate = safeNum(goal.monthlyContribution);
+  const labels = [], points = [];
+  const today = new Date();
+  for (let i=0; i<=months; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth()+i, 1);
+    labels.push(`${MONTH_NAMES[d.getMonth()].slice(0,3)} '${String(d.getFullYear()).slice(2)}`);
+    points.push(Math.min(round2(current + rate*i), target > 0 ? target : Infinity));
+  }
+  return { labels, points };
+}
+function Confetti() {
+  const pieces = useMemo(() => Array.from({length:26}, (_,i) => ({
+    id:i, left: Math.random()*100, delay: Math.random()*0.35, color: VIZ_SERIES[i % VIZ_SERIES.length],
+  })), []);
+  return (
+    <div className="confetti" aria-hidden="true">
+      {pieces.map(p => <span key={p.id} className="confetti-piece" style={{ left:`${p.left}%`, background:p.color, animationDelay:`${p.delay}s` }}/>)}
+    </div>
+  );
+}
+function GoalFormModal({ onClose, onSave, onDelete, accounts, goal }) {
+  const g = goal || defaultCustomGoalFields();
+  const [name, setName]       = useState(g.name);
+  const [category, setCategory] = useState(g.category);
+  const [targetAmount, setTargetAmount] = useState(g.targetAmount ? String(g.targetAmount) : '');
+  const [currentAmount, setCurrentAmount] = useState(g.currentAmount ? String(g.currentAmount) : '');
+  const [accountId, setAccountId] = useState(g.accountId || '');
+  const [monthlyContribution, setMonthlyContribution] = useState(g.monthlyContribution ? String(g.monthlyContribution) : '');
+  const [targetDate, setTargetDate] = useState(g.targetDate || '');
+  const [notes, setNotes]     = useState(g.notes || '');
+
+  const linkable = (accounts||[]).filter(a => !a.archived && a.type !== 'credit');
+  const valid = name.trim() && parseFloat(targetAmount) > 0;
+
+  const save = () => {
+    if (!valid) return;
+    onSave({
+      ...g, id: g.id || ('goal_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
+      name: name.trim(), category, targetAmount: round2(parseFloat(targetAmount)||0),
+      currentAmount: round2(parseFloat(currentAmount)||0), accountId: accountId || null,
+      monthlyContribution: round2(parseFloat(monthlyContribution)||0), targetDate, notes: notes.trim(),
+      celebrated: g.celebrated || false,
+    });
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-card modal-card-lg">
+        <div className="modal-hd">
+          <div className="modal-title">{goal ? 'Edit Goal' : 'Add Goal'}</div>
+          <button className="btn-icon" onClick={onClose} aria-label="Close"><Icon name="x" size={18}/></button>
+        </div>
+        <div className="modal-body">
+          <div className="fgrid">
+            <div className="fg fspan"><label>Goal Name</label>
+              <input type="text" placeholder="e.g. Hawaii Trip, New Car, Payoff Student Loan" value={name} onChange={e=>setName(e.target.value)} autoFocus/>
+            </div>
+            <div className="fg"><label>Category</label>
+              <select value={category} onChange={e=>setCategory(e.target.value)}>
+                {GOAL_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </div>
+            <div className="fg"><label>Target Amount</label>
+              <input type="number" min="0" step="1" placeholder="0.00" value={targetAmount} onChange={e=>setTargetAmount(e.target.value)}/>
+            </div>
+            <div className="fg"><label>Link to Account (optional)</label>
+              <select value={accountId} onChange={e=>setAccountId(e.target.value)}>
+                <option value="">Track manually</option>
+                {linkable.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            {!accountId && (
+              <div className="fg"><label>Current Amount</label>
+                <input type="number" min="0" step="1" placeholder="0.00" value={currentAmount} onChange={e=>setCurrentAmount(e.target.value)}/>
+              </div>
+            )}
+            <div className="fg"><label>Monthly Contribution</label>
+              <input type="number" min="0" step="1" placeholder="0.00" value={monthlyContribution} onChange={e=>setMonthlyContribution(e.target.value)}/>
+            </div>
+            <div className="fg"><label>Target Date (optional)</label>
+              <input type="date" value={targetDate} onChange={e=>setTargetDate(e.target.value)}/>
+            </div>
+            <div className="fg fspan"><label>Notes</label>
+              <input type="text" placeholder="Optional" value={notes} onChange={e=>setNotes(e.target.value)}/>
+            </div>
+          </div>
+          <button className="btn btn-primary btn-full" disabled={!valid} onClick={save}>{goal ? 'Save Changes' : 'Add Goal'}</button>
+          {goal && onDelete && (
+            <button className="btn btn-ghost btn-full" style={{color:'var(--red)'}}
+              onClick={()=>{ if(window.confirm(`Delete "${g.name}"?`)){ onDelete(g.id); onClose(); } }}>
+              Delete Goal
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+function CustomGoalCard({ goal, ctx, onEdit, onContribute }) {
+  const info = goalCategoryInfo(goal.category);
+  const progress = goalProgress(goal, ctx);
+  const [showCelebrate, setShowCelebrate] = useState(false);
+  const wasComplete = useRef(goal.celebrated);
+  useEffect(() => {
+    if (progress.complete && !wasComplete.current) {
+      setShowCelebrate(true);
+      wasComplete.current = true;
+      onContribute && onContribute({ ...goal, celebrated:true }, true);   // stamp so it never replays
+      const t = setTimeout(()=>setShowCelebrate(false), 1800);
+      return () => clearTimeout(t);
+    }
+    if (!progress.complete) wasComplete.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress.complete]);
+
+  const forecast = goalForecastSeries(goal, ctx, 12);
+  const [showForecast, setShowForecast] = useState(false);
+
+  return (
+    <div className="gc gc-relative">
+      {showCelebrate && <Confetti/>}
+      <div className="gc-head">
+        <div>
+          <div className="gc-name" style={{display:'flex',alignItems:'center',gap:8}}>
+            <Icon name={info.icon} size={15} color={info.color}/>{goal.name}
+          </div>
+          <div className="gc-sub">{info.label}{progress.linkedAcct ? ` · ${progress.linkedAcct.name}` : ''}</div>
+        </div>
+        <div>
+          <div className="gc-pct" style={{color:info.color}}>{pct(progress.pct,0)}</div>
+          <div className="gc-of">{currency(progress.current)} of {currency(progress.target)}</div>
+        </div>
+      </div>
+      <div className="gc-bar"><div className="gc-fill" style={{width:`${progress.pct}%`,background:info.color}}/></div>
+      <div className="gc-foot">
+        <span className="gc-rate">{progress.remaining>0 ? `${currency(progress.remaining)} remaining` : 'Fully funded'}</span>
+        <span className="gc-date">
+          {progress.complete ? '🎉 Goal reached!'
+            : progress.projectedDate ? `${progress.projectedDate.toLocaleDateString('en-US',{month:'short',year:'numeric'})} · ${progress.monthsLeft}mo`
+            : 'Set a monthly contribution to project'}
+        </span>
+      </div>
+      <div style={{display:'flex',gap:8,marginTop:14,flexWrap:'wrap'}}>
+        {!progress.linkedAcct && (
+          <button className="btn btn-ghost btn-sm" onClick={()=>{
+            const v = window.prompt('Add a contribution amount:', '');
+            const amt = parseFloat(v);
+            if (amt > 0) onContribute({ ...goal, currentAmount: round2(safeNum(goal.currentAmount)+amt) });
+          }}>+ Add Contribution</button>
+        )}
+        <button className="btn btn-ghost btn-sm" onClick={()=>setShowForecast(s=>!s)}>{showForecast?'Hide':'Show'} Forecast</button>
+        <button className="btn btn-ghost btn-sm" onClick={onEdit}><Icon name="edit" size={12}/> Edit</button>
+      </div>
+      <Collapse open={showForecast}>
+        <div style={{marginTop:14}}>
+          {progress.monthsLeft==null ? <VizEmpty message="Set a monthly contribution to see a forecast." /> :
+            <LineTrendChart labels={forecast.labels} formatY={v=>currency(v,0)}
+              series={[{ key:'g', label:goal.name, color:info.color, points:forecast.points }]}/>}
+        </div>
+      </Collapse>
+    </div>
+  );
+}
+
+function Goals({ settings, goals, setGoals, commissions, transactions, accounts, netWorth, customGoals, setCustomGoals }) {
   const now   = new Date();
   const phase = getPhaseInfo(settings.startDate);
+  const goalCtx = { settings, goals, accounts, netWorth };
+  const [showAddGoal, setShowAddGoal] = useState(false);
+  const [editingGoal, setEditingGoal] = useState(null);
 
   // ── HYSA ──────────────────────────────────────────────────────────────
   const hysaBal    = goals.hysaBalance || 0;
@@ -4595,6 +4811,35 @@ function Goals({ settings, goals, setGoals, commissions, transactions }) {
       <div style={{fontSize:'.68rem',color:'var(--t4)',textAlign:'center'}}>
         HYSA &amp; Roth IRA balances sync with Net Worth page
       </div>
+
+      {/* ── Custom Goals (Priority 16) ── */}
+      <div>
+        <div className="cal-head">
+          <div className="section-head" style={{padding:0,marginBottom:0}}>Custom Goals</div>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setShowAddGoal(true)}><Icon name="plus" size={13}/>Add Goal</button>
+        </div>
+        {(customGoals||[]).length === 0 ? (
+          <div className="empty">Emergency Fund, Vacation, Car, House, Wedding, Investments, Debt Payoff — add your first custom goal.</div>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:16}}>
+            {(customGoals||[]).map(g => (
+              <CustomGoalCard key={g.id} goal={g} ctx={goalCtx}
+                onEdit={()=>setEditingGoal(g)}
+                onContribute={updated => setCustomGoals(list => list.map(x => x.id===updated.id ? { ...x, ...updated } : x))}/>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showAddGoal && (
+        <GoalFormModal accounts={accounts} onClose={()=>setShowAddGoal(false)}
+          onSave={g => setCustomGoals(list => [...(list||[]), g])}/>
+      )}
+      {editingGoal && (
+        <GoalFormModal accounts={accounts} goal={editingGoal} onClose={()=>setEditingGoal(null)}
+          onSave={g => setCustomGoals(list => list.map(x => x.id===g.id ? g : x))}
+          onDelete={id => setCustomGoals(list => list.filter(x => x.id!==id))}/>
+      )}
 
     </div>
   );
@@ -7898,6 +8143,7 @@ function App() {
   const [accounts,setAccounts] = usePersist('fd_accounts',     seedAccounts());
   const [bills,setBills]       = usePersist('fd_bills',        []);
   const [recurring,setRecurring] = usePersist('fd_recurring',  []);
+  const [customGoals,setCustomGoals] = usePersist('fd_customgoals', []);
 
   // ── Add Transaction (v2) — a single global sheet every page opens ──────
   const [addTxOpen, setAddTxOpen]           = useState(false);
@@ -7980,7 +8226,8 @@ function App() {
                   accounts={accounts} setAccounts={setAccounts} netWorth={nwData} setNetWorth={setNwData} openAddTx={openAddTx} />,
     insights:   <SpendingInsights settings={settings} transactions={transactions} setTransactions={setTx} goTo={setTab}
                   accounts={accounts} netWorth={nwData} goals={goals} bills={bills} />,
-    goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} transactions={transactions} />,
+    goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} transactions={transactions}
+                  accounts={accounts} netWorth={nwData} customGoals={customGoals} setCustomGoals={setCustomGoals} />,
     commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} setGoals={setGoals} />,
     networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} setGoals={setGoals} settings={settings} />,
     settings:   <Settings   settings={settings} setSettings={useCallback(s=>setSettings(s),[])}
