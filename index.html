@@ -2022,14 +2022,26 @@ function netWorthChangeForMonth(netWorth, monthKey) {
   return prev ? { hasPrev:true, value: round2(cur.netWorth - prev.netWorth) } : { hasPrev:false, value:null };
 }
 // Net worth from STORED BALANCES only. Contribution history explains how a
-// balance grew; adding it on top would double-count, so it is never summed here.
-function getNetWorthSnapshot(accounts, goals) {
+// balance grew; adding it on top would double-count, so it is never summed
+// here. `dynamicAccounts` (optional, the fd_accounts registry) folds in
+// anything a user has created beyond the six original linked accounts —
+// Cash, Brokerage, Crypto, a second credit card — so a custom account is
+// never invisible to net worth. Accounts with a `linked` field are skipped
+// here since they already flow through `accounts`/`goals` above; counting
+// them again would double them.
+function getNetWorthSnapshot(accounts, goals, dynamicAccounts, ctx) {
   const a = accounts || {}, g = goals || {};
   const cash       = safeNum(a.checking) + safeNum(g.hysaBalance);
   const k401       = safeNum(g.k401Employee) + safeNum(g.k401Employer) || safeNum(g.ira401kBalance);
   const retirement = safeNum(g.rothIRAOverride) + k401;
-  const other      = safeNum(a.brokerage);
-  const liabilities= safeNum(a.creditCard) + safeNum(a.loans);
+  let other        = safeNum(a.brokerage);
+  let liabilities  = safeNum(a.creditCard) + safeNum(a.loans);
+  if (dynamicAccounts && ctx) {
+    for (const acct of dynamicAccounts.filter(x => !x.archived && !x.linked)) {
+      const bal = accountBalance(acct, ctx);
+      if (isLiabilityType(acct.type)) liabilities += bal; else other += bal;
+    }
+  }
   const assets     = cash + retirement + other;
   return {
     cash: round2(cash), retirement: round2(retirement), other: round2(other),
@@ -3360,8 +3372,8 @@ function QuickActionsRow({ openAddTx, goTo, accounts }) {
   );
 }
 
-function NetWorthMiniCard({ netWorth, goals, goTo }) {
-  const snap = getNetWorthSnapshot((netWorth||{}).accounts, goals);
+function NetWorthMiniCard({ netWorth, goals, goTo, accounts, settings }) {
+  const snap = getNetWorthSnapshot((netWorth||{}).accounts, goals, accounts, { settings, goals, netWorth });
   return (
     <div>
       <div className="cal-head">
@@ -3681,7 +3693,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
     const catTotals  = getCategorySpendingTotals(monthTxAll);
     const spent      = round2(Object.values(catTotals).reduce((s,c)=>s+c.total,0));
     const daily      = getDailySpendingTotals(monthTxAll);
-    const nwSnap     = getNetWorthSnapshot((JSON.parse(localStorage.getItem('fd_networth')||'{}').accounts)||{}, goals);
+    const nwSnap     = getNetWorthSnapshot((netWorth||{}).accounts, goals, accounts, { settings, goals, netWorth });
     // Next payday: the next 1st/3rd Thursday at or after today, rolling into
     // next month once this month's two have passed.
     const upcoming = [
@@ -3698,7 +3710,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
       nextPay,
       daysToPay: nextPay ? Math.round((nextPay - new Date(now.getFullYear(),now.getMonth(),now.getDate()))/86400000) : null,
     };
-  }, [transactions, goals, monthStr, totalBudgeted, now.getFullYear(), now.getMonth(), now.getDate()]);
+  }, [transactions, goals, monthStr, totalBudgeted, now.getFullYear(), now.getMonth(), now.getDate(), netWorth, accounts, settings]);
 
   // Paycheck breakdown — built around the actual net paycheck. The 401(k) rows
   // are informational (already withheld); they are NOT deducted from take-home.
@@ -3759,7 +3771,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
       <QuickActionsRow openAddTx={openAddTx} goTo={goTo} accounts={accounts}/>
 
       <div className="g2">
-        <NetWorthMiniCard netWorth={netWorth} goals={goals} goTo={goTo}/>
+        <NetWorthMiniCard netWorth={netWorth} goals={goals} goTo={goTo} accounts={accounts} settings={settings}/>
         <AccountsStrip accounts={accounts} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
       </div>
 
@@ -6236,7 +6248,7 @@ function SvgLine({ history }) {
 }
 
 // ── Net Worth page ────────────────────────────────────────────────────────
-function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settings }) {
+function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settings, accounts }) {
   const acc  = netWorth.accounts || {};
   const hist = netWorth.history  || [];
 
@@ -6258,11 +6270,21 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
   // Net worth is computed from STORED BALANCES ONLY. Contribution history
   // (paycheck 401(k) rows, HYSA allocations) explains how these balances grew —
   // adding it on top of the balances would double-count, so it never is.
-  const snap        = getNetWorthSnapshot(acc, goals);
+  const snap        = getNetWorthSnapshot(acc, goals, accounts, { settings, goals, netWorth });
   const totalAssets = snap.assets;
   const totalLiab   = snap.liabilities;
   const nw          = snap.netWorth;
   const isPos       = nw >= 0;
+
+  // Dynamic/custom accounts (Cash, Crypto, an extra card, ...) aren't part of
+  // the legacy 4-field nwData.accounts object — fold them into the breakdown
+  // list too so it stays consistent with the snapshot total above.
+  const acctCtx      = { settings, goals, netWorth };
+  const dynamicRows  = (accounts||[]).filter(a => !a.archived && !a.linked).map(a => {
+    const val      = Math.abs(accountBalance(a, acctCtx));
+    const liability = isLiabilityType(a.type);
+    return { key:'dyn-'+a.id, label:a.name, val, tag: accountTypeInfo(a.type).label, prev:null, neg:liability };
+  });
 
   // Snapshot logic
   const now      = new Date();
@@ -6516,6 +6538,7 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
             { key:'brokerage',  label:'Taxable Brokerage', val:safeNum(acc.brokerage), tag:'Investment', prev:null },
             { key:'cc',         label:'Credit Card',       val:safeNum(acc.creditCard),tag:'Liability',  prev:null, neg:true },
             { key:'loans',      label:'Loans / Other Debt',val:safeNum(acc.loans),     tag:'Liability',  prev:null, neg:true },
+            ...dynamicRows,
           ].filter(r => r.val !== 0).map(r => (
             <div key={r.key} className="nwa-row">
               <div style={{minWidth:0}}>
@@ -8229,7 +8252,7 @@ function App() {
     goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} transactions={transactions}
                   accounts={accounts} netWorth={nwData} customGoals={customGoals} setCustomGoals={setCustomGoals} />,
     commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} setGoals={setGoals} />,
-    networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} setGoals={setGoals} settings={settings} />,
+    networth:   <NetWorth   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} goals={goals} setGoals={setGoals} settings={settings} accounts={accounts} />,
     settings:   <Settings   settings={settings} setSettings={useCallback(s=>setSettings(s),[])}
                   accounts={accounts} setAccounts={setAccounts} goals={goals} setGoals={setGoals}
                   netWorth={nwData} setNetWorth={setNwData} transactions={transactions} setTransactions={setTx}
