@@ -1870,11 +1870,44 @@ function defaultCardFields(overrides) {
     statementCloseDay:1, dueDay:20,
     minPaymentFlat:35, minPaymentPct:2,
     autopay:false, statementBalance:0,
-    rewards:{ dining:0, groceries:0, entertainment:0, streaming:0, other:1 },  // % cashback
+    // 'cashback' | 'miles' | 'points' — the RATE math is identical (percent
+    // of the purchase, earned in whatever unit this card pays out); only the
+    // display unit and the estimated-dollar-value conversion change.
+    rewardType: 'cashback', pointValueCents: 1,   // 1¢/point is a common miles/points estimate
+    rewards:{ dining:0, groceries:0, entertainment:0, streaming:0, other:1 },  // % earn rate
     cashbackLifetime:0, cashbackMonth:0, cashbackMonthKey:'',
     // Same totals, broken out by category — powers the Rewards Dashboard.
     rewardsEarnedMonth: zeroRewardBuckets(), rewardsEarnedLifetime: zeroRewardBuckets(),
+    // { 'YYYY-MM': amount } — powers Rewards by Month, both per-card and app-wide.
+    rewardsByMonth: {},
     ...overrides,
+  };
+}
+// Type-aware display for a raw reward-unit amount already stored on the card.
+function formatRewardAmount(card, amount) {
+  const n = safeNum(amount);
+  if (!card || card.rewardType === 'cashback') return currency(n, 2);
+  const rounded = Math.round(n);
+  return `${rounded.toLocaleString()} ${card.rewardType === 'miles' ? 'mi' : 'pts'}`;
+}
+// Dollar-equivalent estimate for miles/points, using the card's own
+// point-value assumption — cash back is already a dollar amount.
+function estimatedRewardValue(card, amount) {
+  if (!card || card.rewardType === 'cashback') return safeNum(amount);
+  return round2(safeNum(amount) * (safeNum(card.pointValueCents) / 100));
+}
+// Last N months of a card's reward history, oldest first — powers both the
+// per-card trend and the app-wide "Rewards by Month" rollup.
+function rewardsMonthSeries(card, months=6) {
+  const now = new Date();
+  const keys = Array.from({length:months}, (_,i) => {
+    const d = new Date(now.getFullYear(), now.getMonth()-(months-1-i), 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  });
+  const byMonth = (card && card.rewardsByMonth) || {};
+  return {
+    labels: keys.map(k => { const [y,m] = k.split('-'); return `${MONTH_NAMES[+m-1].slice(0,3)} '${y.slice(2)}`; }),
+    points: keys.map(k => safeNum(byMonth[k])),
   };
 }
 
@@ -1974,10 +2007,18 @@ function rewardBucketForCategory(category) {
   if (category === 'groceries') return 'groceries';
   return 'other';
 }
-// Falls back to the card's flat "other" rate.
+// Falls back to the card's flat "other" rate. Configured value is a percent
+// for cash back (rate 3 = 3% back) but a per-dollar multiplier for
+// miles/points (rate 3 = 3 miles/points per $1) — matches how each program
+// is actually advertised.
 function rewardRateForCategory(card, category) {
   if (!card) return 0;
   return safeNum((card.rewards || {})[rewardBucketForCategory(category)]);
+}
+function rewardEarnAmount(card, amount, category) {
+  const rate = rewardRateForCategory(card, category);
+  if (!rate) return 0;
+  return round2(safeNum(amount) * (card && card.rewardType !== 'cashback' ? rate : rate/100));
 }
 // Tracks lifetime + current-calendar-month cashback on the card itself, both
 // as a flat total (existing UI) and broken out by category (Rewards Dashboard).
@@ -1986,7 +2027,7 @@ function applyCardRewards(acct, tx, sign, ctx) {
   const bucket = rewardBucketForCategory(tx.category);
   const rate   = rewardRateForCategory(acct.card, tx.category);
   if (!rate) return;
-  const earn = round2(safeNum(tx.amount) * (rate/100)) * sign;
+  const earn = round2(rewardEarnAmount(acct.card, tx.amount, tx.category)) * sign;
   const monthKey = (tx.date || '').slice(0, 7);
   ctx.setAccounts(list => list.map(a => {
     if (a.id !== acct.id) return a;
@@ -1994,12 +2035,17 @@ function applyCardRewards(acct, tx, sign, ctx) {
     const sameMonth  = card.cashbackMonthKey === monthKey;
     const monthBase  = sameMonth ? (card.rewardsEarnedMonth || zeroRewardBuckets()) : zeroRewardBuckets();
     const lifeBase   = card.rewardsEarnedLifetime || zeroRewardBuckets();
+    const byMonth    = card.rewardsByMonth || {};
     return { ...a, card: { ...card,
       cashbackLifetime: round2(safeNum(card.cashbackLifetime) + earn),
       cashbackMonth:    round2((sameMonth ? safeNum(card.cashbackMonth) : 0) + earn),
       cashbackMonthKey: monthKey,
       rewardsEarnedMonth:    { ...monthBase, [bucket]: round2(safeNum(monthBase[bucket]) + earn) },
       rewardsEarnedLifetime: { ...lifeBase,  [bucket]: round2(safeNum(lifeBase[bucket]) + earn) },
+      // Order-independent, keyed by the transaction's own month — unlike
+      // cashbackMonth above, this stays correct even if a backdated
+      // transaction is added after a more recent one.
+      rewardsByMonth: { ...byMonth, [monthKey]: round2(safeNum(byMonth[monthKey]) + earn) },
     } };
   }));
 }
@@ -2123,7 +2169,7 @@ function creditSmartInsights(acct, ctx) {
     const close = nextOccurrenceOfDay(card.statementCloseDay);
     out.push(`You're at ${util.toFixed(0)}% utilization. If you're applying for new credit soon, paying ${currency(early,0)} before ${fmtShortDate(close)} would reduce utilization to 10%.`);
   }
-  if (safeNum(card.cashbackMonth) > 0) out.push(`You've earned ${currency(card.cashbackMonth,2)} in rewards this month.`);
+  if (safeNum(card.cashbackMonth) > 0) out.push(`You've earned ${formatRewardAmount(card, card.cashbackMonth)} in rewards this month.`);
   out.push(card.autopay
     ? 'Autopay is on — your statement balance will be paid automatically by the due date.'
     : 'Autopay is off — turn it on, or set a reminder, so you never miss the due date.');
@@ -2144,7 +2190,7 @@ function creditNotifications(acct, ctx, transactions) {
   if (daysToClose <= 5) notes.push({ icon:'archive', text:`Statement closes in ${daysToClose} day${daysToClose===1?'':'s'} (${fmtShortDate(nextClose)}).` });
   if (daysToDue <= 5)   notes.push({ icon:'lock', text:`Payment due in ${daysToDue} day${daysToDue===1?'':'s'} (${fmtShortDate(dueDate)}).` });
   if (util > 10)        notes.push({ icon:'trending', text:'A suggested early payment is available below to bring utilization under 10%.' });
-  if (safeNum(card.cashbackMonth) > 0) notes.push({ icon:'dollar', text:`${currency(card.cashbackMonth,2)} in rewards earned this month.` });
+  if (safeNum(card.cashbackMonth) > 0) notes.push({ icon:'dollar', text:`${formatRewardAmount(card, card.cashbackMonth)} in rewards earned this month.` });
   const lastPayment = paymentHistoryForCard(transactions, acct)[0];
   if (lastPayment) {
     // Calendar-day difference, not a raw ms/24h divide — comparing midnight
@@ -5654,8 +5700,7 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
   const limit            = card ? safeNum(card.creditLimit) : 0;
   const utilNow           = card ? creditUtilization(balanceNow, limit) : 0;
   const utilStmt          = card ? creditUtilization(previewBalance, limit) : 0;
-  const rewardRate        = card ? rewardRateForCategory(card, category) : 0;
-  const rewardEarn        = card && type === 'expense' ? round2(amt * (rewardRate/100)) : 0;
+  const rewardEarn        = card && type === 'expense' ? rewardEarnAmount(card, amt, category) : 0;
   const closeDate         = card ? nextOccurrenceOfDay(card.statementCloseDay) : null;
   const dueDate            = card ? nextOccurrenceOfDay(card.dueDay) : null;
 
@@ -5793,8 +5838,8 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
                 <div className="cc-item"><div className="cc-item-lbl">Payment Due</div><div className="cc-item-val">{dueDate?fmtShortDate(dueDate):'—'}</div></div>
                 <div className="cc-item"><div className="cc-item-lbl">Minimum Payment</div><div className="cc-item-val">{currency(minPaymentFor(card,previewBalance),2)}</div></div>
                 <div className="cc-item"><div className="cc-item-lbl">Autopay</div><div className="cc-item-val" style={{color:card.autopay?'var(--accent)':'var(--t3)'}}>{card.autopay?'On':'Off'}</div></div>
-                <div className="cc-item"><div className="cc-item-lbl">Rewards Earned</div><div className="cc-item-val" style={{color:'var(--accent)'}}>{rewardEarn>0?`+${currency(rewardEarn,2)}`:'—'}</div></div>
-                <div className="cc-item"><div className="cc-item-lbl">Monthly Cashback</div><div className="cc-item-val">{currency(safeNum(card.cashbackMonth)+rewardEarn,2)}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Rewards Earned</div><div className="cc-item-val" style={{color:'var(--accent)'}}>{rewardEarn>0?`+${formatRewardAmount(card,rewardEarn)}`:'—'}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">{card.rewardType==='cashback'?'Monthly Cashback':'Monthly Rewards'}</div><div className="cc-item-val">{formatRewardAmount(card, safeNum(card.cashbackMonth)+rewardEarn)}</div></div>
               </div>
             </div>
           )}
@@ -5904,7 +5949,19 @@ function CreditCardFieldsForm({ card, onChange }) {
           <option value="off">Off</option><option value="on">On</option>
         </select>
       </div>
-      <div className="fg fspan"><label>Cashback rewards — Dining / Groceries / Entertainment / Streaming / Other (%)</label>
+      <div className="fg"><label>Rewards Type</label>
+        <select value={c.rewardType||'cashback'} onChange={e=>set('rewardType', e.target.value)}>
+          <option value="cashback">Cash Back</option>
+          <option value="miles">Miles</option>
+          <option value="points">Points</option>
+        </select>
+      </div>
+      {(c.rewardType==='miles' || c.rewardType==='points') && (
+        <div className="fg"><label>Estimated Value (¢ per {c.rewardType==='miles'?'mile':'point'})</label>
+          <input type="number" min="0" step="0.1" value={c.pointValueCents} onChange={e=>set('pointValueCents', parseFloat(e.target.value)||0)}/>
+        </div>
+      )}
+      <div className="fg fspan"><label>{c.rewardType==='cashback'?'Cashback':c.rewardType==='miles'?'Miles':'Points'} rate — Dining / Groceries / Entertainment / Streaming / Other (per $1)</label>
         <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}}>
           {['dining','groceries','entertainment','streaming','other'].map(k => (
             <input key={k} type="number" min="0" step="0.5" value={(c.rewards||{})[k]||0}
@@ -6011,19 +6068,31 @@ function RewardsBreakdown({ card }) {
   const monthly  = card.rewardsEarnedMonth || zeroRewardBuckets();
   const maxMonth = Math.max(...REWARD_BUCKETS.map(k => safeNum(monthly[k])), 0.01);
   const totalMonth = round2(REWARD_BUCKETS.reduce((s,k) => s+safeNum(monthly[k]), 0));
+  const trend = rewardsMonthSeries(card, 6);
   return (
     <>
       {REWARD_BUCKETS.map(k => (
         <div key={k} className="reward-row">
           <div className="reward-name">{REWARD_BUCKET_LABEL[k]}</div>
           <div className="reward-bar-track"><div className="reward-bar-fill" style={{width:`${Math.min((safeNum(monthly[k])/maxMonth)*100,100)}%`}}/></div>
-          <div className="reward-val">{currency(safeNum(monthly[k]),2)}</div>
+          <div className="reward-val">{formatRewardAmount(card, monthly[k])}</div>
         </div>
       ))}
       <div className="b-total-row" style={{marginTop:10,borderRadius:'var(--r-s)'}}>
-        <div><div className="b-total-lbl">Total Rewards (This Month)</div><div className="b-surplus">{currency(totalMonth,2)}</div></div>
-        <div style={{textAlign:'right'}}><div className="b-total-lbl">Lifetime Rewards</div><div className="b-surplus" style={{color:'var(--t1)'}}>{currency(safeNum(card.cashbackLifetime),2)}</div></div>
+        <div><div className="b-total-lbl">Total Rewards (This Month)</div><div className="b-surplus">{formatRewardAmount(card, totalMonth)}</div></div>
+        <div style={{textAlign:'right'}}>
+          <div className="b-total-lbl">Lifetime Rewards</div>
+          <div className="b-surplus" style={{color:'var(--t1)'}}>{formatRewardAmount(card, card.cashbackLifetime)}</div>
+          {card.rewardType!=='cashback' && <div style={{fontSize:'.62rem',color:'var(--t3)',marginTop:2}}>≈ {currency(estimatedRewardValue(card, card.cashbackLifetime),2)}</div>}
+        </div>
       </div>
+      {trend.points.some(p=>p>0) && (
+        <div style={{marginTop:14}}>
+          <div className="card-label">Rewards by Month</div>
+          <LineTrendChart labels={trend.labels} formatY={v=>formatRewardAmount(card,v)}
+            series={[{ key:'rewards', label:'Rewards', color:'var(--accent)', points:trend.points }]}/>
+        </div>
+      )}
     </>
   );
 }
@@ -6237,8 +6306,8 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
             <div className="cc-item"><div className="cc-item-lbl">Payment Due</div><div className="cc-item-val">{fmtShortDate(nextOccurrenceOfDay(card.dueDay))}</div></div>
             <div className="cc-item"><div className="cc-item-lbl">Minimum Payment</div><div className="cc-item-val">{currency(minPaymentFor(card,balance),2)}</div></div>
             <div className="cc-item"><div className="cc-item-lbl">Autopay</div><div className="cc-item-val" style={{color:card.autopay?'var(--accent)':'var(--t3)'}}>{card.autopay?'On':'Off'}</div></div>
-            <div className="cc-item"><div className="cc-item-lbl">Lifetime Cashback</div><div className="cc-item-val" style={{color:'var(--accent)'}}>{currency(safeNum(card.cashbackLifetime),2)}</div></div>
-            <div className="cc-item"><div className="cc-item-lbl">This Month's Cashback</div><div className="cc-item-val" style={{color:'var(--accent)'}}>{currency(safeNum(card.cashbackMonth),2)}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Lifetime Rewards</div><div className="cc-item-val" style={{color:'var(--accent)'}}>{formatRewardAmount(card, card.cashbackLifetime)}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">This Month's Rewards</div><div className="cc-item-val" style={{color:'var(--accent)'}}>{formatRewardAmount(card, card.cashbackMonth)}</div></div>
           </div>
           <button className="btn btn-ghost btn-sm" style={{marginTop:14}} onClick={()=>setEditingCard(e=>!e)}>
             <Icon name="edit" size={13}/>{editingCard?'Done Editing':'Edit Card Details'}
@@ -6342,11 +6411,84 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// REWARDS SUMMARY (Priority 7) — rolls every credit card's rewards up into
+// one view: lifetime total, by card, by category, by month. Cash back,
+// miles, and points all convert to a comparable dollar estimate here (each
+// card still shows its own native unit everywhere else in the app).
+// ══════════════════════════════════════════════════════════════════════
+function aggregateRewardsAcrossCards(accounts) {
+  const cards = (accounts||[]).filter(a => a.type==='credit' && !a.archived).map(a => ({ acct:a, card:a.card || defaultCardFields() }));
+  const byCard = cards.map(({acct,card}) => ({
+    id:acct.id, name:acct.name, icon:acct.icon, color:acct.color,
+    monthNative:formatRewardAmount(card,card.cashbackMonth), lifetimeNative:formatRewardAmount(card,card.cashbackLifetime),
+    lifetimeValue: estimatedRewardValue(card, card.cashbackLifetime),
+  })).sort((a,b) => b.lifetimeValue - a.lifetimeValue);
+  const byCategory = {};
+  for (const { card } of cards) {
+    const monthly = card.rewardsEarnedMonth || zeroRewardBuckets();
+    for (const k of REWARD_BUCKETS) byCategory[k] = round2((byCategory[k]||0) + estimatedRewardValue(card, monthly[k]));
+  }
+  const monthKeys = Array.from({length:6}, (_,i) => { const d=new Date(); d.setMonth(d.getMonth()-(5-i)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; });
+  return {
+    hasCards: cards.length > 0,
+    totalLifetimeValue: round2(cards.reduce((s,{card}) => s+estimatedRewardValue(card,card.cashbackLifetime), 0)),
+    totalMonthValue:    round2(cards.reduce((s,{card}) => s+estimatedRewardValue(card,card.cashbackMonth), 0)),
+    byCard, byCategory,
+    monthLabels: monthKeys.map(mk => { const [y,m]=mk.split('-'); return `${MONTH_NAMES[+m-1].slice(0,3)} '${y.slice(2)}`; }),
+    monthPoints: monthKeys.map(mk => round2(cards.reduce((s,{card}) => s+estimatedRewardValue(card,(card.rewardsByMonth||{})[mk]), 0))),
+  };
+}
+function RewardsSummary({ accounts, onOpenAccount }) {
+  const agg = aggregateRewardsAcrossCards(accounts);
+  if (!agg.hasCards) return null;
+  return (
+    <div className="card">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:12,marginBottom:16}}>
+        <div>
+          <div className="card-label" style={{marginBottom:6}}>Lifetime Rewards — All Cards</div>
+          <div className="large-num" style={{color:'var(--accent)'}}>{currency(agg.totalLifetimeValue,2)}</div>
+          <div style={{fontSize:'.7rem',color:'var(--t3)',marginTop:4}}>{currency(agg.totalMonthValue,2)} earned this month · miles/points estimated in $</div>
+        </div>
+      </div>
+
+      <div className="card-label">Rewards by Card</div>
+      {agg.byCard.map(c => (
+        <button key={c.id} className="v-row" style={{width:'100%',textAlign:'left',background:'none',border:0,cursor:'pointer',fontFamily:'inherit',color:'inherit'}} onClick={()=>onOpenAccount && onOpenAccount(c.id)}>
+          <div className="v-row-left">
+            <div className="v-row-icon" style={{background:c.color+'20'}}><Icon name={c.icon} size={17} color={c.color}/></div>
+            <div><div className="v-row-name">{c.name}</div><div className="v-row-sub">{c.monthNative} this month</div></div>
+          </div>
+          <div className="v-row-val">{c.lifetimeNative}</div>
+        </button>
+      ))}
+
+      <div className="card-label" style={{marginTop:16}}>Rewards by Category (est. $, this month)</div>
+      {REWARD_BUCKETS.map(k => (
+        <div key={k} className="reward-row">
+          <div className="reward-name">{REWARD_BUCKET_LABEL[k]}</div>
+          <div className="reward-bar-track"><div className="reward-bar-fill" style={{width:`${Math.min(safePct(agg.byCategory[k], Math.max(...REWARD_BUCKETS.map(b=>agg.byCategory[b]),0.01)),100)}%`}}/></div>
+          <div className="reward-val">{currency(agg.byCategory[k],2)}</div>
+        </div>
+      ))}
+
+      {agg.monthPoints.some(p=>p>0) && (
+        <div style={{marginTop:16}}>
+          <div className="card-label">Rewards by Month (est. $, all cards)</div>
+          <LineTrendChart labels={agg.monthLabels} formatY={money0}
+            series={[{ key:'rewards', label:'Rewards', color:'var(--accent)', points:agg.monthPoints }]}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AccountsPage({ accounts, setAccounts, transactions, settings, goals, netWorth, setGoals, setNetWorth, setTransactions, openAddTx, deepLinkAccountId, onConsumeDeepLink }) {
   const ctx = { accounts, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions };
   const [openId, setOpenId]   = useState(deepLinkAccountId || null);
   const [showAdd, setShowAdd] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [showRewards, setShowRewards] = useState(false);
 
   useEffect(() => {
     if (deepLinkAccountId) { setOpenId(deepLinkAccountId); onConsumeDeepLink && onConsumeDeepLink(); }
@@ -6392,10 +6534,19 @@ function AccountsPage({ accounts, setAccounts, transactions, settings, goals, ne
           <div className="mega" style={{color:netTotal>=0?'var(--t1)':'var(--red)'}}>{currency(netTotal)}</div>
         </div>
         <div style={{display:'flex',gap:8}}>
+          {accounts.some(a=>a.type==='credit'&&!a.archived) &&
+            <button className="btn btn-ghost btn-sm" onClick={()=>setShowRewards(s=>!s)}><Icon name="trendUp" size={13}/>Rewards</button>}
           <button className="btn btn-ghost btn-sm" onClick={()=>setShowArchived(s=>!s)}>{showArchived?'Active':'Archived'}</button>
           <button className="add-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14} color="#000" strokeWidth={2.5}/>Add Account</button>
         </div>
       </div>
+
+      {showRewards && (
+        <div>
+          <div className="section-head" style={{padding:'0 0 10px'}}>Rewards Summary</div>
+          <RewardsSummary accounts={accounts} onOpenAccount={id=>{ setOpenId(id); setShowRewards(false); }}/>
+        </div>
+      )}
 
       {shown.length === 0 ? (
         <div className="empty">{showArchived ? 'No archived accounts.' : 'No accounts yet — add your first one.'}</div>
