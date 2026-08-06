@@ -805,6 +805,153 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
   .viz-svg{height:170px}
   .flt-field{flex:1 1 100%}
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   ACCOUNTS + ADD TRANSACTION (v2 redesign)
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Floating add button — the persistent entry point to Add Transaction ── */
+.fab{
+  position:fixed;right:24px;bottom:calc(28px + env(safe-area-inset-bottom));z-index:150;
+  width:56px;height:56px;border-radius:50%;
+  background:var(--accent);color:#000;border:none;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 10px 28px rgba(0,200,5,.35),0 2px 8px rgba(0,0,0,.5);
+  transition:transform .12s,box-shadow .12s;
+}
+.fab:hover{box-shadow:0 12px 32px rgba(0,200,5,.45),0 2px 8px rgba(0,0,0,.5)}
+.fab:active{transform:scale(.92)}
+@media(max-width:700px){ .fab{ right:18px; bottom:calc(80px + env(safe-area-inset-bottom)); } }
+
+/* ── Account list ── */
+.acct-list{display:flex;flex-direction:column;gap:10px}
+.acct-card{
+  display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
+  padding:16px 18px;color:inherit;font:inherit;cursor:pointer;transition:border-color .15s,background .15s;
+}
+.acct-card:hover{background:var(--s2);border-color:var(--border2)}
+.acct-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.acct-card.hidden-acct{opacity:.5}
+.acct-icon{
+  width:44px;height:44px;border-radius:12px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.acct-body{flex:1;min-width:0}
+.acct-name{font-size:.92rem;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acct-sub{font-size:.7rem;color:var(--t3);margin-top:2px}
+.acct-right{text-align:right;flex-shrink:0}
+.acct-bal{font-size:.98rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--t1)}
+.acct-chg{font-size:.66rem;margin-top:2px;font-variant-numeric:tabular-nums}
+.acct-group-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);padding:4px 2px 2px}
+
+/* ── Account detail ── */
+.acct-hero{display:flex;align-items:center;gap:16px}
+.acct-hero-icon{width:56px;height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.acct-hero-name{font-size:1.05rem;font-weight:700;color:var(--t1)}
+.acct-hero-sub{font-size:.72rem;color:var(--t3);margin-top:3px}
+.acct-menu-row{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ── Utilization ring ── */
+.util-ring-wrap{position:relative;display:flex;align-items:center;justify-content:center;width:132px;height:132px;flex-shrink:0}
+.util-ring-svg{transform:rotate(-90deg)}
+.util-ring-track{fill:none;stroke:var(--s3);stroke-width:10}
+.util-ring-fill{fill:none;stroke-width:10;stroke-linecap:round;transition:stroke-dashoffset .6s cubic-bezier(.4,0,.2,1),stroke .3s}
+.util-ring-center{position:absolute;display:flex;flex-direction:column;align-items:center}
+.util-ring-pct{font-size:1.5rem;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums;line-height:1}
+.util-ring-lbl{font-size:.6rem;color:var(--t3);margin-top:3px;text-transform:uppercase;letter-spacing:.07em}
+
+/* ── Credit card details grid ── */
+.cc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:0}
+.cc-item{padding:12px 0;border-bottom:1px solid var(--border)}
+.cc-item:nth-last-child(-n+2){border-bottom:none}
+.cc-item-lbl{font-size:.6rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);margin-bottom:4px}
+.cc-item-val{font-size:.88rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--t1)}
+@media(max-width:520px){ .cc-grid{grid-template-columns:1fr} .cc-item:nth-last-child(-n+2){border-bottom:1px solid var(--border)} .cc-item:last-child{border-bottom:none} }
+
+/* ── Add Transaction modal ── */
+.modal-card-lg{max-width:520px}
+.modal-hd{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 0}
+.modal-title{font-size:1rem;font-weight:700;color:var(--t1);letter-spacing:-.02em}
+.modal-body{padding:16px 20px 20px;display:flex;flex-direction:column;gap:16px}
+.amt-hero{display:flex;align-items:center;justify-content:center;gap:2px;padding:14px 0 4px}
+.amt-hero-sign{font-size:1.6rem;font-weight:700;color:var(--t3)}
+.amt-hero input{
+  background:none;border:none;outline:none;color:var(--t1);
+  font-size:2.6rem;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums;
+  width:100%;max-width:220px;text-align:center;font-family:inherit;
+}
+.type-toggle{display:flex;background:var(--s2);border:1px solid var(--border);border-radius:99px;padding:3px;gap:2px}
+.type-toggle button{
+  flex:1;background:none;border:0;border-radius:99px;padding:9px 6px;
+  font-size:.78rem;font-weight:700;color:var(--t3);cursor:pointer;font-family:inherit;
+}
+.type-toggle button.on{background:var(--accent);color:#000}
+.type-toggle button.on.income{background:var(--accent)}
+.type-toggle button.on.transfer{background:var(--blue);color:#fff}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px}
+.cat-chip{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  background:var(--s2);border:1px solid var(--border);border-radius:var(--r-s);
+  padding:10px 4px;cursor:pointer;font-family:inherit;color:var(--t2);font-size:.66rem;font-weight:600;
+}
+.cat-chip.on{border-color:var(--accent);background:var(--accent-lt);color:var(--t1)}
+.cat-chip-dot{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;color:#000}
+.pm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+.pm-chip{
+  background:var(--s2);border:1px solid var(--border);border-radius:var(--r-s);
+  padding:10px 8px;cursor:pointer;font-family:inherit;color:var(--t2);font-size:.72rem;font-weight:600;text-align:center;
+}
+.pm-chip.on{border-color:var(--accent);background:var(--accent-lt);color:var(--t1)}
+.acct-pick-grid{display:flex;flex-direction:column;gap:8px}
+.acct-pick{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:var(--s2);border:1px solid var(--border);border-radius:var(--r-s);
+  padding:10px 12px;cursor:pointer;font-family:inherit;color:var(--t1);
+}
+.acct-pick.on{border-color:var(--accent);background:var(--accent-lt)}
+.acct-pick-icon{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.acct-pick-name{font-size:.82rem;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct-pick-bal{font-size:.72rem;color:var(--t3);font-variant-numeric:tabular-nums;flex-shrink:0}
+.cc-snapshot{
+  background:rgba(123,116,255,.05);border:1px solid rgba(123,116,255,.2);border-radius:var(--r);
+  padding:16px 18px;animation:modal-pop .18s cubic-bezier(.2,.8,.2,1);
+}
+.cc-snapshot-hd{display:flex;align-items:center;gap:8px;font-size:.72rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+.quick-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.quick-chip{
+  flex-shrink:0;display:flex;align-items:center;gap:6px;
+  background:var(--s2);border:1px solid var(--border);border-radius:99px;
+  padding:8px 14px;font-size:.74rem;font-weight:600;color:var(--t2);cursor:pointer;font-family:inherit;white-space:nowrap;
+}
+.quick-chip:hover{border-color:var(--border2);color:var(--t1)}
+
+/* ── Icon / color pickers (account customization) ── */
+.picker-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.icon-pick{
+  aspect-ratio:1;border-radius:var(--r-s);background:var(--s2);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.icon-pick.on{border-color:var(--accent);background:var(--accent-lt)}
+.color-pick{aspect-ratio:1;border-radius:50%;cursor:pointer;border:2px solid transparent}
+.color-pick.on{border-color:#fff;box-shadow:0 0 0 2px var(--bg),0 0 0 4px currentColor}
+
+/* ── Sheet action row (rename/hide/archive/delete) ── */
+.sheet-action{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  background:none;border:0;border-bottom:1px solid var(--border);
+  padding:13px 4px;color:var(--t1);font-size:.85rem;font-family:inherit;cursor:pointer;
+}
+.sheet-action:last-child{border-bottom:none}
+.sheet-action:hover{color:var(--accent)}
+.sheet-action.danger{color:var(--red)}
+.sheet-action.danger:hover{color:var(--red)}
+
+@media(max-width:700px){
+  .modal-overlay{align-items:flex-end;padding:0}
+  .modal-card-lg{max-width:100%;border-radius:20px 20px 0 0;max-height:92vh;animation:sheet-up .22s cubic-bezier(.2,.8,.2,1)}
+}
+@keyframes sheet-up{from{transform:translateY(100%)}to{transform:translateY(0)}}
   </style>
 </head>
 <body>
@@ -1042,7 +1189,7 @@ function usePersist(key, def, migrate) {
 // raw + reloading (rather than pushing into React state) means the normal
 // usePersist/migrate path runs exactly as it would for any other load, so
 // an export from an older build still migrates correctly on import.
-const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth'];
+const BACKUP_KEYS = ['fd_settings', 'fd_transactions', 'fd_goals', 'fd_commissions', 'fd_networth', 'fd_accounts'];
 
 function exportBackup() {
   const data = {};
@@ -1527,6 +1674,210 @@ function getNetWorthSnapshot(accounts, goals) {
   };
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// ACCOUNTS — dynamic, user-extensible account registry (fd_accounts).
+// Nothing in this app is allowed to hardcode an institution, account name,
+// or credit card — every screen renders off this list. The six starter
+// rows below are seeded once, the first time the app runs with none saved;
+// after that they are ordinary rows a user can rename, recolor, reorder,
+// hide, archive, or delete exactly like an account created later.
+// ══════════════════════════════════════════════════════════════════════
+const ACCOUNT_TYPES = [
+  { id:'checking',  label:'Checking',            icon:'bank',       liability:false },
+  { id:'savings',   label:'Savings',             icon:'piggy',      liability:false },
+  { id:'hysa',      label:'High-Yield Savings',  icon:'piggy',      liability:false },
+  { id:'cash',      label:'Cash',                icon:'dollar',     liability:false },
+  { id:'credit',    label:'Credit Card',         icon:'creditCard', liability:true  },
+  { id:'roth',      label:'Roth IRA',            icon:'shield',     liability:false },
+  { id:'401k',      label:'401(k)',              icon:'shield',     liability:false },
+  { id:'brokerage', label:'Brokerage',           icon:'trending',   liability:false },
+  { id:'hsa',       label:'HSA',                 icon:'shield',     liability:false },
+  { id:'cd',        label:'Certificate of Deposit', icon:'bank',    liability:false },
+  { id:'crypto',    label:'Crypto Wallet',       icon:'trending',   liability:false },
+  { id:'business',  label:'Business',            icon:'bank',       liability:false },
+  { id:'loan',      label:'Loan',                icon:'bank',       liability:true  },
+  { id:'other',     label:'Other',               icon:'wallet',     liability:false },
+];
+const accountTypeInfo   = id => ACCOUNT_TYPES.find(t => t.id === id) || ACCOUNT_TYPES[ACCOUNT_TYPES.length-1];
+const isLiabilityType   = id => !!accountTypeInfo(id).liability;
+const ACCOUNT_COLORS    = ['#00C805','#3b82f6','#7B74FF','#F5A623','#06b6d4','#FF5000','#ec4899','#84cc16','#94a3b8','#f97316'];
+
+function defaultCardFields(overrides) {
+  return {
+    network:'Visa', creditLimit:0, apr:0,
+    statementCloseDay:1, dueDay:20,
+    minPaymentFlat:35, minPaymentPct:2,
+    autopay:false, statementBalance:0,
+    rewards:{ dining:0, groceries:0, entertainment:0, streaming:0, other:1 },  // % cashback
+    cashbackLifetime:0, cashbackMonth:0, cashbackMonthKey:'',
+    ...overrides,
+  };
+}
+
+// Seeded exactly once — reads fine even after a user edits/deletes/renames
+// every field. `linked` ties an account to the pre-existing single source
+// of truth (fd_goals / fd_networth) so this redesign never forks a second,
+// competing copy of a balance the rest of the app already reads.
+function seedAccounts() {
+  const now = Date.now();
+  return [
+    { id:'acc_checking', name:'Checking', type:'checking', institution:'', icon:'bank', color:'#00C805',
+      order:0, hidden:false, archived:false, notes:'', linked:'checking', manualBalance:0, createdAt:now },
+    { id:'acc_hysa', name:'Capital One 360 High Yield Savings', type:'hysa', institution:'Capital One', icon:'piggy', color:'#3b82f6',
+      order:1, hidden:false, archived:false, notes:'', linked:'hysa', manualBalance:0, createdAt:now },
+    { id:'acc_savor', name:'Capital One Savor Rewards', type:'credit', institution:'Capital One', icon:'creditCard', color:'#7B74FF',
+      order:2, hidden:false, archived:false, notes:'', linked:'creditCard', manualBalance:0, createdAt:now,
+      card: defaultCardFields({ network:'Mastercard', creditLimit:5000, apr:24.99, statementCloseDay:24, dueDay:18,
+        rewards:{ dining:3, groceries:3, entertainment:3, streaming:3, other:1 } }) },
+    { id:'acc_roth', name:'Roth IRA', type:'roth', institution:'', icon:'shield', color:'#F5A623',
+      order:3, hidden:false, archived:false, notes:'', linked:'roth', manualBalance:0, createdAt:now },
+    { id:'acc_401k', name:'401(k)', type:'401k', institution:'', icon:'shield', color:'#06b6d4',
+      order:4, hidden:false, archived:false, notes:'', linked:'401k', manualBalance:0, createdAt:now },
+    { id:'acc_cash', name:'Cash', type:'cash', institution:'', icon:'dollar', color:'#84cc16',
+      order:5, hidden:false, archived:false, notes:'', linked:null, manualBalance:0, createdAt:now },
+  ];
+}
+
+// Live balance for ANY account, resolved from whichever store actually owns
+// the number. Linked accounts read the exact same field every other page
+// already reads, so an account can never drift from a figure shown elsewhere.
+function accountBalance(acct, ctx) {
+  if (!acct) return 0;
+  const { settings, goals, netWorth } = ctx;
+  const acc = (netWorth && netWorth.accounts) || {};
+  switch (acct.linked) {
+    case 'checking':   return safeNum(acc.checking);
+    case 'hysa':       return safeNum(goals.hysaBalance);
+    case 'roth':       return currentRothBal(settings, goals);
+    case '401k':       return round2(safeNum(goals.k401Employee) + safeNum(goals.k401Employer));
+    case 'creditCard': return safeNum(acc.creditCard);
+    default:           return safeNum(acct.manualBalance);
+  }
+}
+function writeAccountBalance(acct, newBalance, ctx) {
+  const { setGoals, setNetWorth, setAccounts } = ctx;
+  const v = round2(newBalance);
+  switch (acct.linked) {
+    case 'checking':   setNetWorth(s => ({ ...s, accounts:{ ...s.accounts, checking:v } })); return;
+    case 'hysa':       setGoals(g => ({ ...g, hysaBalance:v })); return;
+    case 'roth':       setGoals(g => ({ ...g, rothIRAOverride:v })); return;
+    case '401k':                                    // split proportionally so a
+      setGoals(g => {                               // manual edit never zeroes
+        const emp = safeNum(g.k401Employee), empr = safeNum(g.k401Employer), total = emp+empr;
+        const empShare = total > 0 ? emp/total : 1;  // one side's contribution history
+        return { ...g, k401Employee: round2(v*empShare), k401Employer: round2(v*(1-empShare)) };
+      });
+      return;
+    case 'creditCard': setNetWorth(s => ({ ...s, accounts:{ ...s.accounts, creditCard:v } })); return;
+    default:            setAccounts(list => list.map(a => a.id===acct.id ? { ...a, manualBalance:v } : a)); return;
+  }
+}
+// `delta` is signed the way the ACCOUNT's own number moves — positive always
+// means "this account's balance/amount-owed went up." Callers translate real-
+// world direction (a purchase, a deposit, a transfer) into that sign once, in
+// applyTransactionToAccounts, so this primitive never has to know which.
+function adjustAccountBalance(acct, delta, ctx) {
+  if (!acct || !delta) return;
+  writeAccountBalance(acct, accountBalance(acct, ctx) + delta, ctx);
+}
+
+// The ONE place a transaction is allowed to move money between accounts.
+// `sign` is +1 to apply (save) or -1 to reverse (delete/undo) — always the
+// exact inverse, so nothing can leave a stray balance behind after a delete.
+function applyTransactionToAccounts(tx, sign, ctx) {
+  const byId = id => (ctx.accounts || []).find(a => a.id === id);
+  const amt  = safeNum(tx.amount) * sign;
+  if (!amt) return;
+  if (tx.type === 'transfer') {
+    // Transfers never count as spending — only balances move.
+    const from = byId(tx.accountId), to = byId(tx.toAccountId);
+    if (from) adjustAccountBalance(from, isLiabilityType(from.type) ?  amt : -amt, ctx);
+    if (to)   adjustAccountBalance(to,   isLiabilityType(to.type)   ? -amt :  amt, ctx);
+    return;
+  }
+  const acct = byId(tx.accountId);
+  if (!acct) return;
+  if (tx.type === 'expense') adjustAccountBalance(acct, isLiabilityType(acct.type) ?  amt : -amt, ctx);
+  if (tx.type === 'income')  adjustAccountBalance(acct, isLiabilityType(acct.type) ? -amt :  amt, ctx);
+}
+
+// Category → reward bucket. Falls back to the card's flat "other" rate.
+function rewardRateForCategory(card, category) {
+  if (!card) return 0;
+  const map = { dining:'dining', groceries:'groceries', travel:'entertainment', shopping:'entertainment' };
+  return safeNum((card.rewards || {})[map[category] || 'other']);
+}
+// Tracks lifetime + current-calendar-month cashback on the card itself.
+function applyCardRewards(acct, tx, sign, ctx) {
+  if (!acct || acct.type !== 'credit' || tx.type !== 'expense') return;
+  const rate = rewardRateForCategory(acct.card, tx.category);
+  if (!rate) return;
+  const earn = round2(safeNum(tx.amount) * (rate/100)) * sign;
+  const monthKey = (tx.date || '').slice(0, 7);
+  ctx.setAccounts(list => list.map(a => {
+    if (a.id !== acct.id) return a;
+    const card = a.card || defaultCardFields();
+    const sameMonth = card.cashbackMonthKey === monthKey;
+    return { ...a, card: { ...card,
+      cashbackLifetime: round2(safeNum(card.cashbackLifetime) + earn),
+      cashbackMonth:    round2((sameMonth ? safeNum(card.cashbackMonth) : 0) + earn),
+      cashbackMonthKey: monthKey,
+    } };
+  }));
+}
+
+// Build + save a new transaction, applying every downstream effect
+// (account balance, net worth, budget, credit utilization, rewards, cash
+// flow, recent transactions) in one atomic step — nothing above this layer
+// is allowed to touch a balance directly.
+function recordTransaction(partial, ctx) {
+  const tx = { id: String(Date.now()) + Math.random().toString(36).slice(2,6), ...partial };
+  applyTransactionToAccounts(tx, +1, ctx);
+  const acct = (ctx.accounts || []).find(a => a.id === tx.accountId);
+  applyCardRewards(acct, tx, +1, ctx);
+  ctx.setTransactions(prev => [tx, ...prev]);
+  return tx;
+}
+// Reverses every effect a recordTransaction call applied, then removes it.
+function deleteAccountAwareTransaction(tx, ctx) {
+  applyTransactionToAccounts(tx, -1, ctx);
+  const acct = (ctx.accounts || []).find(a => a.id === tx.accountId);
+  applyCardRewards(acct, tx, -1, ctx);
+  ctx.setTransactions(prev => prev.filter(t => t.id !== tx.id));
+}
+
+// ── Credit-card math (shared by Add Transaction's live snapshot and the
+// Accounts detail dashboard) ────────────────────────────────────────────
+function creditUtilization(balance, limit) { return limit > 0 ? (balance/limit)*100 : 0; }
+function utilizationColor(pct) {
+  if (pct <= 10) return '#00C805';
+  if (pct <= 30) return '#F5A623';
+  if (pct <= 50) return '#f97316';
+  return '#FF5000';
+}
+function minPaymentFor(card, balance) {
+  if (!card) return 0;
+  return round2(Math.max(card.minPaymentFlat || 0, balance * ((card.minPaymentPct||0)/100)));
+}
+// Next calendar occurrence of a day-of-month (statement close / due date),
+// rolling into next month once this month's has passed.
+function nextOccurrenceOfDay(day, ref) {
+  ref = ref || new Date();
+  const clamped = Math.min(Math.max(day||1,1), 28);
+  let d = new Date(ref.getFullYear(), ref.getMonth(), clamped);
+  if (d < new Date(ref.getFullYear(), ref.getMonth(), ref.getDate())) d = new Date(ref.getFullYear(), ref.getMonth()+1, clamped);
+  return d;
+}
+function fmtShortDate(d) { return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+
+// Transactions posted to a given account — matched by the new accountId
+// when present, falling back to the legacy free-text `account` name so
+// pre-redesign transactions still show up on the right account's page.
+function transactionsForAccount(transactions, acct) {
+  if (!acct) return [];
+  return (transactions||[]).filter(t => t.accountId ? (t.accountId===acct.id || t.toAccountId===acct.id) : t.account===acct.name);
+}
+
 // ── Chart palette ─────────────────────────────────────────────────────
 // Validated for this app's dark surface (#0d0d0d): lightness band, chroma
 // floor, adjacent-pair CVD separation, normal-vision floor and 3:1 contrast
@@ -1585,6 +1936,19 @@ function Icon({ name, size=20, color='currentColor', strokeWidth=1.6 }) {
     receipt:   <svg style={s} viewBox="0 0 24 24" {...p}><path d="M4 2v20l3-2 2 2 2-2 2 2 2-2 3 2V2l-3 2-2-2-2 2-2-2-2 2z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/></svg>,
     bank:      <svg style={s} viewBox="0 0 24 24" {...p}><path d="M3 9l9-7 9 7v11a1 1 0 01-1 1H4a1 1 0 01-1-1z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
     check:     <svg style={s} viewBox="0 0 24 24" {...p}><polyline points="20 6 9 17 4 12"/></svg>,
+    creditCard:<svg style={s} viewBox="0 0 24 24" {...p}><rect x="2" y="5" width="20" height="14" rx="2.5"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>,
+    swap:      <svg style={s} viewBox="0 0 24 24" {...p}><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>,
+    edit:      <svg style={s} viewBox="0 0 24 24" {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>,
+    eye:       <svg style={s} viewBox="0 0 24 24" {...p}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+    eyeOff:    <svg style={s} viewBox="0 0 24 24" {...p}><path d="M17.94 17.94A10.94 10.94 0 0112 20c-7 0-11-8-11-8a20.3 20.3 0 015.06-6.06M9.9 4.24A10.4 10.4 0 0112 4c7 0 11 8 11 8a20.3 20.3 0 01-3.22 4.44M14.12 14.12a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
+    archive:   <svg style={s} viewBox="0 0 24 24" {...p}><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 002 2h12a2 2 0 002-2V9"/><line x1="10" y1="13" x2="14" y2="13"/></svg>,
+    trash:     <svg style={s} viewBox="0 0 24 24" {...p}><polyline points="3 6 5 6 21 6"/><path d="M19 6v13a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>,
+    x:         <svg style={s} viewBox="0 0 24 24" {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+    chevronDown:<svg style={s} viewBox="0 0 24 24" {...p}><polyline points="6 9 12 15 18 9"/></svg>,
+    chevronUp: <svg style={s} viewBox="0 0 24 24" {...p}><polyline points="18 15 12 9 6 15"/></svg>,
+    dots:      <svg style={s} viewBox="0 0 24 24" {...p} fill={color} stroke="none"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>,
+    coffee:    <svg style={s} viewBox="0 0 24 24" {...p}><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>,
+    lock:      <svg style={s} viewBox="0 0 24 24" {...p}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>,
   };
   return icons[name] || null;
 }
@@ -1641,6 +2005,13 @@ function NavIcon({ name, active }) {
       <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
         <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
         <polyline points="17 6 23 6 23 12"/>
+      </svg>
+    ),
+    accounts: (
+      <svg width="22" height="22" viewBox="0 0 24 24" {...base}>
+        <rect x="2" y="5" width="20" height="14" rx="2.5"/>
+        <line x1="2" y1="10" x2="22" y2="10"/>
+        <circle cx="6" cy="15" r="1.1" fill={active?'#00C805':'none'}/>
       </svg>
     ),
     more: (
@@ -2065,6 +2436,7 @@ function ProjectedChart({ settings }) {
 
 const TABS = [
   { id:'dashboard', label:'Dashboard',  short:'Dash',   icon:'dash'   },
+  { id:'accounts',  label:'Accounts',   short:'Accts',  icon:'accounts'},
   { id:'budget',    label:'Budget',     short:'Budget', icon:'budget' },
   { id:'spending',  label:'Spending',   short:'Spend',  icon:'spend'  },
   { id:'insights',  label:'Insights',   short:'Insights',icon:'insights'},
@@ -2671,13 +3043,10 @@ function Budget({ settings, transactions }) {
 }
 
 // ── Spending ──────────────────────────────────────────────────────────
-function Spending({ settings, transactions, setTransactions, goals, setGoals }) {
+function Spending({ settings, transactions, setTransactions, goals, setGoals, accounts, setAccounts, netWorth, setNetWorth, openAddTx }) {
   const now   = new Date();
   const [viewMonth, setViewMonth] = useState({y:now.getFullYear(),m:now.getMonth()});
-  const [showForm, setShowForm]   = useState(false);
-  const [form, setForm]           = useState({
-    date:now.toISOString().split('T')[0], description:'', amount:'', category:'groceries', type:'expense',
-  });
+  const ctx = { accounts, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions };
 
   const monthStr  = `${viewMonth.y}-${String(viewMonth.m+1).padStart(2,'0')}`;
   const monthTx   = transactions.filter(t=>t.date.startsWith(monthStr));
@@ -2724,25 +3093,20 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals }) 
     }
   };
 
-  const handleAdd = e => {
-    e.preventDefault();
-    const amt = parseFloat(form.amount);
-    if (!amt||isNaN(amt)) return;
-    setTransactions(prev=>[{
-      id:String(Date.now()), date:form.date,
-      description:form.description.trim()||form.category,
-      amount:amt, category:form.category, type:form.type,
-    },...prev]);
-    if (form.type === 'expense') syncSavings(form.category, amt, +1);
-    setForm(f=>({...f,description:'',amount:''}));
-    setShowForm(false);
-  };
-
+  // Deleting reverses whichever bookkeeping added the transaction in the
+  // first place — the new account-aware engine for anything logged through
+  // the redesigned Add Transaction sheet (accountId present), or the legacy
+  // HYSA/Roth sync for anything logged before that existed.
   const del = id => {
     if (!window.confirm('Delete this transaction?')) return;
     const t = transactions.find(x=>x.id===id);
-    setTransactions(p=>p.filter(t=>t.id!==id));
-    if (t && t.type === 'expense') syncSavings(t.category, safeNum(t.amount), -1);
+    if (!t) return;
+    if (t.accountId) {
+      deleteAccountAwareTransaction(t, ctx);
+    } else {
+      setTransactions(p=>p.filter(x=>x.id!==id));
+      if (t.type === 'expense') syncSavings(t.category, safeNum(t.amount), -1);
+    }
   };
   const sorted = [...monthTx].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const monthLabel = new Date(viewMonth.y,viewMonth.m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
@@ -2764,11 +3128,8 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals }) 
             {totalBudget>0 ? `of ${currency(totalBudget)} budget` : 'no budget yet'}
           </div>
         </div>
-        <button className="add-btn" onClick={()=>setShowForm(s=>!s)}>
-          {showForm
-            ? <><Icon name="chevronLeft" size={14} color="#000" strokeWidth={2.5}/>Cancel</>
-            : <><Icon name="plus"        size={14} color="#000" strokeWidth={2.5}/>Add</>
-          }
+        <button className="add-btn" onClick={()=>openAddTx(null,null)}>
+          <Icon name="plus" size={14} color="#000" strokeWidth={2.5}/>Add
         </button>
       </div>
 
@@ -2782,41 +3143,6 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals }) 
           <Icon name="chevronRight" size={14} color="var(--t2)"/>
         </button>
       </div>
-
-      {/* Add transaction form */}
-      {showForm && (
-        <div className="card" style={{borderColor:'rgba(0,200,5,.2)',background:'rgba(0,200,5,.03)'}}>
-          <div className="card-label">New Transaction</div>
-          <form onSubmit={handleAdd}>
-            <div className="fgrid">
-              <div className="fg"><label>Date</label>
-                <input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required />
-              </div>
-              <div className="fg"><label>Type</label>
-                <select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))}>
-                  <option value="expense">Expense</option>
-                  <option value="income">Income</option>
-                </select>
-              </div>
-              <div className="fg fspan"><label>Description</label>
-                <input type="text" placeholder="What was it?" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} />
-              </div>
-              <div className="fg"><label>Amount</label>
-                <input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} required />
-              </div>
-              <div className="fg"><label>Category</label>
-                <select value={form.category} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
-                  {CATEGORIES.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
-                </select>
-              </div>
-              <div className="factions">
-                <button type="button" className="btn btn-ghost" onClick={()=>setShowForm(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save</button>
-              </div>
-            </div>
-          </form>
-        </div>
-      )}
 
       {/* Category bars */}
       <div>
@@ -4699,6 +5025,707 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// ADD TRANSACTION (v2) — the heart of the app. One sheet, three transaction
+// types, a payment method that filters the account list down to the
+// accounts that method could actually touch, and a live credit-card
+// snapshot that expands automatically once a credit account is selected.
+// ══════════════════════════════════════════════════════════════════════
+const PAYMENT_METHODS = ['Debit Card','Credit Card','Cash','Bank Transfer','Apple Pay','Venmo','PayPal'];
+const QUICK_ADD_PRESETS = [
+  { label:'Coffee',    icon:'coffee', category:'dining',    merchant:'Coffee Shop' },
+  { label:'Dining',    icon:'fork',   category:'dining',    merchant:'' },
+  { label:'Groceries', icon:'cart',   category:'groceries', merchant:'' },
+  { label:'Gas',       icon:'fuel',   category:'gas',       merchant:'' },
+  { label:'Shopping',  icon:'bag',    category:'shopping',  merchant:'' },
+];
+function accountsMatchingPaymentMethod(accounts, method) {
+  const list = accounts || [];
+  if (method === 'Credit Card') return list.filter(a => a.type === 'credit');
+  if (method === 'Debit Card')  return list.filter(a => ['checking','savings','hysa'].includes(a.type));
+  if (method === 'Cash')        return list.filter(a => a.type === 'cash');
+  return list;   // Bank Transfer / Apple Pay / Venmo / PayPal can draw from any account
+}
+
+function UtilizationRing({ pct, size=132, label='Utilization' }) {
+  const clamped = Math.max(0, Math.min(safeNum(pct), 100));
+  const r = (size-22)/2, c = 2*Math.PI*r;
+  const color = utilizationColor(safeNum(pct));
+  return (
+    <div className="util-ring-wrap" style={{width:size,height:size}}>
+      <svg className="util-ring-svg" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle className="util-ring-track" cx={size/2} cy={size/2} r={r}/>
+        <circle className="util-ring-fill" cx={size/2} cy={size/2} r={r}
+          stroke={color} strokeDasharray={c} strokeDashoffset={c*(1-clamped/100)}/>
+      </svg>
+      <div className="util-ring-center">
+        <div className="util-ring-pct" style={{color}}>{safeNum(pct).toFixed(0)}%</div>
+        <div className="util-ring-lbl">{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function AccountPickList({ accounts, ctx, selectedId, onSelect, excludeId }) {
+  const list = excludeId ? accounts.filter(a=>a.id!==excludeId) : accounts;
+  if (!list.length) return <div className="empty" style={{padding:'12px 0'}}>No eligible accounts yet — add one from the Accounts tab.</div>;
+  return (
+    <div className="acct-pick-grid">
+      {list.map(a => (
+        <button key={a.id} type="button" className={'acct-pick'+(selectedId===a.id?' on':'')} onClick={()=>onSelect(a.id)}>
+          <span className="acct-pick-icon" style={{background:a.color+'22'}}><Icon name={a.icon} size={15} color={a.color}/></span>
+          <span className="acct-pick-name">{a.name}</span>
+          <span className="acct-pick-bal">{currency(accountBalance(a,ctx),0)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AddTransactionModal({ onClose, accounts, transactions, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions, defaultAccountId, preset }) {
+  const visibleAccounts = useMemo(() => (accounts||[]).filter(a=>!a.archived).sort((a,b)=>(a.order||0)-(b.order||0)), [accounts]);
+  const defaultAcct = defaultAccountId ? visibleAccounts.find(a=>a.id===defaultAccountId) : null;
+  const inferredMethod = defaultAcct
+    ? (defaultAcct.type==='credit' ? 'Credit Card' : defaultAcct.type==='cash' ? 'Cash' : 'Debit Card')
+    : 'Debit Card';
+
+  const [type, setType]               = useState((preset && preset.type) || 'expense');
+  const [amount, setAmount]           = useState((preset && preset.amount != null) ? String(preset.amount) : '');
+  const [merchant, setMerchant]       = useState((preset && preset.merchant) || '');
+  const [category, setCategory]       = useState((preset && preset.category) || 'other');
+  const [date, setDate]               = useState(ymd(new Date()));
+  const [notes, setNotes]             = useState('');
+  const [paymentMethod, setPaymentMethod] = useState((preset && preset.paymentMethod) || inferredMethod);
+  const [accountId, setAccountId]     = useState(defaultAcct ? defaultAcct.id : '');
+  const [toAccountId, setToAccountId] = useState('');
+
+  const eligible = useMemo(() => accountsMatchingPaymentMethod(visibleAccounts, paymentMethod), [visibleAccounts, paymentMethod]);
+  useEffect(() => {
+    if (type === 'transfer') return;
+    if (!eligible.find(a => a.id === accountId)) setAccountId(eligible[0] ? eligible[0].id : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentMethod, type]);
+
+  const ctx = { accounts, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions };
+  const selectedAccount = visibleAccounts.find(a => a.id === accountId) || null;
+  const toAccount        = visibleAccounts.find(a => a.id === toAccountId) || null;
+  const card             = selectedAccount && selectedAccount.type === 'credit' ? (selectedAccount.card || defaultCardFields()) : null;
+  const amt              = parseFloat(amount) || 0;
+
+  const balanceNow      = selectedAccount ? accountBalance(selectedAccount, ctx) : 0;
+  const previewBalance  = card && type === 'expense' ? balanceNow + amt : balanceNow;
+  const limit            = card ? safeNum(card.creditLimit) : 0;
+  const utilNow           = card ? creditUtilization(balanceNow, limit) : 0;
+  const utilStmt          = card ? creditUtilization(previewBalance, limit) : 0;
+  const rewardRate        = card ? rewardRateForCategory(card, category) : 0;
+  const rewardEarn        = card && type === 'expense' ? round2(amt * (rewardRate/100)) : 0;
+  const closeDate         = card ? nextOccurrenceOfDay(card.statementCloseDay) : null;
+  const dueDate            = card ? nextOccurrenceOfDay(card.dueDay) : null;
+
+  const merchantOptions = useMemo(() => {
+    const seen = new Set();
+    for (const t of transactions || []) {
+      const m = (t.merchant || t.description || '').trim();
+      if (m) seen.add(m);
+    }
+    return [...seen].slice(0, 40);
+  }, [transactions]);
+
+  const valid = amt > 0 && (type === 'transfer' ? (accountId && toAccountId && accountId !== toAccountId) : !!accountId);
+
+  const handleSave = () => {
+    if (!valid) return;
+    const partial = type === 'transfer' ? {
+      date, type:'transfer', amount: round2(amt), category:'transfer',
+      description: `Transfer · ${selectedAccount ? selectedAccount.name : ''} → ${toAccount ? toAccount.name : ''}`,
+      merchant:'', notes: notes.trim(), paymentMethod:'Transfer',
+      accountId, account: selectedAccount ? selectedAccount.name : '',
+      toAccountId, toAccount: toAccount ? toAccount.name : '',
+    } : {
+      date, type, amount: round2(amt), category: type==='income' ? 'income' : category,
+      description: merchant.trim() || (type==='income' ? 'Income' : catLabel(category)),
+      merchant: merchant.trim(), notes: notes.trim(), paymentMethod,
+      accountId, account: selectedAccount ? selectedAccount.name : '',
+    };
+    recordTransaction(partial, ctx);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-card modal-card-lg">
+        <div className="modal-hd">
+          <div className="modal-title">Add Transaction</div>
+          <button className="btn-icon" onClick={onClose} aria-label="Close"><Icon name="x" size={18}/></button>
+        </div>
+        <div className="modal-body">
+
+          <div className="type-toggle" role="group" aria-label="Transaction type">
+            <button type="button" className={type==='expense'?'on':''} onClick={()=>setType('expense')}>Expense</button>
+            <button type="button" className={'income'+(type==='income'?' on':'')} onClick={()=>setType('income')}>Income</button>
+            <button type="button" className={'transfer'+(type==='transfer'?' on':'')} onClick={()=>setType('transfer')}>Transfer</button>
+          </div>
+
+          <div className="amt-hero">
+            <span className="amt-hero-sign">$</span>
+            <input type="number" inputMode="decimal" step="0.01" min="0" placeholder="0.00"
+              value={amount} onChange={e=>setAmount(e.target.value)} autoFocus/>
+          </div>
+
+          {type !== 'transfer' && (
+            <div className="quick-row">
+              {QUICK_ADD_PRESETS.map(q => (
+                <button key={q.label} type="button" className="quick-chip"
+                  onClick={()=>{ setType('expense'); setCategory(q.category); if (q.merchant) setMerchant(q.merchant); }}>
+                  <Icon name={q.icon} size={14} color="var(--t2)"/>{q.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {type === 'transfer' ? (
+            <>
+              <div className="fg"><label>From Account</label>
+                <AccountPickList accounts={visibleAccounts} ctx={ctx} selectedId={accountId} onSelect={setAccountId}/>
+              </div>
+              <div className="fg"><label>To Account</label>
+                <AccountPickList accounts={visibleAccounts} ctx={ctx} selectedId={toAccountId} onSelect={setToAccountId} excludeId={accountId}/>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="fg">
+                <label>{type==='income' ? 'Source' : 'Merchant'}</label>
+                <input type="text" placeholder={type==='income' ? 'Paycheck, refund…' : 'Where did you spend?'}
+                  value={merchant} onChange={e=>setMerchant(e.target.value)} list="merchant-suggestions"/>
+                <datalist id="merchant-suggestions">
+                  {merchantOptions.map(m => <option key={m} value={m}/>)}
+                </datalist>
+              </div>
+
+              {type === 'expense' && (
+                <div className="fg"><label>Category</label>
+                  <div className="cat-grid">
+                    {CATEGORIES.filter(c => c.id!=='hysa' && c.id!=='rothIRA').map(c => (
+                      <button key={c.id} type="button" className={'cat-chip'+(category===c.id?' on':'')} onClick={()=>setCategory(c.id)}>
+                        <span className="cat-chip-dot" style={{background:c.color}}>{c.abbr.slice(0,2)}</span>
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="fg"><label>Payment Method</label>
+                <div className="pm-grid">
+                  {PAYMENT_METHODS.map(m => (
+                    <button key={m} type="button" className={'pm-chip'+(paymentMethod===m?' on':'')} onClick={()=>setPaymentMethod(m)}>{m}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="fg"><label>Account</label>
+                <AccountPickList accounts={eligible} ctx={ctx} selectedId={accountId} onSelect={setAccountId}/>
+              </div>
+            </>
+          )}
+
+          <div className="fgrid">
+            <div className="fg"><label>Date</label>
+              <input type="date" value={date} onChange={e=>setDate(e.target.value)}/>
+            </div>
+            <div className="fg fspan"><label>Notes</label>
+              <input type="text" placeholder="Optional" value={notes} onChange={e=>setNotes(e.target.value)}/>
+            </div>
+          </div>
+
+          {card && (
+            <div className="cc-snapshot">
+              <div className="cc-snapshot-hd"><Icon name="creditCard" size={14} color="var(--purple)"/>{selectedAccount.name}</div>
+              <div className="cc-grid">
+                <div className="cc-item"><div className="cc-item-lbl">Current Balance</div><div className="cc-item-val">{currency(balanceNow,2)}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Statement Balance</div><div className="cc-item-val">{currency(safeNum(card.statementBalance),2)}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Credit Limit</div><div className="cc-item-val">{currency(limit,2)}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Available Credit</div><div className="cc-item-val">{currency(Math.max(limit-previewBalance,0),2)}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Current Utilization</div><div className="cc-item-val" style={{color:utilizationColor(utilNow)}}>{utilNow.toFixed(1)}%</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Est. Statement Utilization</div><div className="cc-item-val" style={{color:utilizationColor(utilStmt)}}>{utilStmt.toFixed(1)}%</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Statement Closes</div><div className="cc-item-val">{closeDate?fmtShortDate(closeDate):'—'}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Payment Due</div><div className="cc-item-val">{dueDate?fmtShortDate(dueDate):'—'}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Minimum Payment</div><div className="cc-item-val">{currency(minPaymentFor(card,previewBalance),2)}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Autopay</div><div className="cc-item-val" style={{color:card.autopay?'var(--accent)':'var(--t3)'}}>{card.autopay?'On':'Off'}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Rewards Earned</div><div className="cc-item-val" style={{color:'var(--accent)'}}>{rewardEarn>0?`+${currency(rewardEarn,2)}`:'—'}</div></div>
+                <div className="cc-item"><div className="cc-item-lbl">Monthly Cashback</div><div className="cc-item-val">{currency(safeNum(card.cashbackMonth)+rewardEarn,2)}</div></div>
+              </div>
+            </div>
+          )}
+
+          <button className="btn btn-primary btn-full" disabled={!valid} onClick={handleSave}>
+            Save {type==='transfer'?'Transfer':type==='income'?'Income':'Expense'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ACCOUNTS — dynamic account list + per-account dashboard. Nothing here
+// is keyed off a hardcoded name; every row comes from fd_accounts.
+// ══════════════════════════════════════════════════════════════════════
+function monthlyAccountChange(transactions, acct, monthKey) {
+  let delta = 0;
+  for (const t of transactions || []) {
+    if (!(t.date||'').startsWith(monthKey)) continue;
+    const amt = safeNum(t.amount);
+    if (t.type === 'transfer') {
+      if (t.accountId === acct.id)   delta += isLiabilityType(acct.type) ?  amt : -amt;
+      if (t.toAccountId === acct.id) delta += isLiabilityType(acct.type) ? -amt :  amt;
+    } else if (t.accountId === acct.id) {
+      if (t.type === 'expense') delta += isLiabilityType(acct.type) ?  amt : -amt;
+      if (t.type === 'income')  delta += isLiabilityType(acct.type) ? -amt :  amt;
+    }
+  }
+  return round2(delta);
+}
+function accountBalanceHistory(transactions, acct, ctx, months=6) {
+  const now = new Date();
+  const monthKeys = Array.from({length:months}, (_,i) => {
+    const d = new Date(now.getFullYear(), now.getMonth()-(months-1-i), 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  });
+  const changes  = monthKeys.map(mk => monthlyAccountChange(transactions, acct, mk));
+  const current  = accountBalance(acct, ctx);
+  const balances = new Array(months);
+  balances[months-1] = current;
+  for (let i=months-2; i>=0; i--) balances[i] = round2(balances[i+1] - changes[i+1]);
+  return {
+    labels: monthKeys.map(mk => { const [y,m] = mk.split('-'); return `${MONTH_NAMES[+m-1].slice(0,3)} '${y.slice(2)}`; }),
+    points: balances,
+  };
+}
+// Lightweight rule-based insight — not a real model, but the same shape of
+// sentence the fuller AI Spending Coach (a later pass) will replace this with.
+function accountInsight(acct, ctx, stats) {
+  if (acct.type === 'credit') {
+    const card = acct.card || defaultCardFields();
+    const bal  = accountBalance(acct, ctx);
+    const util = creditUtilization(bal, card.creditLimit);
+    if (bal <= 0) return 'No balance carried — nothing to pay down.';
+    if (util <= 10) return `You're already under 10% utilization (${util.toFixed(0)}%). No early payment needed.`;
+    const target = card.creditLimit * 0.10;
+    const early   = Math.max(bal - target, 0);
+    return `You're at ${util.toFixed(0)}% utilization. Paying ${currency(early,0)} before your statement closes would bring it to 10%. Utilization mostly matters right before you apply for new credit.`;
+  }
+  if (stats.avgMonthlySpend > 0 && stats.outFlow > stats.avgMonthlySpend * 1.15)
+    return `Spending from this account is running about ${Math.round((stats.outFlow/stats.avgMonthlySpend-1)*100)}% above its average month.`;
+  if (stats.inFlow > 0 || stats.outFlow > 0)
+    return stats.inFlow >= stats.outFlow
+      ? `Net positive this month — ${currency(stats.inFlow-stats.outFlow,0)} more in than out.`
+      : `Net negative this month — ${currency(stats.outFlow-stats.inFlow,0)} more out than in.`;
+  return 'No activity logged on this account yet.';
+}
+
+const ICON_CHOICES  = ['bank','piggy','dollar','creditCard','shield','trending','wallet','cart','fuel','plane','fork','bag'];
+
+function CreditCardFieldsForm({ card, onChange }) {
+  const c = card || defaultCardFields();
+  const set       = (k,v) => onChange({ ...c, [k]:v });
+  const setReward = (k,v) => onChange({ ...c, rewards:{ ...(c.rewards||{}), [k]:v } });
+  return (
+    <div className="fgrid">
+      <div className="fg"><label>Network</label>
+        <select value={c.network} onChange={e=>set('network',e.target.value)}>
+          {['Visa','Mastercard','Amex','Discover','Other'].map(n=><option key={n} value={n}>{n}</option>)}
+        </select>
+      </div>
+      <div className="fg"><label>Credit Limit</label>
+        <input type="number" min="0" step="1" value={c.creditLimit} onChange={e=>set('creditLimit', parseFloat(e.target.value)||0)}/>
+      </div>
+      <div className="fg"><label>APR %</label>
+        <input type="number" min="0" step="0.01" value={c.apr} onChange={e=>set('apr', parseFloat(e.target.value)||0)}/>
+      </div>
+      <div className="fg"><label>Statement Balance</label>
+        <input type="number" min="0" step="0.01" value={c.statementBalance} onChange={e=>set('statementBalance', parseFloat(e.target.value)||0)}/>
+      </div>
+      <div className="fg"><label>Statement Closes (day of month)</label>
+        <input type="number" min="1" max="28" value={c.statementCloseDay} onChange={e=>set('statementCloseDay', Math.min(28,Math.max(1,parseInt(e.target.value)||1)))}/>
+      </div>
+      <div className="fg"><label>Payment Due (day of month)</label>
+        <input type="number" min="1" max="28" value={c.dueDay} onChange={e=>set('dueDay', Math.min(28,Math.max(1,parseInt(e.target.value)||1)))}/>
+      </div>
+      <div className="fg"><label>Min Payment — flat $</label>
+        <input type="number" min="0" step="1" value={c.minPaymentFlat} onChange={e=>set('minPaymentFlat', parseFloat(e.target.value)||0)}/>
+      </div>
+      <div className="fg"><label>Min Payment — % of balance</label>
+        <input type="number" min="0" step="0.1" value={c.minPaymentPct} onChange={e=>set('minPaymentPct', parseFloat(e.target.value)||0)}/>
+      </div>
+      <div className="fg"><label>Autopay</label>
+        <select value={c.autopay?'on':'off'} onChange={e=>set('autopay', e.target.value==='on')}>
+          <option value="off">Off</option><option value="on">On</option>
+        </select>
+      </div>
+      <div className="fg fspan"><label>Cashback rewards — Dining / Groceries / Entertainment / Streaming / Other (%)</label>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}}>
+          {['dining','groceries','entertainment','streaming','other'].map(k => (
+            <input key={k} type="number" min="0" step="0.5" value={(c.rewards||{})[k]||0}
+              onChange={e=>setReward(k, parseFloat(e.target.value)||0)} title={k[0].toUpperCase()+k.slice(1)}/>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccountFormModal({ onClose, onSave, accounts }) {
+  const [name, setName]               = useState('');
+  const [type, setType]               = useState('checking');
+  const [institution, setInstitution] = useState('');
+  const [icon, setIcon]               = useState('bank');
+  const [color, setColor]             = useState(ACCOUNT_COLORS[0]);
+  const [card, setCard]               = useState(defaultCardFields());
+  const isCredit = type === 'credit';
+
+  const save = () => {
+    if (!name.trim()) return;
+    const maxOrder = accounts.reduce((m,a) => Math.max(m, a.order||0), -1);
+    onSave({
+      id: 'acc_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+      name: name.trim(), type, institution: institution.trim(), icon, color,
+      order: maxOrder+1, hidden:false, archived:false, notes:'', linked:null, manualBalance:0,
+      createdAt: Date.now(), ...(isCredit ? { card } : {}),
+    });
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-card modal-card-lg">
+        <div className="modal-hd">
+          <div className="modal-title">Add Account</div>
+          <button className="btn-icon" onClick={onClose} aria-label="Close"><Icon name="x" size={18}/></button>
+        </div>
+        <div className="modal-body">
+          <div className="fgrid">
+            <div className="fg fspan"><label>Account Name</label>
+              <input type="text" placeholder="e.g. Chase Freedom, Emergency Fund" value={name} onChange={e=>setName(e.target.value)} autoFocus/>
+            </div>
+            <div className="fg"><label>Type</label>
+              <select value={type} onChange={e=>setType(e.target.value)}>
+                {ACCOUNT_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </div>
+            <div className="fg"><label>Institution (optional)</label>
+              <input type="text" placeholder="e.g. Capital One" value={institution} onChange={e=>setInstitution(e.target.value)}/>
+            </div>
+          </div>
+
+          <div className="fg"><label>Icon</label>
+            <div className="picker-grid">
+              {ICON_CHOICES.map(ic => (
+                <button key={ic} type="button" className={'icon-pick'+(icon===ic?' on':'')} onClick={()=>setIcon(ic)}>
+                  <Icon name={ic} size={18} color={icon===ic?color:'var(--t3)'}/>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="fg"><label>Color</label>
+            <div className="picker-grid">
+              {ACCOUNT_COLORS.map(c => (
+                <button key={c} type="button" className={'color-pick'+(color===c?' on':'')} style={{background:c,color:c}} onClick={()=>setColor(c)} aria-label={c}/>
+              ))}
+            </div>
+          </div>
+
+          {isCredit && (
+            <div className="fg fspan">
+              <label>Credit Card Details</label>
+              <CreditCardFieldsForm card={card} onChange={setCard}/>
+            </div>
+          )}
+
+          <button className="btn btn-primary btn-full" disabled={!name.trim()} onClick={save}>Add Account</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions, onBack, onOpenAdd }) {
+  const ctx = { accounts, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions };
+  const [renaming, setRenaming]       = useState(false);
+  const [nameDraft, setNameDraft]     = useState(acct.name);
+  const [customizing, setCustomizing] = useState(false);
+  const [editingCard, setEditingCard] = useState(false);
+  const [notesDraft, setNotesDraft]   = useState(acct.notes || '');
+
+  const patch = p => setAccounts(list => list.map(a => a.id===acct.id ? { ...a, ...p } : a));
+
+  const balance = accountBalance(acct, ctx);
+  const liability = isLiabilityType(acct.type);
+  const card = acct.type==='credit' ? (acct.card || defaultCardFields()) : null;
+  const util = card ? creditUtilization(balance, card.creditLimit) : 0;
+
+  const acctTx   = transactionsForAccount(transactions, acct).sort((a,b)=> new Date(b.date)-new Date(a.date));
+  const spendTx  = acctTx.filter(t => t.accountId===acct.id && t.type==='expense');
+  const largest  = spendTx.reduce((m,t) => Math.max(m, safeNum(t.amount)), 0);
+  const monthSet = new Set(acctTx.map(t => (t.date||'').slice(0,7)));
+  const totalSpend = spendTx.reduce((s,t) => s+safeNum(t.amount), 0);
+  const avgMonthlySpend = round2(totalSpend / Math.max(monthSet.size, 1));
+  const thisMonthKey = ymd(new Date()).slice(0,7);
+  const inFlow  = acctTx.filter(t => (t.date||'').startsWith(thisMonthKey) && ((t.type==='income'&&t.accountId===acct.id) || (t.type==='transfer'&&t.toAccountId===acct.id)))
+    .reduce((s,t)=>s+safeNum(t.amount),0);
+  const outFlow = acctTx.filter(t => (t.date||'').startsWith(thisMonthKey) && ((t.type==='expense'&&t.accountId===acct.id) || (t.type==='transfer'&&t.accountId===acct.id)))
+    .reduce((s,t)=>s+safeNum(t.amount),0);
+  const stats = { avgMonthlySpend, inFlow, outFlow };
+  const hist = accountBalanceHistory(transactions, acct, ctx, 6);
+
+  const doDelete = () => {
+    if (!window.confirm(`Delete "${acct.name}"? This removes it from your Accounts list. Balances stored elsewhere in the app (Goals, Net Worth) are not erased.`)) return;
+    setAccounts(list => list.filter(a => a.id !== acct.id));
+    onBack();
+  };
+
+  return (
+    <div className="page">
+      <button className="btn btn-ghost btn-sm" style={{alignSelf:'flex-start'}} onClick={onBack}>
+        <Icon name="chevronLeft" size={13}/>Accounts
+      </button>
+
+      <div className="acct-hero">
+        <span className="acct-hero-icon" style={{background:acct.color+'20'}}><Icon name={acct.icon} size={26} color={acct.color}/></span>
+        <div style={{flex:1,minWidth:0}}>
+          {renaming ? (
+            <div style={{display:'flex',gap:8}}>
+              <input className="nw-input" style={{width:'100%',textAlign:'left'}} value={nameDraft} onChange={e=>setNameDraft(e.target.value)} autoFocus/>
+              <button className="btn btn-primary btn-sm" onClick={()=>{ if(nameDraft.trim()){patch({name:nameDraft.trim()});} setRenaming(false); }}>Save</button>
+            </div>
+          ) : (
+            <div className="acct-hero-name">{acct.name}{acct.hidden && <span className="badge badge-yellow" style={{marginLeft:8}}>Hidden</span>}{acct.archived && <span className="badge badge-blue" style={{marginLeft:8}}>Archived</span>}</div>
+          )}
+          <div className="acct-hero-sub">{accountTypeInfo(acct.type).label}{acct.institution?` · ${acct.institution}`:''}</div>
+        </div>
+        <div style={{textAlign:'right'}}>
+          <div className="mega" style={{fontSize:'2rem',color:liability&&balance>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}{currency(balance,2)}</div>
+        </div>
+      </div>
+
+      <div className="acct-menu-row">
+        <button className="btn btn-ghost btn-sm" onClick={()=>onOpenAdd(acct.id)}><Icon name="plus" size={13}/>Add Transaction</button>
+        <button className="btn btn-ghost btn-sm" onClick={()=>setRenaming(r=>!r)}><Icon name="edit" size={13}/>Rename</button>
+        <button className="btn btn-ghost btn-sm" onClick={()=>setCustomizing(c=>!c)}><Icon name="wallet" size={13}/>Icon &amp; Color</button>
+        <button className="btn btn-ghost btn-sm" onClick={()=>patch({hidden:!acct.hidden})}><Icon name={acct.hidden?'eye':'eyeOff'} size={13}/>{acct.hidden?'Unhide':'Hide'}</button>
+        <button className="btn btn-ghost btn-sm" onClick={()=>patch({archived:!acct.archived})}><Icon name="archive" size={13}/>{acct.archived?'Unarchive':'Archive'}</button>
+        <button className="btn btn-ghost btn-sm" style={{color:'var(--red)'}} onClick={doDelete}><Icon name="trash" size={13}/>Delete</button>
+      </div>
+
+      {customizing && (
+        <div className="card">
+          <div className="card-label">Icon</div>
+          <div className="picker-grid" style={{marginBottom:16}}>
+            {ICON_CHOICES.map(ic => (
+              <button key={ic} type="button" className={'icon-pick'+(acct.icon===ic?' on':'')} onClick={()=>patch({icon:ic})}>
+                <Icon name={ic} size={18} color={acct.icon===ic?acct.color:'var(--t3)'}/>
+              </button>
+            ))}
+          </div>
+          <div className="card-label">Color</div>
+          <div className="picker-grid">
+            {ACCOUNT_COLORS.map(c => (
+              <button key={c} type="button" className={'color-pick'+(acct.color===c?' on':'')} style={{background:c,color:c}} onClick={()=>patch({color:c})} aria-label={c}/>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {card && (
+        <div className="card">
+          <div className="card-label">Credit Card</div>
+          <div style={{display:'flex',gap:24,flexWrap:'wrap',alignItems:'center'}}>
+            <UtilizationRing pct={util}/>
+            <div style={{flex:1,minWidth:220,fontSize:'.76rem',color:'var(--t3)',lineHeight:1.6}}>
+              Never shamed — utilization mostly matters right before you apply for new credit.
+              A card with $0 owed and this one look identical to a lender either way.
+            </div>
+          </div>
+          <div className="cc-grid" style={{marginTop:16}}>
+            <div className="cc-item"><div className="cc-item-lbl">Network</div><div className="cc-item-val">{card.network}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Current Balance</div><div className="cc-item-val">{currency(balance,2)}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Statement Balance</div><div className="cc-item-val">{currency(safeNum(card.statementBalance),2)}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Credit Limit</div><div className="cc-item-val">{currency(safeNum(card.creditLimit),2)}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Available Credit</div><div className="cc-item-val">{currency(Math.max(safeNum(card.creditLimit)-balance,0),2)}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">APR</div><div className="cc-item-val">{safeNum(card.apr).toFixed(2)}%</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Statement Closes</div><div className="cc-item-val">{fmtShortDate(nextOccurrenceOfDay(card.statementCloseDay))}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Payment Due</div><div className="cc-item-val">{fmtShortDate(nextOccurrenceOfDay(card.dueDay))}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Minimum Payment</div><div className="cc-item-val">{currency(minPaymentFor(card,balance),2)}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Autopay</div><div className="cc-item-val" style={{color:card.autopay?'var(--accent)':'var(--t3)'}}>{card.autopay?'On':'Off'}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Lifetime Cashback</div><div className="cc-item-val" style={{color:'var(--accent)'}}>{currency(safeNum(card.cashbackLifetime),2)}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">This Month's Cashback</div><div className="cc-item-val" style={{color:'var(--accent)'}}>{currency(safeNum(card.cashbackMonth),2)}</div></div>
+          </div>
+          <button className="btn btn-ghost btn-sm" style={{marginTop:14}} onClick={()=>setEditingCard(e=>!e)}>
+            <Icon name="edit" size={13}/>{editingCard?'Done Editing':'Edit Card Details'}
+          </button>
+          {editingCard && (
+            <div style={{marginTop:14}}>
+              <CreditCardFieldsForm card={card} onChange={c=>patch({card:c})}/>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div>
+        <div className="section-head">Balance History</div>
+        <div className="card">
+          {hist.points.every(p=>p===hist.points[0]) && hist.points[0]===0
+            ? <VizEmpty message="No history yet." hint="Log a few transactions on this account to see a trend."/>
+            : <LineTrendChart labels={hist.labels} series={[{ key:'bal', label:acct.name, color:acct.color, points:hist.points }]}/>}
+        </div>
+      </div>
+
+      <div className="g3">
+        <div className="stat"><div className="stat-label">Largest Transaction</div><div className="stat-val" style={{fontSize:'1.3rem'}}>{currency(largest,2)}</div></div>
+        <div className="stat"><div className="stat-label">Avg Monthly Spend</div><div className="stat-val" style={{fontSize:'1.3rem'}}>{currency(avgMonthlySpend,2)}</div></div>
+        <div className="stat"><div className="stat-label">Cash Flow (this mo)</div><div className="stat-val" style={{fontSize:'1.3rem',color:inFlow>=outFlow?'var(--accent)':'var(--red)'}}>{inFlow>=outFlow?'+':'−'}{currency(Math.abs(inFlow-outFlow),2)}</div></div>
+      </div>
+
+      <div className="card" style={{borderColor:'rgba(0,200,5,.2)',background:'rgba(0,200,5,.03)'}}>
+        <div className="card-label">AI Insights</div>
+        <div style={{fontSize:'.84rem',color:'var(--t1)',lineHeight:1.5}}>{accountInsight(acct, ctx, stats)}</div>
+      </div>
+
+      <div>
+        <div className="section-head">Recent Transactions</div>
+        <div className="card-flush">
+          {acctTx.length===0 ? <div className="empty">No transactions on this account yet.</div> : (
+            <div className="tx-list" style={{padding:'4px 20px'}}>
+              {acctTx.slice(0,12).map(t => (
+                <div className="tx-row" key={t.id}>
+                  <div className="tx-icon">{(t.description||catLabel(categoryOf(t))).slice(0,3).toUpperCase()}</div>
+                  <div className="tx-body">
+                    <div className="tx-desc">{t.description || catLabel(categoryOf(t))}</div>
+                    <div className="tx-meta">{txDateKey(t)} · {t.type==='transfer' ? (t.accountId===acct.id?`to ${t.toAccount||'—'}`:`from ${t.account||'—'}`) : catLabel(categoryOf(t))}</div>
+                  </div>
+                  <div className="tx-amt" style={{color:t.type==='income'?'var(--accent)':t.type==='transfer'?'var(--blue)':'var(--t1)'}}>
+                    {t.type==='income'?'+':t.type==='expense'?'−':''}{currency(t.amount,2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div className="section-head">Notes</div>
+        <div className="card">
+          <textarea className="fg" style={{width:'100%',minHeight:80,background:'var(--s2)',border:'1px solid var(--border2)',borderRadius:'var(--r-s)',color:'var(--t1)',padding:'10px 12px',fontSize:'.82rem',outline:'none',resize:'vertical',fontFamily:'inherit'}}
+            value={notesDraft} onChange={e=>setNotesDraft(e.target.value)} onBlur={()=>patch({notes:notesDraft})}
+            placeholder="Add a note about this account…"/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccountsPage({ accounts, setAccounts, transactions, settings, goals, netWorth, setGoals, setNetWorth, setTransactions, openAddTx, deepLinkAccountId, onConsumeDeepLink }) {
+  const ctx = { accounts, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions };
+  const [openId, setOpenId]   = useState(deepLinkAccountId || null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  useEffect(() => {
+    if (deepLinkAccountId) { setOpenId(deepLinkAccountId); onConsumeDeepLink && onConsumeDeepLink(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkAccountId]);
+
+  const sorted = [...(accounts||[])].sort((a,b)=>(a.order||0)-(b.order||0));
+  const shown = showArchived ? sorted.filter(a=>a.archived) : sorted.filter(a=>!a.archived);
+
+  const openAcct = shown.find(a => a.id === openId) || sorted.find(a=>a.id===openId);
+  if (openAcct) {
+    return <AccountDetail acct={openAcct} accounts={accounts} transactions={transactions} settings={settings} goals={goals}
+      netWorth={netWorth} setGoals={setGoals} setNetWorth={setNetWorth} setAccounts={setAccounts} setTransactions={setTransactions}
+      onBack={()=>setOpenId(null)} onOpenAdd={id=>openAddTx(id)}/>;
+  }
+
+  const move = (id, dir) => {
+    const ids = sorted.map(a=>a.id);
+    const i = ids.indexOf(id), j = i+dir;
+    if (j<0 || j>=ids.length) return;
+    const reordered = [...sorted];
+    [reordered[i], reordered[j]] = [reordered[j], reordered[i]];
+    setAccounts(reordered.map((a,idx)=>({ ...a, order:idx })));
+  };
+
+  const GROUPS = [
+    { label:'Cash & Banking',        types:['checking','savings','hysa','cash'] },
+    { label:'Credit Cards',          types:['credit'] },
+    { label:'Retirement & Investing',types:['roth','401k','brokerage','hsa','cd','crypto'] },
+    { label:'Other',                 types:['business','loan','other'] },
+  ];
+
+  const netTotal = shown.filter(a=>!a.hidden).reduce((s,a) => {
+    const bal = accountBalance(a, ctx);
+    return s + (isLiabilityType(a.type) ? -bal : bal);
+  }, 0);
+
+  return (
+    <div className="page">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',flexWrap:'wrap',gap:12}}>
+        <div>
+          <div className="eyebrow" style={{marginBottom:8}}>{showArchived?'Archived Accounts':'Total Across Accounts'}</div>
+          <div className="mega" style={{color:netTotal>=0?'var(--t1)':'var(--red)'}}>{currency(netTotal)}</div>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setShowArchived(s=>!s)}>{showArchived?'Active':'Archived'}</button>
+          <button className="add-btn" onClick={()=>setShowAdd(true)}><Icon name="plus" size={14} color="#000" strokeWidth={2.5}/>Add Account</button>
+        </div>
+      </div>
+
+      {shown.length === 0 ? (
+        <div className="empty">{showArchived ? 'No archived accounts.' : 'No accounts yet — add your first one.'}</div>
+      ) : GROUPS.map(g => {
+        const rows = shown.filter(a => g.types.includes(a.type));
+        if (!rows.length) return null;
+        return (
+          <div key={g.label}>
+            <div className="acct-group-label">{g.label}</div>
+            <div className="acct-list">
+              {rows.map(a => {
+                const bal = accountBalance(a, ctx);
+                const liability = isLiabilityType(a.type);
+                const chg = monthlyAccountChange(transactions, a, ymd(new Date()).slice(0,7));
+                return (
+                  <div key={a.id} style={{display:'flex',alignItems:'center',gap:6}}>
+                    <button className={'acct-card'+(a.hidden?' hidden-acct':'')} onClick={()=>setOpenId(a.id)}>
+                      <span className="acct-icon" style={{background:a.color+'20'}}><Icon name={a.icon} size={20} color={a.color}/></span>
+                      <span className="acct-body">
+                        <span className="acct-name">{a.name}</span>
+                        <span className="acct-sub">{accountTypeInfo(a.type).label}{a.institution?` · ${a.institution}`:''}</span>
+                      </span>
+                      <span className="acct-right">
+                        <span className="acct-bal" style={{color:liability&&bal>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}{currency(bal,2)}</span>
+                        {chg !== 0 && <span className="acct-chg" style={{color:chg>=0?'var(--accent)':'var(--red)'}}>{chg>=0?'+':'−'}{currency(Math.abs(chg),0)} this mo</span>}
+                      </span>
+                    </button>
+                    {!showArchived && (
+                      <div style={{display:'flex',flexDirection:'column'}}>
+                        <button className="btn-icon" style={{padding:2}} onClick={()=>move(a.id,-1)} aria-label="Move up"><Icon name="chevronUp" size={14}/></button>
+                        <button className="btn-icon" style={{padding:2}} onClick={()=>move(a.id,1)} aria-label="Move down"><Icon name="chevronDown" size={14}/></button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {showAdd && <AccountFormModal accounts={accounts} onClose={()=>setShowAdd(false)} onSave={acc=>setAccounts(list=>[...list, acc])}/>}
+    </div>
+  );
+}
+
 function App() {
   const [tab,setTab]           = useState('dashboard');
   const [settings,setSettings] = usePersist('fd_settings',    DEFAULT_SETTINGS, migrateSettings);
@@ -4706,6 +5733,21 @@ function App() {
   const [goals,setGoals]       = usePersist('fd_goals',        DEFAULT_GOALS,    migrateGoals);
   const [commissions,setComm]  = usePersist('fd_commissions',  []);
   const [nwData,setNwData]     = usePersist('fd_networth',     DEFAULT_NETWORTH);
+  // Dynamic account registry — seeded once on first run (see seedAccounts);
+  // every screen below renders off this list, never a hardcoded name.
+  const [accounts,setAccounts] = usePersist('fd_accounts',     seedAccounts());
+
+  // ── Add Transaction (v2) — a single global sheet every page opens ──────
+  const [addTxOpen, setAddTxOpen]           = useState(false);
+  const [addTxDefaultAccount, setAddTxDefaultAccount] = useState(null);
+  const [addTxPreset, setAddTxPreset]       = useState(null);
+  const [acctDeepLink, setAcctDeepLink]     = useState(null);
+  const openAddTx = useCallback((accountId, preset) => {
+    setAddTxDefaultAccount(accountId || null);
+    setAddTxPreset(preset || null);
+    setAddTxOpen(true);
+  }, []);
+  const goToAccount = useCallback(id => { setAcctDeepLink(id); setTab('accounts'); }, []);
 
   // ── App-wide goal-ETA tracking ────────────────────────────────────────
   // Runs on ANY balance change (paycheck, commission split, manual update).
@@ -4737,8 +5779,12 @@ function App() {
 
   const pages = {
     dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} goTo={setTab} />,
+    accounts:   <AccountsPage accounts={accounts} setAccounts={setAccounts} transactions={transactions} settings={settings} goals={goals}
+                  netWorth={nwData} setGoals={setGoals} setNetWorth={setNwData} setTransactions={setTx}
+                  openAddTx={openAddTx} deepLinkAccountId={acctDeepLink} onConsumeDeepLink={()=>setAcctDeepLink(null)} />,
     budget:     <Budget     settings={settings} transactions={transactions} />,
-    spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} goals={goals} setGoals={setGoals} />,
+    spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} goals={goals} setGoals={setGoals}
+                  accounts={accounts} setAccounts={setAccounts} netWorth={nwData} setNetWorth={setNwData} openAddTx={openAddTx} />,
     insights:   <SpendingInsights settings={settings} transactions={transactions} setTransactions={setTx} goTo={setTab} />,
     goals:      <Goals      settings={settings} goals={goals} setGoals={setGoals} commissions={commissions} transactions={transactions} />,
     commission: <Commission settings={settings} commissions={commissions} setCommissions={setComm} setGoals={setGoals} />,
@@ -4769,6 +5815,20 @@ function App() {
           </button>
         ))}
       </nav>
+
+      {/* Persistent entry point to the redesigned Add Transaction sheet —
+          reachable from every tab, not just Spending. */}
+      <button className="fab" onClick={()=>openAddTx(null,null)} aria-label="Add transaction">
+        <Icon name="plus" size={24} color="#000" strokeWidth={2.5}/>
+      </button>
+      {addTxOpen && (
+        <AddTransactionModal
+          accounts={accounts} transactions={transactions} settings={settings} goals={goals} netWorth={nwData}
+          setGoals={setGoals} setNetWorth={setNwData} setAccounts={setAccounts} setTransactions={setTx}
+          defaultAccountId={addTxDefaultAccount} preset={addTxPreset}
+          onClose={()=>setAddTxOpen(false)}
+        />
+      )}
     </div>
   );
 }
