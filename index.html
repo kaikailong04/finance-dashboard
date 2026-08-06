@@ -2390,6 +2390,117 @@ function logRecurringTransaction(r, ctx) {
   }));
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// CASH FLOW FORECAST (Priority 10) — projects three buckets forward from
+// today: Checking, Credit Card (owed), and Savings (HYSA/savings). Built
+// entirely from events the app already knows about — the existing
+// paycheck schedule, upcoming Bills (including the auto-generated credit-
+// card ones), and active Recurring Transaction templates — so nothing
+// here is a second, independently-maintained prediction.
+// ══════════════════════════════════════════════════════════════════════
+function bucketForAccountId(accounts, id) {
+  const a = (accounts||[]).find(x => x.id === id);
+  if (!a) return null;
+  if (a.type === 'checking') return 'checking';
+  if (a.type === 'credit')   return 'credit';
+  if (a.type === 'hysa' || a.type === 'savings') return 'savings';
+  return null;   // cash/retirement/brokerage/etc. — outside this forecast's 3 buckets
+}
+function currentBucketBalances(accounts, ctx) {
+  const sums = { checking:0, credit:0, savings:0 };
+  for (const a of (accounts||[]).filter(a => !a.archived)) {
+    const b = bucketForAccountId(accounts, a.id);
+    if (b) sums[b] = round2(sums[b] + accountBalance(a, ctx));
+  }
+  return sums;
+}
+// Every known future money movement between today and `days` from now,
+// each already resolved to a {date, bucket, delta} the projector can just
+// sum. `delta` is signed the way the bucket's OWN balance moves (credit
+// bucket rising = more owed), matching adjustToAccountBalance's convention.
+function buildForecastEvents({ settings, accounts, bills, recurring, transactions, goals, netWorth }, days) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const endDate = new Date(today); endDate.setDate(endDate.getDate() + days);
+  const events = [];
+
+  // Paychecks — always credited to the Checking bucket.
+  let probeMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  for (let m = 0; m < Math.ceil(days/28) + 1; m++) {
+    for (const d of paycheckDatesForMonth(probeMonth.getFullYear(), probeMonth.getMonth()))
+      if (d >= today && d <= endDate) events.push({ date:d, bucket:'checking', delta:netPerCheck(settings), label:'Paycheck' });
+    probeMonth = new Date(probeMonth.getFullYear(), probeMonth.getMonth()+1, 1);
+  }
+
+  // Every credit card's own due-day min payment — a transfer out of
+  // Checking and down against Credit, same as an actual card payment.
+  const billCtx = { accounts, settings, goals, netWorth, transactions };
+  for (const cc of creditCardBills(accounts, billCtx)) {
+    let probe = nextOccurrenceOfDay(cc.dueDay, today);
+    while (probe <= endDate) {
+      events.push({ date:new Date(probe), bucket:'checking', delta:-cc.amount, label:`${cc.name} payment` });
+      events.push({ date:new Date(probe), bucket:'credit',   delta:-cc.amount, label:`${cc.name} payment` });
+      probe = new Date(probe.getFullYear(), probe.getMonth()+1, probe.getDate());
+    }
+  }
+
+  // User-defined bills.
+  for (const b of (bills||[])) {
+    const bucket = bucketForAccountId(accounts, b.accountId) || 'checking';
+    if (!b.recurring) {
+      if (!b.dueDate || b.paidDate) continue;
+      const d = parseLocalDate(b.dueDate);
+      if (d >= today && d <= endDate) events.push({ date:d, bucket, delta:-safeNum(b.amount), label:b.name });
+      continue;
+    }
+    let probe = nextOccurrenceOfDay(b.dueDay, today);
+    while (probe <= endDate) {
+      events.push({ date:new Date(probe), bucket, delta:-safeNum(b.amount), label:b.name });
+      probe = new Date(probe.getFullYear(), probe.getMonth()+1, probe.getDate());
+    }
+  }
+
+  // Recurring transaction templates — project every occurrence in-window,
+  // not just the next one, so a weekly template shows up multiple times.
+  for (const r of (recurring||[])) {
+    if (!r.active) continue;
+    let d = parseLocalDate(r.nextDate), guard = 0;
+    while (d <= endDate && guard < 40) {
+      guard++;
+      if (d >= today) {
+        if (r.type === 'transfer') {
+          const fromB = bucketForAccountId(accounts, r.accountId), toB = bucketForAccountId(accounts, r.toAccountId);
+          if (fromB) events.push({ date:new Date(d), bucket:fromB, delta:-safeNum(r.amount), label:r.name });
+          if (toB)   events.push({ date:new Date(d), bucket:toB,   delta: safeNum(r.amount), label:r.name });
+        } else {
+          const b = bucketForAccountId(accounts, r.accountId);
+          if (b) events.push({ date:new Date(d), bucket:b, delta: r.type==='income' ? safeNum(r.amount) : -safeNum(r.amount), label:r.name });
+        }
+      }
+      d = parseLocalDate(advanceRecurringDate(ymd(d), r.frequency));
+    }
+  }
+
+  return events.sort((a,b) => a.date - b.date);
+}
+// Walks day-by-day from today, applying that day's events to a running
+// balance per bucket — a simple, auditable simulation (every point on the
+// chart traces back to a specific dated event, visible in its tooltip).
+function projectBalances(events, startBalances, days) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const byDate = {};
+  for (const e of events) { const k = ymd(e.date); (byDate[k] ||= []).push(e); }
+  const labels = [], checking = [], credit = [], savings = [];
+  const bal = { ...startBalances };
+  for (let i = 0; i <= days; i++) {
+    const d = new Date(today); d.setDate(d.getDate()+i);
+    const k = ymd(d);
+    for (const e of (byDate[k]||[])) bal[e.bucket] = round2((bal[e.bucket]||0) + e.delta);
+    labels.push(d.toLocaleDateString('en-US',{month:'short',day:'numeric'}));
+    checking.push(bal.checking); credit.push(bal.credit); savings.push(bal.savings);
+  }
+  return { labels, checking, credit, savings };
+}
+
 // ── Chart palette ─────────────────────────────────────────────────────
 // Validated for this app's dark surface (#0d0d0d): lightness band, chroma
 // floor, adjacent-pair CVD separation, normal-vision floor and 3:1 contrast
@@ -2982,7 +3093,65 @@ const CATEGORIES = [
 ];
 
 // ── Dashboard ─────────────────────────────────────────────────────────
-function Dashboard({ settings, transactions, goals, commissions, setGoals, setTransactions, goTo, accounts, setAccounts, netWorth, setNetWorth, recurring, setRecurring }) {
+function CashFlowForecast({ settings, accounts, bills, recurring, transactions, goals, netWorth }) {
+  const [days, setDays] = useState(30);
+  const acctCtx = { settings, goals, netWorth };
+  const start  = useMemo(() => currentBucketBalances(accounts, acctCtx), [accounts, settings, goals, netWorth]);
+  const events = useMemo(() => buildForecastEvents({ settings, accounts, bills, recurring, transactions, goals, netWorth }, days),
+    [settings, accounts, bills, recurring, transactions, goals, netWorth, days]);
+  const series = useMemo(() => projectBalances(events, start, days), [events, start, days]);
+
+  const endChecking = series.checking[series.checking.length-1] || 0;
+  const endCredit   = series.credit[series.credit.length-1] || 0;
+  const endSavings  = series.savings[series.savings.length-1] || 0;
+
+  return (
+    <div>
+      <div className="cal-head">
+        <div className="section-head" style={{padding:0,marginBottom:0}}>Cash Flow Forecast</div>
+        <div className="seg" role="group" aria-label="Forecast range">
+          {[[30,'30D'],[60,'60D'],[90,'90D']].map(([v,l]) => (
+            <button key={l} className={days===v?'on':''} onClick={()=>setDays(v)}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div className="card">
+        <div className="ins-cards" style={{marginBottom:16}}>
+          <div className="ins-card">
+            <span className="ins-card-lbl">Projected Checking</span>
+            <span className="ins-card-val" style={{color:endChecking<0?'var(--red)':'var(--t1)'}}>{currency(endChecking,0)}</span>
+            <span className="ins-card-sub">in {days} days</span>
+          </div>
+          <div className="ins-card">
+            <span className="ins-card-lbl">Projected Credit Card Balance</span>
+            <span className="ins-card-val" style={{color:endCredit>0?'var(--red)':'var(--t1)'}}>{currency(endCredit,0)}</span>
+            <span className="ins-card-sub">in {days} days</span>
+          </div>
+          <div className="ins-card">
+            <span className="ins-card-lbl">Projected Savings</span>
+            <span className="ins-card-val" style={{color:'var(--accent)'}}>{currency(endSavings,0)}</span>
+            <span className="ins-card-sub">in {days} days</span>
+          </div>
+        </div>
+        {events.length === 0
+          ? <VizEmpty message="No upcoming bills, paychecks, or recurring transactions to project." hint="Add a bill or recurring transaction to see a forecast."/>
+          : <LineTrendChart labels={series.labels} formatY={v=>currency(v,0)}
+              series={[
+                { key:'checking', label:'Checking',    color:VIZ_SERIES[0], points:series.checking },
+                { key:'credit',   label:'Credit Card',  color:'#FF5000',     points:series.credit   },
+                { key:'savings',  label:'Savings',      color:VIZ_SERIES[2], points:series.savings  },
+              ]}/>}
+        {endChecking < 0 && (
+          <div style={{marginTop:12,padding:'10px 12px',background:'rgba(255,80,0,.08)',border:'1px solid rgba(255,80,0,.25)',borderRadius:'var(--r-s)',fontSize:'.76rem',color:'var(--t1)'}}>
+            Checking is projected to go negative within {days} days based on known upcoming bills and paychecks.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ settings, transactions, goals, commissions, setGoals, setTransactions, goTo, accounts, setAccounts, netWorth, setNetWorth, recurring, setRecurring, bills }) {
   const phase = getPhaseInfo(settings.startDate);
   const now   = new Date();
 
@@ -3155,6 +3324,8 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
 
       <DueRecurringCard recurring={recurring} accounts={accounts}
         ctxBase={{ settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions, setRecurring }}/>
+
+      <CashFlowForecast settings={settings} accounts={accounts} bills={bills} recurring={recurring} transactions={transactions} goals={goals} netWorth={netWorth}/>
 
       {/* Projected Net Worth chart */}
       <ProjectedChart settings={settings} />
@@ -7231,7 +7402,7 @@ function App() {
 
   const pages = {
     dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} goTo={setTab}
-                  accounts={accounts} setAccounts={setAccounts} netWorth={nwData} setNetWorth={setNwData} recurring={recurring} setRecurring={setRecurring} />,
+                  accounts={accounts} setAccounts={setAccounts} netWorth={nwData} setNetWorth={setNwData} recurring={recurring} setRecurring={setRecurring} bills={bills} />,
     accounts:   <AccountsPage accounts={accounts} setAccounts={setAccounts} transactions={transactions} settings={settings} goals={goals}
                   netWorth={nwData} setGoals={setGoals} setNetWorth={setNwData} setTransactions={setTx}
                   openAddTx={openAddTx} deepLinkAccountId={acctDeepLink} onConsumeDeepLink={()=>setAcctDeepLink(null)} />,
