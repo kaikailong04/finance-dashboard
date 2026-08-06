@@ -973,9 +973,13 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .acct-body{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
 .acct-name{font-size:.92rem;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .acct-sub{font-size:.7rem;color:var(--t3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
-.acct-right{text-align:right;flex-shrink:0}
-.acct-bal{font-size:.98rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--t1)}
-.acct-chg{font-size:.66rem;margin-top:2px;font-variant-numeric:tabular-nums}
+/* Same bug/fix as .acct-body above, mirrored on the right side — .acct-bal
+   and .acct-chg were plain inline spans with no display set, so a balance
+   and its "this month" change ran together on one line with no separation
+   ("$659.06-$33.73 this mo") instead of stacking. */
+.acct-right{text-align:right;flex-shrink:0;display:flex;flex-direction:column;justify-content:center;align-items:flex-end}
+.acct-bal{font-size:.98rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--t1);display:block;white-space:nowrap}
+.acct-chg{font-size:.66rem;margin-top:2px;font-variant-numeric:tabular-nums;display:block;white-space:nowrap}
 .acct-group-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);padding:4px 2px 2px}
 
 /* ── Account detail ── */
@@ -1155,6 +1159,23 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ── Bills ── */
 .bill-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+/* A bill row packs a lot in: icon, name, a Recurring tag, a status badge,
+   the amount, and one or two buttons — more than fits on one line at
+   phone width even with .v-row-left free to shrink. Rather than let
+   .bill-actions' flex-shrink:0 content run out of room and visually cram
+   into .v-row-left (the status badge/amount overlapping the name/Recurring
+   tag), give the row its own line to drop onto below the icon/name. */
+@media(max-width:560px){
+  /* flex-wrap:wrap alone doesn't force this onto two lines — .v-row-left's
+     min-width:0 lets it shrink arbitrarily, so the browser considers
+     everything "fits" on one line and never wraps, squeezing the name +
+     Recurring tag into a sliver of space instead. flex-direction:column
+     sidesteps that ambiguity entirely: always two lines here, not
+     "wrap only if it doesn't fit". */
+  .v-row:has(.bill-actions){flex-direction:column;align-items:stretch;row-gap:8px}
+  .v-row:has(.bill-actions) .v-row-left{flex:initial}
+  .v-row:has(.bill-actions) .bill-actions{width:100%;justify-content:space-between}
+}
 .bill-recur-tag{font-size:.55rem;color:var(--t3);border:1px solid var(--border2);border-radius:99px;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.05em}
 
 /* ── Goal celebration confetti (Priority 16) ── */
