@@ -28,6 +28,11 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Shared financial calculation engine (Phase 1) — plain JS, no JSX, no
+       Babel needed. Loaded as a real global (window.FinCalc) before the
+       app script runs, and independently `require()`-able from
+       test/calc.test.js for unit tests. -->
+  <script src="calc.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..900;1,14..32,300..900&display=swap" rel="stylesheet">
   <style>
@@ -2624,6 +2629,11 @@ function applyCardRewards(acct, tx, sign, ctx) {
 // is allowed to touch a balance directly.
 function recordTransaction(partial, ctx) {
   const tx = { id: String(Date.now()) + Math.random().toString(36).slice(2,6), ...partial };
+  // Stamp the Phase 1 classification at creation time so every new
+  // transaction is born already correctly bucketed (expense vs. savings
+  // vs. investment vs. credit-card purchase/payment vs. refund) — the
+  // migration below only has to backfill rows that predate this.
+  if (!tx.kind) tx.kind = FinCalc.classifyTransaction(tx, FinCalc.accountsById(ctx.accounts));
   applyTransactionToAccounts(tx, +1, ctx);
   const acct = (ctx.accounts || []).find(a => a.id === tx.accountId);
   applyCardRewards(acct, tx, +1, ctx);
@@ -9180,6 +9190,22 @@ function App() {
   // already has custom categories in every CATEGORIES.map/filter(...) call
   // site across the app, not just renders after the initial mount.
   setModuleCustomCategories(customCategories);
+
+  // ── Phase 1: transaction `kind` migration ───────────────────────────
+  // One-time backfill of the new classification field onto every
+  // transaction that predates it. Run as an effect (not inside
+  // usePersist's own migrate hook) because classifying a credit-card
+  // purchase vs. payment correctly needs the accounts list for context,
+  // and usePersist's migrate() only ever sees the one key it's loading.
+  // Idempotent: migrateTransactionKinds() reports `changed:false` (and
+  // this skips the setTransactions call entirely) once every row already
+  // has a valid kind, so this costs one pass over the array on every
+  // render but only ever writes back once per device.
+  useEffect(() => {
+    const { transactions: next, changed } = FinCalc.migrateTransactionKinds(transactions, accounts);
+    if (changed) setTx(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions, accounts]);
 
   // ── Personalization (Priority 18) — accent color + light/dark theme are
   // applied as CSS custom properties on the root element, so every existing

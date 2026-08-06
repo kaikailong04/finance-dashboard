@@ -2,8 +2,8 @@
   "name": "finance-dashboard",
   "private": true,
   "version": "1.0.0",
-  "type": "module",
   "scripts": {
+    "test": "node --test test/",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
