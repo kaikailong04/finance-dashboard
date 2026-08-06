@@ -1024,6 +1024,17 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .bill-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .bill-recur-tag{font-size:.55rem;color:var(--t3);border:1px solid var(--border2);border-radius:99px;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.05em}
 
+/* ── Dashboard Quick Actions ── */
+.qa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(76px,1fr));gap:10px}
+.qa-btn{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px 8px;cursor:pointer;font-family:inherit;color:var(--t2);
+}
+.qa-btn:hover{background:var(--s2);border-color:var(--border2)}
+.qa-icon{width:40px;height:40px;border-radius:12px;background:var(--accent-lt);display:flex;align-items:center;justify-content:center}
+.qa-label{font-size:.68rem;font-weight:600;color:var(--t2);text-align:center}
+
 /* ── Quick Add (long-press the FAB) ── */
 .quick-menu-overlay{position:fixed;inset:0;z-index:149;background:transparent}
 .quick-menu{
@@ -3110,6 +3121,206 @@ const CATEGORIES = [
 ];
 
 // ── Dashboard ─────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+// DASHBOARD REDESIGN (Priority 12) — the compact "at a glance" sections
+// the PRD asks for, each backed by the exact same data/helpers its own
+// full page already uses, with a "View →" through to that page.
+// ══════════════════════════════════════════════════════════════════════
+function QuickActionsRow({ openAddTx, goTo, accounts }) {
+  const firstCredit = (accounts||[]).find(a => a.type==='credit' && !a.archived);
+  const actions = [
+    { label:'Add',      icon:'plus',       onClick:()=>openAddTx(null,null) },
+    { label:'Transfer', icon:'swap',       onClick:()=>openAddTx(null,{type:'transfer'}) },
+    { label:'Pay Card', icon:'creditCard', onClick:()=>{
+        if (firstCredit) { const src = defaultPaymentSourceAccount(accounts, firstCredit); openAddTx(src?src.id:null, { type:'transfer', toAccountId:firstCredit.id }); }
+        else goTo('accounts');
+      } },
+    { label:'Bills',    icon:'receipt', onClick:()=>goTo('bills') },
+    { label:'Accounts', icon:'bank',    onClick:()=>goTo('accounts') },
+    { label:'Insights', icon:'chart',   onClick:()=>goTo('insights') },
+  ];
+  return (
+    <div>
+      <div className="section-head" style={{padding:'0 0 10px'}}>Quick Actions</div>
+      <div className="qa-grid">
+        {actions.map(a => (
+          <button key={a.label} type="button" className="qa-btn" onClick={a.onClick}>
+            <span className="qa-icon"><Icon name={a.icon} size={18} color="var(--accent)"/></span>
+            <span className="qa-label">{a.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NetWorthMiniCard({ netWorth, goals, goTo }) {
+  const snap = getNetWorthSnapshot((netWorth||{}).accounts, goals);
+  return (
+    <div>
+      <div className="cal-head">
+        <div className="section-head" style={{padding:0,marginBottom:0}}>Net Worth</div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>goTo('networth')}>View →</button>
+      </div>
+      <div className="card">
+        <div className="mega" style={{fontSize:'2.1rem',color:snap.netWorth>=0?'var(--t1)':'var(--red)'}}>{currency(snap.netWorth)}</div>
+        <div style={{fontSize:'.76rem',color:'var(--t3)',marginTop:6}}>{currency(snap.assets)} assets − {currency(snap.liabilities)} liabilities</div>
+      </div>
+    </div>
+  );
+}
+
+function AccountsStrip({ accounts, settings, goals, netWorth, goTo }) {
+  const ctx = { settings, goals, netWorth };
+  const rows = [...(accounts||[])].filter(a => !a.archived && !a.hidden).sort((a,b) => (a.order||0)-(b.order||0)).slice(0,5);
+  if (!rows.length) return null;
+  return (
+    <div>
+      <div className="cal-head">
+        <div className="section-head" style={{padding:0,marginBottom:0}}>Accounts</div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>goTo('accounts')}>View All →</button>
+      </div>
+      <div className="card-flush">
+        {rows.map(a => {
+          const bal = accountBalance(a, ctx);
+          const liability = isLiabilityType(a.type);
+          return (
+            <div key={a.id} className="v-row">
+              <div className="v-row-left">
+                <div className="v-row-icon" style={{background:a.color+'20'}}><Icon name={a.icon} size={16} color={a.color}/></div>
+                <div className="v-row-name">{a.name}</div>
+              </div>
+              <div className="v-row-val" style={{color:liability&&bal>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}{currency(bal,0)}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CreditUtilizationMini({ accounts, settings, goals, netWorth, goTo }) {
+  const ctx = { settings, goals, netWorth };
+  const cards = (accounts||[]).filter(a => a.type==='credit' && !a.archived);
+  if (!cards.length) return null;
+  return (
+    <div>
+      <div className="cal-head">
+        <div className="section-head" style={{padding:0,marginBottom:0}}>Credit Utilization</div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>goTo('accounts')}>View →</button>
+      </div>
+      <div className="card-flush">
+        {cards.map(a => {
+          const card = a.card || defaultCardFields();
+          const bal  = accountBalance(a, ctx);
+          const util = creditUtilization(bal, card.creditLimit);
+          return (
+            <div key={a.id} className="v-row">
+              <div className="v-row-left">
+                <div className="v-row-icon" style={{background:a.color+'20'}}><Icon name={a.icon} size={16} color={a.color}/></div>
+                <div><div className="v-row-name">{a.name}</div><div className="v-row-sub">{currency(bal,0)} of {currency(card.creditLimit,0)}</div></div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <div className="track" style={{width:60}}><div className="fill" style={{width:`${Math.min(util,100)}%`,background:utilizationColor(util)}}/></div>
+                <span style={{fontSize:'.78rem',fontWeight:700,color:utilizationColor(util)}}>{util.toFixed(0)}%</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function UpcomingBillsMini({ accounts, bills, transactions, settings, goals, netWorth, goTo }) {
+  const ctx = { accounts, settings, goals, netWorth, transactions };
+  const today = new Date();
+  const userRows = (bills||[]).map(b => ({ name:b.name, amount:b.amount, status:billStatus(b,today), dueDay:b.dueDay }));
+  const ccRows   = creditCardBills(accounts, ctx).map(cc => ({ name:cc.name, amount:cc.amount, status: cc.paid?'paid':billStatus({recurring:true,dueDay:cc.dueDay},today), dueDay:cc.dueDay }));
+  const upcoming = [...userRows, ...ccRows].filter(r => r.status!=='paid').sort((a,b) => (a.dueDay||0)-(b.dueDay||0)).slice(0,4);
+  return (
+    <div>
+      <div className="cal-head">
+        <div className="section-head" style={{padding:0,marginBottom:0}}>Upcoming Bills</div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>goTo('bills')}>View All →</button>
+      </div>
+      <div className="card-flush">
+        {upcoming.length===0 ? <div className="empty">Nothing due soon.</div> : upcoming.map((r,i) => (
+          <div key={i} className="v-row">
+            <div className="v-row-left"><div className="v-row-icon" style={{background:'var(--s3)'}}><Icon name="receipt" size={15} color="var(--t2)"/></div><div className="v-row-name">{r.name}</div></div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              {r.status==='overdue' && <span className="badge badge-red">Overdue</span>}
+              <span className="v-row-val">{currency(r.amount,0)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SavingsGoalsMini({ settings, goals, goTo }) {
+  const hysaBal = goals.hysaBalance || 0;
+  const hysaPct = settings.hysaGoal > 0 ? Math.min((hysaBal/settings.hysaGoal)*100,100) : 0;
+  const rothBal = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
+  const rothPct = settings.rothIRAYearlyLimit > 0 ? Math.min((rothBal/settings.rothIRAYearlyLimit)*100,100) : 0;
+  const k401Bal = round2((goals.k401Employee||0) + (goals.k401Employer||0));
+  const k401Pct = settings.ira401kYearlyMax > 0 ? Math.min((k401Bal/settings.ira401kYearlyMax)*100,100) : 0;
+  const rows = [
+    { label:'HYSA',     bal:hysaBal, goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
+    { label:'Roth IRA', bal:rothBal, goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)' },
+    { label:'401(k)',   bal:k401Bal, goal:settings.ira401kYearlyMax,   pct:k401Pct, color:'var(--yellow)' },
+  ];
+  return (
+    <div>
+      <div className="cal-head">
+        <div className="section-head" style={{padding:0,marginBottom:0}}>Savings Goals</div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>goTo('goals')}>View All →</button>
+      </div>
+      <div className="card">
+        {rows.map((r,i) => (
+          <div key={r.label} style={{marginBottom:i<rows.length-1?14:0}}>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:'.78rem',marginBottom:6}}>
+              <span style={{color:'var(--t2)'}}>{r.label}</span>
+              <span style={{color:'var(--t1)',fontWeight:600}}>{currency(r.bal,0)} / {currency(r.goal,0)}</span>
+            </div>
+            <div className="track"><div className="fill" style={{width:`${r.pct}%`,background:r.color}}/></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Combines a budget read, the top spending category, and the worst credit
+// utilization into 2-3 sentences — the same never-shaming, plain-language
+// style as the Credit Card Dashboard's insights.
+function DashboardAIInsights({ settings, accounts, goals, netWorth, byCategory, totalSpent, totalBudgeted }) {
+  const ctx = { settings, goals, netWorth };
+  const lines = [];
+  if (totalBudgeted > 0) {
+    const usedPct = safePct(totalSpent, totalBudgeted);
+    lines.push(usedPct > 100
+      ? `You're ${currency(totalSpent-totalBudgeted,0)} over your total budget this month.`
+      : `You've used ${usedPct.toFixed(0)}% of this month's budget.`);
+  }
+  const topCat = Object.entries(byCategory||{}).filter(([k,v]) => k!=='__401k__' && v>0).sort((a,b) => b[1]-a[1])[0];
+  if (topCat) lines.push(`${catLabel(topCat[0])} is your top spending category this month at ${currency(topCat[1],0)}.`);
+  const worstCard = (accounts||[]).filter(a => a.type==='credit' && !a.archived)
+    .map(a => ({ a, util: creditUtilization(accountBalance(a,ctx), (a.card||defaultCardFields()).creditLimit) }))
+    .sort((x,y) => y.util-x.util)[0];
+  if (worstCard && worstCard.util > 30) lines.push(`${worstCard.a.name} is at ${worstCard.util.toFixed(0)}% utilization — worth an early payment before applying for new credit.`);
+  if (!lines.length) lines.push('Everything looks steady — no alerts today.');
+  return (
+    <div>
+      <div className="section-head" style={{padding:'0 0 10px'}}>AI Insights</div>
+      <div className="card" style={{borderColor:'rgba(0,200,5,.2)',background:'rgba(0,200,5,.03)'}}>
+        {lines.map((l,i) => <div key={i} className="insight-row">{l}</div>)}
+      </div>
+    </div>
+  );
+}
+
 function CashFlowForecast({ settings, accounts, bills, recurring, transactions, goals, netWorth }) {
   const [days, setDays] = useState(30);
   const acctCtx = { settings, goals, netWorth };
@@ -3168,7 +3379,7 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
   );
 }
 
-function Dashboard({ settings, transactions, goals, commissions, setGoals, setTransactions, goTo, accounts, setAccounts, netWorth, setNetWorth, recurring, setRecurring, bills }) {
+function Dashboard({ settings, transactions, goals, commissions, setGoals, setTransactions, goTo, accounts, setAccounts, netWorth, setNetWorth, recurring, setRecurring, bills, openAddTx }) {
   const phase = getPhaseInfo(settings.startDate);
   const now   = new Date();
 
@@ -3339,6 +3550,13 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
         </div>
       </div>
 
+      <QuickActionsRow openAddTx={openAddTx} goTo={goTo} accounts={accounts}/>
+
+      <div className="g2">
+        <NetWorthMiniCard netWorth={netWorth} goals={goals} goTo={goTo}/>
+        <AccountsStrip accounts={accounts} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
+      </div>
+
       <DueRecurringCard recurring={recurring} accounts={accounts}
         ctxBase={{ settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions, setRecurring }}/>
 
@@ -3364,6 +3582,13 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
           </div>
         ))}
       </div>
+
+      <div className="g2">
+        <CreditUtilizationMini accounts={accounts} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
+        <UpcomingBillsMini accounts={accounts} bills={bills} transactions={transactions} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
+      </div>
+
+      <SavingsGoalsMini settings={settings} goals={goals} goTo={goTo}/>
 
       {/* Paycheck Breakdown */}
       <div>
@@ -3587,6 +3812,10 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
           </div>
         </div>
       )}
+
+      <DashboardAIInsights settings={settings} accounts={accounts} goals={goals} netWorth={netWorth}
+        byCategory={byCategory} totalSpent={totalSpent} totalBudgeted={totalBudgeted}/>
+
       {/* Paycheck confirmation modal */}
       {payOpen && (
         <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) setPayOpen(false); }}>
@@ -7458,7 +7687,7 @@ function App() {
 
   const pages = {
     dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} goTo={setTab}
-                  accounts={accounts} setAccounts={setAccounts} netWorth={nwData} setNetWorth={setNwData} recurring={recurring} setRecurring={setRecurring} bills={bills} />,
+                  accounts={accounts} setAccounts={setAccounts} netWorth={nwData} setNetWorth={setNwData} recurring={recurring} setRecurring={setRecurring} bills={bills} openAddTx={openAddTx} />,
     accounts:   <AccountsPage accounts={accounts} setAccounts={setAccounts} transactions={transactions} settings={settings} goals={goals}
                   netWorth={nwData} setGoals={setGoals} setNetWorth={setNwData} setTransactions={setTx}
                   openAddTx={openAddTx} deepLinkAccountId={acctDeepLink} onConsumeDeepLink={()=>setAcctDeepLink(null)} />,
