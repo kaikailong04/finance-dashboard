@@ -1225,7 +1225,11 @@ function parseLocalDate(str) {
   const [y,m,d] = str.split('-').map(Number);
   return new Date(y, m-1, d);
 }
-const currency = (n, dec=0) =>
+// Cents everywhere by default — every currency(x) / money0(x) call in the
+// app now shows the hundredths place unless a caller explicitly asks for
+// fewer (none currently do; the old whole-dollar callers were switched to
+// this default rather than passing dec=0).
+const currency = (n, dec=2) =>
   new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:dec}).format(n||0);
 const pct = (n,d=1) => (n||0).toFixed(d)+'%';
 
@@ -2713,7 +2717,7 @@ function creditSmartInsights(acct, ctx) {
   } else {
     const early = suggestedEarlyPayment(balance, card.creditLimit, 10);
     const close = nextOccurrenceOfDay(card.statementCloseDay);
-    out.push(`You're at ${util.toFixed(0)}% utilization. If you're applying for new credit soon, paying ${currency(early,0)} before ${fmtShortDate(close)} would reduce utilization to 10%.`);
+    out.push(`You're at ${util.toFixed(0)}% utilization. If you're applying for new credit soon, paying ${currency(early)} before ${fmtShortDate(close)} would reduce utilization to 10%.`);
   }
   if (safeNum(card.cashbackMonth) > 0) out.push(`You've earned ${formatRewardAmount(card, card.cashbackMonth)} in rewards this month.`);
   out.push(card.autopay
@@ -3235,7 +3239,7 @@ function NavIcon({ name, active }) {
 // recessive grid, values in text tokens (never the series colour), a legend
 // whenever there are 2+ series, and a table fallback for screen readers.
 // ══════════════════════════════════════════════════════════════════════
-const money0 = n => currency(safeNum(n), 0);
+const money0 = n => currency(safeNum(n));
 const money2 = n => currency(safeNum(n), 2);
 
 function VizEmpty({ message, hint }) {
@@ -3753,7 +3757,7 @@ function AccountsStrip({ accounts, settings, goals, netWorth, goTo }) {
                 <div className="v-row-icon" style={{background:a.color+'20'}}><Icon name={a.icon} size={16} color={a.color}/></div>
                 <div className="v-row-name">{a.name}</div>
               </div>
-              <div className="v-row-val" style={{color:liability&&bal>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}{currency(bal,0)}</div>
+              <div className="v-row-val" style={{color:liability&&bal>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}{currency(bal)}</div>
             </div>
           );
         })}
@@ -3781,7 +3785,7 @@ function CreditUtilizationMini({ accounts, settings, goals, netWorth, goTo }) {
             <div key={a.id} className="v-row">
               <div className="v-row-left">
                 <div className="v-row-icon" style={{background:a.color+'20'}}><Icon name={a.icon} size={16} color={a.color}/></div>
-                <div><div className="v-row-name">{a.name}</div><div className="v-row-sub">{currency(bal,0)} of {currency(card.creditLimit,0)}</div></div>
+                <div><div className="v-row-name">{a.name}</div><div className="v-row-sub">{currency(bal)} of {currency(card.creditLimit)}</div></div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <div className="track" style={{width:60}}><div className="fill" style={{width:`${Math.min(util,100)}%`,background:utilizationColor(util)}}/></div>
@@ -3813,7 +3817,7 @@ function UpcomingBillsMini({ accounts, bills, transactions, settings, goals, net
             <div className="v-row-left"><div className="v-row-icon" style={{background:'var(--s3)'}}><Icon name="receipt" size={15} color="var(--t2)"/></div><div className="v-row-name">{r.name}</div></div>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               {r.status==='overdue' && <span className="badge badge-red">Overdue</span>}
-              <span className="v-row-val">{currency(r.amount,0)}</span>
+              <span className="v-row-val">{currency(r.amount)}</span>
             </div>
           </div>
         ))}
@@ -3845,7 +3849,7 @@ function SavingsGoalsMini({ settings, goals, goTo }) {
           <div key={r.label} style={{marginBottom:i<rows.length-1?14:0}}>
             <div style={{display:'flex',justifyContent:'space-between',fontSize:'.78rem',marginBottom:6}}>
               <span style={{color:'var(--t2)'}}>{r.label}</span>
-              <span style={{color:'var(--t1)',fontWeight:600}}>{currency(r.bal,0)} / {currency(r.goal,0)}</span>
+              <span style={{color:'var(--t1)',fontWeight:600}}>{currency(r.bal)} / {currency(r.goal)}</span>
             </div>
             <div className="track"><div className="fill" style={{width:`${r.pct}%`,background:r.color}}/></div>
           </div>
@@ -3864,11 +3868,11 @@ function DashboardAIInsights({ settings, accounts, goals, netWorth, byCategory, 
   if (totalBudgeted > 0) {
     const usedPct = safePct(totalSpent, totalBudgeted);
     lines.push(usedPct > 100
-      ? `You're ${currency(totalSpent-totalBudgeted,0)} over your total budget this month.`
+      ? `You're ${currency(totalSpent-totalBudgeted)} over your total budget this month.`
       : `You've used ${usedPct.toFixed(0)}% of this month's budget.`);
   }
   const topCat = Object.entries(byCategory||{}).filter(([k,v]) => k!=='__401k__' && v>0).sort((a,b) => b[1]-a[1])[0];
-  if (topCat) lines.push(`${catLabel(topCat[0])} is your top spending category this month at ${currency(topCat[1],0)}.`);
+  if (topCat) lines.push(`${catLabel(topCat[0])} is your top spending category this month at ${currency(topCat[1])}.`);
   const worstCard = (accounts||[]).filter(a => a.type==='credit' && !a.archived)
     .map(a => ({ a, util: creditUtilization(accountBalance(a,ctx), (a.card||defaultCardFields()).creditLimit) }))
     .sort((x,y) => y.util-x.util)[0];
@@ -3910,23 +3914,23 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
         <div className="ins-cards" style={{marginBottom:16}}>
           <div className="ins-card">
             <span className="ins-card-lbl">Projected Checking</span>
-            <span className="ins-card-val" style={{color:endChecking<0?'var(--red)':'var(--t1)'}}>{currency(endChecking,0)}</span>
+            <span className="ins-card-val" style={{color:endChecking<0?'var(--red)':'var(--t1)'}}>{currency(endChecking)}</span>
             <span className="ins-card-sub">in {days} days</span>
           </div>
           <div className="ins-card">
             <span className="ins-card-lbl">Projected Credit Card Balance</span>
-            <span className="ins-card-val" style={{color:endCredit>0?'var(--red)':'var(--t1)'}}>{currency(endCredit,0)}</span>
+            <span className="ins-card-val" style={{color:endCredit>0?'var(--red)':'var(--t1)'}}>{currency(endCredit)}</span>
             <span className="ins-card-sub">in {days} days</span>
           </div>
           <div className="ins-card">
             <span className="ins-card-lbl">Projected Savings</span>
-            <span className="ins-card-val" style={{color:'var(--accent)'}}>{currency(endSavings,0)}</span>
+            <span className="ins-card-val" style={{color:'var(--accent)'}}>{currency(endSavings)}</span>
             <span className="ins-card-sub">in {days} days</span>
           </div>
         </div>
         {events.length === 0
           ? <VizEmpty message="No upcoming bills, paychecks, or recurring transactions to project." hint="Add a bill or recurring transaction to see a forecast."/>
-          : <LineTrendChart labels={series.labels} formatY={v=>currency(v,0)}
+          : <LineTrendChart labels={series.labels} formatY={v=>currency(v)}
               series={[
                 { key:'checking', label:'Checking',    color:VIZ_SERIES[0], points:series.checking },
                 { key:'credit',   label:'Credit Card',  color:'#FF5000',     points:series.credit   },
@@ -4732,7 +4736,7 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
                     <div className="sp-top">
                       <span className="sp-name">
                         {cat.label}
-                        {roll !== 0 && <span style={{fontSize:'.6rem',fontWeight:600,marginLeft:6,color:roll>0?'var(--accent)':'var(--red)'}}>{roll>0?'+':'−'}{currency(Math.abs(roll),0)} rolled</span>}
+                        {roll !== 0 && <span style={{fontSize:'.6rem',fontWeight:600,marginLeft:6,color:roll>0?'var(--accent)':'var(--red)'}}>{roll>0?'+':'−'}{currency(Math.abs(roll))} rolled</span>}
                       </span>
                       <span className="sp-nums">
                         <span className="sp-spent">{currency(s)}</span>
@@ -4989,7 +4993,7 @@ function CustomGoalCard({ goal, ctx, onEdit, onContribute }) {
       <Collapse open={showForecast}>
         <div style={{marginTop:14}}>
           {progress.monthsLeft==null ? <VizEmpty message="Set a monthly contribution to see a forecast." /> :
-            <LineTrendChart labels={forecast.labels} formatY={v=>currency(v,0)}
+            <LineTrendChart labels={forecast.labels} formatY={v=>currency(v)}
               series={[{ key:'g', label:goal.name, color:info.color, points:forecast.points }]}/>}
         </div>
       </Collapse>
@@ -5356,21 +5360,21 @@ function MonthlyReviewModal({ onClose, monthLabel, monthKey, year, month, income
             <div className="grade-badge" style={{color:grade.color}}>{grade.grade}</div>
             <div>
               <div style={{fontSize:'.7rem',color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>Budget Grade</div>
-              <div style={{fontSize:'.84rem',color:'var(--t2)'}}>{monthBudgetTotal>0 ? `${budgetPctUsed.toFixed(0)}% of ${currency(monthBudgetTotal,0)} budget used` : 'No budget set for this scenario'}</div>
+              <div style={{fontSize:'.84rem',color:'var(--t2)'}}>{monthBudgetTotal>0 ? `${budgetPctUsed.toFixed(0)}% of ${currency(monthBudgetTotal)} budget used` : 'No budget set for this scenario'}</div>
             </div>
           </div>
 
           <div className="mr-bars">
-            <div className="mr-bar-row"><div className="mr-bar-lbl">Income</div><div className="mr-bar-track"><div className="mr-bar-fill" style={{width:`${Math.min(safePct(income,maxBar),100)}%`,background:'var(--accent)'}}/></div><div className="mr-bar-val">{currency(income,0)}</div></div>
-            <div className="mr-bar-row"><div className="mr-bar-lbl">Expenses</div><div className="mr-bar-track"><div className="mr-bar-fill" style={{width:`${Math.min(safePct(totalSpend,maxBar),100)}%`,background:'var(--red)'}}/></div><div className="mr-bar-val">{currency(totalSpend,0)}</div></div>
-            <div className="mr-bar-row"><div className="mr-bar-lbl">Savings</div><div className="mr-bar-track"><div className="mr-bar-fill" style={{width:`${Math.min(safePct(Math.abs(savings),maxBar),100)}%`,background:savings>=0?'var(--blue)':'var(--red)'}}/></div><div className="mr-bar-val" style={{color:savings>=0?'var(--t1)':'var(--red)'}}>{savings>=0?'':'−'}{currency(Math.abs(savings),0)}</div></div>
+            <div className="mr-bar-row"><div className="mr-bar-lbl">Income</div><div className="mr-bar-track"><div className="mr-bar-fill" style={{width:`${Math.min(safePct(income,maxBar),100)}%`,background:'var(--accent)'}}/></div><div className="mr-bar-val">{currency(income)}</div></div>
+            <div className="mr-bar-row"><div className="mr-bar-lbl">Expenses</div><div className="mr-bar-track"><div className="mr-bar-fill" style={{width:`${Math.min(safePct(totalSpend,maxBar),100)}%`,background:'var(--red)'}}/></div><div className="mr-bar-val">{currency(totalSpend)}</div></div>
+            <div className="mr-bar-row"><div className="mr-bar-lbl">Savings</div><div className="mr-bar-track"><div className="mr-bar-fill" style={{width:`${Math.min(safePct(Math.abs(savings),maxBar),100)}%`,background:savings>=0?'var(--blue)':'var(--red)'}}/></div><div className="mr-bar-val" style={{color:savings>=0?'var(--t1)':'var(--red)'}}>{savings>=0?'':'−'}{currency(Math.abs(savings))}</div></div>
           </div>
 
           <div className="ins-cards" style={{marginTop:18}}>
             <div className="ins-card">
               <span className="ins-card-lbl">Net Worth Change</span>
               <span className="ins-card-val" style={{color: nwChange && nwChange.hasPrev ? (nwChange.value>=0?'var(--accent)':'var(--red)') : 'var(--t3)'}}>
-                {nwChange && nwChange.hasPrev ? `${nwChange.value>=0?'+':'−'}${currency(Math.abs(nwChange.value),0)}` : '—'}
+                {nwChange && nwChange.hasPrev ? `${nwChange.value>=0?'+':'−'}${currency(Math.abs(nwChange.value))}` : '—'}
               </span>
               <span className="ins-card-sub">{nwChange ? (nwChange.hasPrev ? 'vs prior snapshot' : 'no earlier snapshot yet') : 'no Net Worth snapshot saved this month'}</span>
             </div>
@@ -5392,7 +5396,7 @@ function MonthlyReviewModal({ onClose, monthLabel, monthKey, year, month, income
             <div className="ins-card">
               <span className="ins-card-lbl">Best Saving Week</span>
               <span className="ins-card-val" style={{color:bestWeek && bestWeek.net>0 ? 'var(--accent)' : 'var(--t1)'}}>{bestWeek ? `Days ${bestWeek.start}–${bestWeek.end}` : '—'}</span>
-              <span className="ins-card-sub">{bestWeek ? `${bestWeek.net>=0?'+':'−'}${currency(Math.abs(bestWeek.net),0)} net` : ''}</span>
+              <span className="ins-card-sub">{bestWeek ? `${bestWeek.net>=0?'+':'−'}${currency(Math.abs(bestWeek.net))} net` : ''}</span>
             </div>
           </div>
         </div>
@@ -5487,7 +5491,7 @@ function YearlyReviewModal({ onClose, year, transactions, netWorth, accounts, se
             </div>
             <div>
               <div style={{fontSize:'.7rem',color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>Savings Rate</div>
-              <div style={{fontSize:'.84rem',color:'var(--t2)'}}>{income>0?`${savingsRate.toFixed(0)}% of ${currency(income,0)} income saved`:'No income logged this year'}</div>
+              <div style={{fontSize:'.84rem',color:'var(--t2)'}}>{income>0?`${savingsRate.toFixed(0)}% of ${currency(income)} income saved`:'No income logged this year'}</div>
             </div>
           </div>
 
@@ -5504,13 +5508,13 @@ function YearlyReviewModal({ onClose, year, transactions, netWorth, accounts, se
           <div className="ins-cards" style={{marginTop:18}}>
             <div className="ins-card">
               <span className="ins-card-lbl">Net Savings</span>
-              <span className="ins-card-val" style={{color:savings>=0?'var(--accent)':'var(--red)'}}>{savings>=0?'':'−'}{currency(Math.abs(savings),0)}</span>
-              <span className="ins-card-sub">{currency(income,0)} in · {currency(totalSpend,0)} out</span>
+              <span className="ins-card-val" style={{color:savings>=0?'var(--accent)':'var(--red)'}}>{savings>=0?'':'−'}{currency(Math.abs(savings))}</span>
+              <span className="ins-card-sub">{currency(income)} in · {currency(totalSpend)} out</span>
             </div>
             <div className="ins-card">
               <span className="ins-card-lbl">Net Worth Change</span>
               <span className="ins-card-val" style={{color: nwChange && nwChange.hasPrev ? (nwChange.value>=0?'var(--accent)':'var(--red)') : 'var(--t3)'}}>
-                {nwChange && nwChange.hasPrev ? `${nwChange.value>=0?'+':'−'}${currency(Math.abs(nwChange.value),0)}` : '—'}
+                {nwChange && nwChange.hasPrev ? `${nwChange.value>=0?'+':'−'}${currency(Math.abs(nwChange.value))}` : '—'}
               </span>
               <span className="ins-card-sub">{nwChange ? (nwChange.hasPrev ? 'vs. prior year-end' : 'no earlier snapshot yet') : 'no Net Worth snapshot saved this year'}</span>
             </div>
@@ -5534,7 +5538,7 @@ function YearlyReviewModal({ onClose, year, transactions, netWorth, accounts, se
               <span className="ins-card-val" style={{color:bestMonth && bestMonth.net>0 ? 'var(--accent)' : 'var(--t1)'}}>
                 {bestMonth && (bestMonth.income||bestMonth.spend) ? new Date(+bestMonth.key.slice(0,4),+bestMonth.key.slice(5,7)-1,1).toLocaleDateString('en-US',{month:'long'}) : '—'}
               </span>
-              <span className="ins-card-sub">{bestMonth ? `${bestMonth.net>=0?'+':'−'}${currency(Math.abs(bestMonth.net),0)} net` : ''}</span>
+              <span className="ins-card-sub">{bestMonth ? `${bestMonth.net>=0?'+':'−'}${currency(Math.abs(bestMonth.net))} net` : ''}</span>
             </div>
           </div>
 
@@ -5764,8 +5768,8 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
       out.push(`${catLabel(biggestMove.id)} is up ${biggestMove.pct.toFixed(0)}% from last month — worth a look if that wasn't planned.`);
     if (diningLimit > 0) {
       out.push(diningRemaining < 0
-        ? `Dining is ${currency(Math.abs(diningRemaining),0)} over budget this month.`
-        : `You have ${currency(diningRemaining,0)} left in your dining budget this month.`);
+        ? `Dining is ${currency(Math.abs(diningRemaining))} over budget this month.`
+        : `You have ${currency(diningRemaining)} left in your dining budget this month.`);
     }
     if (weekendChangePct != null && weekendChangePct > 15)
       out.push(`Weekend spending is up ${weekendChangePct.toFixed(0)}% from last month.`);
@@ -7601,7 +7605,7 @@ function AccountPickList({ accounts, ctx, selectedId, onSelect, excludeId }) {
         <button key={a.id} type="button" className={'acct-pick'+(selectedId===a.id?' on':'')} onClick={()=>onSelect(a.id)}>
           <span className="acct-pick-icon" style={{background:a.color+'22'}}><Icon name={a.icon} size={15} color={a.color}/></span>
           <span className="acct-pick-name">{a.name}</span>
-          <span className="acct-pick-bal">{currency(accountBalance(a,ctx),0)}</span>
+          <span className="acct-pick-bal">{currency(accountBalance(a,ctx))}</span>
         </button>
       ))}
     </div>
@@ -7996,14 +8000,14 @@ function accountInsight(acct, ctx, stats) {
     if (util <= 10) return `You're already under 10% utilization (${util.toFixed(0)}%). No early payment needed.`;
     const target = card.creditLimit * 0.10;
     const early   = Math.max(bal - target, 0);
-    return `You're at ${util.toFixed(0)}% utilization. Paying ${currency(early,0)} before your statement closes would bring it to 10%. Utilization mostly matters right before you apply for new credit.`;
+    return `You're at ${util.toFixed(0)}% utilization. Paying ${currency(early)} before your statement closes would bring it to 10%. Utilization mostly matters right before you apply for new credit.`;
   }
   if (stats.avgMonthlySpend > 0 && stats.outFlow > stats.avgMonthlySpend * 1.15)
     return `Spending from this account is running about ${Math.round((stats.outFlow/stats.avgMonthlySpend-1)*100)}% above its average month.`;
   if (stats.inFlow > 0 || stats.outFlow > 0)
     return stats.inFlow >= stats.outFlow
-      ? `Net positive this month — ${currency(stats.inFlow-stats.outFlow,0)} more in than out.`
-      : `Net negative this month — ${currency(stats.outFlow-stats.inFlow,0)} more out than in.`;
+      ? `Net positive this month — ${currency(stats.inFlow-stats.outFlow)} more in than out.`
+      : `Net negative this month — ${currency(stats.outFlow-stats.inFlow)} more out than in.`;
   return 'No activity logged on this account yet.';
 }
 
@@ -8668,7 +8672,7 @@ function AccountsPage({ accounts, setAccounts, transactions, settings, goals, ne
                       </span>
                       <span className="acct-right">
                         <span className="acct-bal" style={{color:liability&&bal>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}{currency(bal,2)}</span>
-                        {chg !== 0 && <span className="acct-chg" style={{color:chg>=0?'var(--accent)':'var(--red)'}}>{chg>=0?'+':'−'}{currency(Math.abs(chg),0)} this mo</span>}
+                        {chg !== 0 && <span className="acct-chg" style={{color:chg>=0?'var(--accent)':'var(--red)'}}>{chg>=0?'+':'−'}{currency(Math.abs(chg))} this mo</span>}
                       </span>
                     </button>
                     {!showArchived && (
