@@ -200,6 +200,13 @@ html{-webkit-text-size-adjust:100%}
   padding:36px 28px 56px;
   display:flex;flex-direction:column;gap:24px;
 }
+/* Flex items default to min-width:auto, so a section with any unshrinkable
+   content (a nowrap toggle group, a long unbroken label) refuses to shrink
+   below its own content width and silently overflows .page's edge — same
+   root cause .v-row-left/.v-row-name already guard against locally, just
+   missing here at the top level where every page section lives. (PRD §6:
+   "Horizontal clipping.") */
+.page > *{min-width:0}
 .page-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .page-title{font-size:1.25rem;font-weight:700;letter-spacing:-.035em;color:var(--t1);line-height:1.1}
 .page-sub{font-size:.72rem;color:var(--t3);margin-top:4px;letter-spacing:.01em}
@@ -235,8 +242,12 @@ html{-webkit-text-size-adjust:100%}
 }
 
 /* ── Grids ───────────────────────────────────────────────────────────── */
-.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.g2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+/* minmax(0,1fr), not bare 1fr — a bare 1fr track's implicit min size is
+   auto (its widest cell's min-content), so one cell with unshrinkable
+   content (e.g. a nowrap balance figure) inflates every track sharing that
+   column, pushing unrelated sibling cards past the viewport edge. */
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 
 /* ── Stat cards ──────────────────────────────────────────────────────── */
 .stat{
@@ -503,8 +514,8 @@ html{-webkit-text-size-adjust:100%}
     /* Nav bar (~60px) + safe area inset so last item clears the bar */
     padding-bottom:calc(80px + env(safe-area-inset-bottom));
   }
-  .g3{grid-template-columns:repeat(2,1fr)}
-  .g2{grid-template-columns:1fr}
+  .g3{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g2{grid-template-columns:minmax(0,1fr)}
   .income-eq{flex-direction:column}
   .eq-item{border-right:none;border-bottom:1px solid var(--border)}
   .eq-item:last-child{border-bottom:none}
@@ -974,7 +985,7 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* ── Account list ── */
 .acct-list{display:flex;flex-direction:column;gap:10px}
 .acct-card{
-  display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+  display:flex;align-items:center;gap:14px;flex:1;min-width:0;text-align:left;
   background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
   padding:16px 18px;color:inherit;font:inherit;cursor:pointer;transition:border-color .15s,background .15s;
 }
@@ -3742,13 +3753,26 @@ const TABS = [
 // A group with more than one page gets its own sub-nav (rendered once in
 // App(), just under the header) for switching between its pages; a
 // single-page group (Home, Accounts) navigates directly.
+// Phase 5 fix: Phase 3's Insights group named the wrong tab id ('spending' —
+// the transaction ledger — instead of 'insights' — the actual Spending
+// Insights analytics page with Monthly/Year Review, trends, and merchant
+// rankings), which made the whole Insights page unreachable from the nav
+// bar. Insights now correctly holds Spending (ledger), Insights (analytics),
+// and Net Worth, restoring all 10 real pages to being reachable somewhere.
 const NAV_GROUPS = [
   { id:'home',      label:'Home',      icon:'dash',     tabs:['dashboard'] },
   { id:'accounts',  label:'Accounts',  icon:'accounts', tabs:['accounts'] },
   { id:'plan',      label:'Plan',      icon:'budget',   tabs:['budget','bills','goals','commission'] },
-  { id:'insights',  label:'Insights',  icon:'insights', tabs:['spending','networth'] },
+  { id:'insights',  label:'Insights',  icon:'insights', tabs:['spending','insights','networth'] },
   { id:'more',      label:'More',      icon:'more',     tabs:['settings'] },
 ];
+// Pages that already show their own prominent, page-level add/log action
+// (Add Account/Transaction, Add Bill, Add Goal, the Spending ledger's own
+// "+ Add", Commission's own "+ Log") — the global FAB would be a second,
+// redundant control for the exact same action on these tabs (PRD §5: "Do
+// not show both a top-right Add button and a floating plus button for the
+// same action"), so it's hidden there rather than fighting for space.
+const FAB_HIDDEN_ON = ['accounts','bills','goals','spending','commission'];
 const groupForTab = id => NAV_GROUPS.find(g => g.tabs.includes(id)) || NAV_GROUPS[0];
 
 // Fixed set the rest of the app (budget scenario fields, forecasting, the
@@ -8834,7 +8858,7 @@ function AccountsPage({ accounts, setAccounts, transactions, settings, goals, ne
           <div className="eyebrow" style={{marginBottom:8}}>{showArchived?'Archived Accounts':'Total Across Accounts'}</div>
           <div className="mega" style={{color:netTotal>=0?'var(--t1)':'var(--red)'}}><CountUp value={netTotal} format={v=>currency(v)}/></div>
         </div>
-        <div style={{display:'flex',gap:8}}>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
           {accounts.some(a=>a.type==='credit'&&!a.archived) &&
             <button className="btn btn-ghost btn-sm" onClick={()=>setShowRewards(s=>!s)}><Icon name="trendUp" size={13}/>Rewards</button>}
           <button className="btn btn-ghost btn-sm" onClick={()=>setShowArchived(s=>!s)}>{showArchived?'Active':'Archived'}</button>
@@ -9514,15 +9538,19 @@ function App() {
       </nav>
 
       {/* Persistent entry point to the redesigned Add Transaction sheet —
-          reachable from every tab, not just Spending. Long-press for the
-          Quick Add shortcut menu. */}
-      <button className="fab" onClick={handleFabClick}
-        onPointerDown={armFabLongPress} onPointerUp={disarmFabLongPress} onPointerLeave={disarmFabLongPress}
-        onContextMenu={e=>e.preventDefault()}
-        aria-label="Add transaction — long-press for quick actions">
-        <Icon name="plus" size={24} color="#000" strokeWidth={2.5}/>
-      </button>
-      {quickMenuOpen && (
+          reachable from every tab EXCEPT the ones that already have their
+          own page-level add action (PRD §5 — never two add controls for
+          the same action on one screen). Long-press for the Quick Add
+          shortcut menu. */}
+      {!FAB_HIDDEN_ON.includes(tab) && (
+        <button className="fab" onClick={handleFabClick}
+          onPointerDown={armFabLongPress} onPointerUp={disarmFabLongPress} onPointerLeave={disarmFabLongPress}
+          onContextMenu={e=>e.preventDefault()}
+          aria-label="Add transaction — long-press for quick actions">
+          <Icon name="plus" size={24} color="#000" strokeWidth={2.5}/>
+        </button>
+      )}
+      {!FAB_HIDDEN_ON.includes(tab) && quickMenuOpen && (
         <>
           <div className="quick-menu-overlay" onClick={()=>setQuickMenuOpen(false)}/>
           <div className="quick-menu" role="menu" aria-label="Quick add">
