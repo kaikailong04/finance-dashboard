@@ -63,10 +63,23 @@
   --purple:   #7B74FF;
   --purple-lt:rgba(123,116,255,.12);
 
-  --t1: #ffffff;
-  --t2: #c0c0c0;
-  --t3: #484848;
-  --t4: #2a2a2a;
+  /* Text hierarchy. Contrast ratios are against the #060606 page
+     background; WCAG AA wants 4.5:1 for body copy and 3:1 for large text
+     and non-text indicators. --t3 was #484848 (~3.0:1) and --t4 was
+     #2a2a2a (~1.6:1) — both were effectively unreadable for the
+     supporting copy, chart axes, and card subtitles that relied on them,
+     so each step was lifted while keeping the four levels visually
+     distinct. Semantic aliases sit alongside the legacy names so new code
+     can read intent instead of a number. */
+  --t1: #ffffff;   /* ~20.4:1 — primary values, balances, headings   */
+  --t2: #c8c8c8;   /* ~12.6:1 — secondary labels, body copy          */
+  --t3: #8e8e8e;   /*  ~5.9:1 — tertiary: subtitles, metadata, axes  */
+  --t4: #6b6b6b;   /*  ~3.5:1 — disabled/decorative, large text only */
+
+  --text-primary:   var(--t1);
+  --text-secondary: var(--t2);
+  --text-tertiary:  var(--t3);
+  --text-disabled:  var(--t4);
 
   --r:   14px;
   --r-s: 10px;
@@ -81,9 +94,13 @@
   /* Hand-drawn SVG charts (net worth trend, etc.) set fill/stroke via
      inline style={{...}} using these rather than literal hex, so they stay
      legible in both themes. */
-  --chart-grid: #222222;
-  --chart-axis: #52525b;
-  --chart-zero: #3f3f46;
+  /* Axis labels are read as text, so they follow the tertiary text step
+     rather than sitting a shade above the gridlines (the old #52525b was
+     ~3.4:1 and lost against the black background on a phone outdoors).
+     Grid and zero-line are decorative and stay quiet on purpose. */
+  --chart-grid: #2a2a2a;
+  --chart-axis: #8e8e8e;
+  --chart-zero: #565660;
 
   /* Subtle neutral "wash" fills (icon badge backgrounds, thin progress
      tracks, faint hairlines) — white-on-dark by default, flipped to
@@ -98,6 +115,11 @@
      page. Keep in sync with .mnav-btn's actual rendered height if that
      ever changes. */
   --bottom-nav-height: 64px;
+  /* FAB geometry, shared by the button itself and by the page padding that
+     has to clear it — keeping them in one place is what prevents the
+     button from covering the last card on a page. */
+  --fab-size: 56px;
+  --fab-nav-gap: 18px;   /* visual separation above the bottom nav */
 }
 
 /* ── Light theme (Settings → Appearance) — same tokens, light values.
@@ -113,17 +135,21 @@
 
   --accent-lt: color-mix(in srgb, var(--accent) 10%, transparent);
 
-  --t1: #0a0a0a;
-  --t2: #43454a;
-  --t3: #8a8d93;
-  --t4: #c2c4c9;
+  /* Same AA pass as the dark palette, measured against the #f5f6f7 page:
+     --t3 was #8a8d93 (~3.0:1) and --t4 was #c2c4c9 (~1.7:1). The semantic
+     aliases defined in the dark block point at these same four names, so
+     they follow the theme automatically. */
+  --t1: #0a0a0a;   /* ~19.3:1 */
+  --t2: #43454a;   /*  ~8.9:1 */
+  --t3: #6b6e75;   /*  ~4.9:1 */
+  --t4: #8a8d93;   /*  ~3.0:1 — large text / decorative only */
 
   --header-bg: rgba(255,255,255,.92);
   --navbar-bg: rgba(255,255,255,.96);
 
   --chart-grid: #e2e4e8;
-  --chart-axis: #8a8d93;
-  --chart-zero: #c2c4c9;
+  --chart-axis: #6b6e75;
+  --chart-zero: #b0b3b9;
 
   --wash-1: rgba(0,0,0,.02);
   --wash-2: rgba(0,0,0,.04);
@@ -160,14 +186,17 @@ html{-webkit-text-size-adjust:100%}
 }
 .header-inner{
   max-width:1040px;margin:0 auto;padding:0 28px;
-  height:50px;display:flex;align-items:center;justify-content:space-between;gap:24px;
+  /* Tightened from 50/44. The bar carries a dot, a wordmark, and a theme
+     toggle — 44px still clears the 44px iOS touch-target minimum while
+     giving the first screenful of actual financial content more room. */
+  height:44px;display:flex;align-items:center;justify-content:space-between;gap:24px;
   transition:height .18s ease;
 }
 /* Collapsing header — a small compact state past a short scroll threshold.
    Deliberately subtle (6px of height, not a hide/reveal) so it never reads
    as a jump or flicker; the sticky bar was already minimal (50px), so this
    is a refinement, not a rescue from an oversized header. */
-.header-scrolled .header-inner{height:44px}
+.header-scrolled .header-inner{height:38px}
 .header-scrolled{box-shadow:0 1px 0 rgba(0,0,0,.3)}
 .logo{
   font-size:.875rem;font-weight:700;letter-spacing:-.03em;color:var(--t1);
@@ -528,9 +557,15 @@ html{-webkit-text-size-adjust:100%}
     padding-top:20px;
     padding-left:max(18px,env(safe-area-inset-left));
     padding-right:max(18px,env(safe-area-inset-right));
-    /* Nav bar height + a little breathing room + safe area inset, so the
-       last item on every page can scroll fully clear of the bar. */
-    padding-bottom:calc(var(--bottom-nav-height) + 16px + env(safe-area-inset-bottom));
+    /* Must clear the FAB, not just the nav bar. The FAB sits
+       (nav + gap) off the bottom and is itself --fab-size tall, so
+       anything padded only to the nav height scrolls underneath it and
+       the last card on the page ends up behind the button. Derived from
+       the same variables the FAB uses so the two can't drift apart. */
+    padding-bottom:calc(
+      var(--bottom-nav-height) + var(--fab-nav-gap) + var(--fab-size) + 16px
+      + env(safe-area-inset-bottom)
+    );
   }
   .g3{grid-template-columns:repeat(2,minmax(0,1fr))}
   .g2{grid-template-columns:minmax(0,1fr)}
@@ -737,7 +772,7 @@ html{-webkit-text-size-adjust:100%}
 .viz-wrap{display:flex;flex-direction:column;gap:10px;min-width:0}
 .viz-svg-box{position:relative;width:100%;min-width:0}
 .viz-svg{width:100%;height:190px;display:block;overflow:visible}
-.viz-axis-txt{fill:var(--t3);font-size:11px;font-variant-numeric:tabular-nums}
+.viz-axis-txt{fill:var(--chart-axis);font-size:11.5px;font-variant-numeric:tabular-nums}
 .viz-empty{
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
   padding:30px 16px;text-align:center;background:var(--s1);
@@ -756,7 +791,7 @@ html{-webkit-text-size-adjust:100%}
 .viz-legend-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .viz-swatch{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
 .viz-legend-label{font-size:.7rem;color:var(--t2)}
-.viz-legend-val{font-size:.7rem;color:var(--t3);font-variant-numeric:tabular-nums}
+.viz-legend-val{font-size:.7rem;color:var(--t2);font-variant-numeric:tabular-nums}
 
 /* ── Tooltip ── */
 .viz-tip{
@@ -915,7 +950,10 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
   background:none;border:0;border-radius:99px;padding:5px 12px;
   font-size:.68rem;font-weight:600;color:var(--t3);cursor:pointer;font-family:inherit;white-space:nowrap;
 }
-.seg button.on{background:var(--s3);color:var(--t1)}
+/* The active range was a faint surface tint on a dark surface — barely
+   distinguishable at a glance. Accent fill makes the current selection
+   unambiguous without adding a new colour to the palette. */
+.seg button.on{background:var(--accent);color:#000;font-weight:700}
 .seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
 /* ── Toggle rows (Settings → Notifications) ── */
@@ -1016,10 +1054,19 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
    ACCOUNTS + ADD TRANSACTION (v2 redesign)
    ══════════════════════════════════════════════════════════════════ */
 
-/* ── Floating add button — the persistent entry point to Add Transaction ── */
+/* ── Floating add button — the persistent entry point to Add Transaction ──
+   Position is DERIVED from the nav height, the FAB's own size, and the
+   safe-area inset rather than hardcoded per-breakpoint offsets, so it
+   lands correctly on any iPhone (Home Indicator or not) and in both
+   standalone PWA and Safari. Page bottom padding below is derived from the
+   same variables, which is what actually keeps content from scrolling
+   underneath it. */
 .fab{
-  position:fixed;right:24px;bottom:calc(28px + env(safe-area-inset-bottom));z-index:150;
-  width:56px;height:56px;border-radius:50%;
+  position:fixed;
+  right:max(24px, env(safe-area-inset-right));
+  bottom:calc(var(--bottom-nav-height) + var(--fab-nav-gap) + env(safe-area-inset-bottom));
+  z-index:150;
+  width:var(--fab-size);height:var(--fab-size);border-radius:50%;
   background:var(--accent);color:#000;border:none;
   display:flex;align-items:center;justify-content:center;
   box-shadow:0 10px 28px color-mix(in srgb, var(--accent) 35%, transparent),0 2px 8px rgba(0,0,0,.5);
@@ -1032,7 +1079,7 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
    it from riding over a row the user is trying to read/tap mid-scroll. */
 .fab-minimized{transform:scale(.72);opacity:.55}
 @media(prefers-reduced-motion:reduce){ .fab{transition:none} }
-@media(max-width:700px){ .fab{ right:18px; bottom:calc(80px + env(safe-area-inset-bottom)); } }
+@media(max-width:700px){ .fab{ right:max(18px, env(safe-area-inset-right)); } }
 
 /* ── Account list ── */
 .acct-list{display:flex;flex-direction:column;gap:10px}
@@ -1325,20 +1372,32 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .swipe-del:hover{background:#e04600}
 
 /* ── Dashboard Quick Actions ── */
-.qa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(76px,1fr));gap:10px}
+/* Fixed 3 columns so six actions always form a tidy 3x2 block. auto-fit
+   previously produced a ragged 4+2 on most iPhone widths and ate more of
+   the first viewport than navigation shortcuts deserve. */
+.qa-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media(min-width:701px){ .qa-grid{grid-template-columns:repeat(6,minmax(0,1fr))} }
 .qa-btn{
-  display:flex;flex-direction:column;align-items:center;gap:8px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
   background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
-  padding:14px 8px;cursor:pointer;font-family:inherit;color:var(--t2);
+  /* 10px padding + 34px icon + 6px gap + label keeps the whole tile a
+     comfortable ~76px tall — still well past the 44px touch minimum, but
+     roughly a third shorter than the old 14px/40px version. */
+  padding:10px 6px;cursor:pointer;font-family:inherit;color:var(--t2);
+  min-height:44px;
 }
 .qa-btn:hover{background:var(--s2);border-color:var(--border2)}
-.qa-icon{width:40px;height:40px;border-radius:12px;background:var(--accent-lt);display:flex;align-items:center;justify-content:center}
+.qa-icon{width:34px;height:34px;border-radius:10px;background:var(--accent-lt);display:flex;align-items:center;justify-content:center}
 .qa-label{font-size:.68rem;font-weight:600;color:var(--t2);text-align:center}
 
 /* ── Quick Add (long-press the FAB) ── */
 .quick-menu-overlay{position:fixed;inset:0;z-index:149;background:transparent}
 .quick-menu{
-  position:fixed;right:24px;bottom:calc(28px + 56px + 14px + env(safe-area-inset-bottom));z-index:150;
+  /* Stacks directly above the FAB, off the same derived geometry. */
+  position:fixed;
+  right:max(24px, env(safe-area-inset-right));
+  bottom:calc(var(--bottom-nav-height) + var(--fab-nav-gap) + var(--fab-size) + 14px + env(safe-area-inset-bottom));
+  z-index:150;
   background:var(--s1);border:1px solid var(--border2);border-radius:var(--r);
   box-shadow:0 12px 40px rgba(0,0,0,.5);padding:8px;min-width:216px;
   animation:modal-pop .15s cubic-bezier(.2,.8,.2,1);
@@ -1350,7 +1409,7 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 }
 .quick-menu-item:hover{background:var(--s2)}
 .quick-menu-icon{width:30px;height:30px;border-radius:9px;background:var(--s3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-@media(max-width:700px){ .quick-menu{ right:18px; bottom:calc(80px + 56px + 14px + env(safe-area-inset-bottom)); } }
+@media(max-width:700px){ .quick-menu{ right:max(18px, env(safe-area-inset-right)); } }
 
 /* ── Monthly Review ── */
 .grade-badge{
@@ -3676,6 +3735,17 @@ function NavIcon({ name, active }) {
 // ══════════════════════════════════════════════════════════════════════
 const money0 = n => currency(safeNum(n));
 const money2 = n => currency(safeNum(n), 2);
+// Forecast/projection figures. A number derived from compounding assumptions
+// years out is not accurate to the cent, and printing "$19,044.84" claims a
+// precision the model doesn't have. Whole dollars under $100k, one decimal in
+// thousands above that. Actual balances keep their cents via money2/currency.
+function moneyForecast(n) {
+  const v = safeNum(n);
+  const abs = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 100000) return `${sign}$${(abs/1000).toFixed(1)}K`;
+  return `${sign}$${Math.round(abs).toLocaleString('en-US')}`;
+}
 
 function VizEmpty({ message, hint }) {
   return (
@@ -4064,7 +4134,7 @@ function ProjectedChart({ settings }) {
         {/* Final value label — above the last dot */}
         <text x={fx} y={fy - 12} textAnchor="end"
           style={{fill:'var(--accent)'}} fontSize="14" fontWeight="700" fontFamily="Inter,system-ui,sans-serif">
-          {currency(finalNW)}
+          {moneyForecast(finalNW)}
         </text>
       </svg>
 
@@ -4318,7 +4388,10 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
               <span style={{color:'var(--t2)'}}>{r.label}</span>
               <span style={{color:'var(--t1)',fontWeight:600}}>{currency(r.bal)} / {currency(r.goal)}</span>
             </div>
-            <div className="track"><div className="fill" style={{width:`${r.pct}%`,background:r.color}}/></div>
+            <div className="track" role="progressbar" aria-label={`${r.label} progress`}
+              aria-valuenow={round2(r.bal)} aria-valuemin={0} aria-valuemax={round2(r.goal)}>
+              <div className="fill" style={{width:`${r.pct}%`,background:r.color}}/>
+            </div>
           </div>
         ))}
       </div>
@@ -4409,23 +4482,23 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
         <div className="ins-cards" style={{marginBottom:16}}>
           <div className="ins-card">
             <span className="ins-card-lbl">Projected Checking</span>
-            <span className="ins-card-val" style={{color:endChecking<0?'var(--red)':'var(--t1)'}}>{currency(endChecking)}</span>
+            <span className="ins-card-val" style={{color:endChecking<0?'var(--red)':'var(--t1)'}}>{moneyForecast(endChecking)}</span>
             <span className="ins-card-sub">in {days} days</span>
           </div>
           <div className="ins-card">
             <span className="ins-card-lbl">Projected Credit Card Balance</span>
-            <span className="ins-card-val" style={{color:endCredit>0?'var(--red)':'var(--t1)'}}>{currency(endCredit)}</span>
+            <span className="ins-card-val" style={{color:endCredit>0?'var(--red)':'var(--t1)'}}>{moneyForecast(endCredit)}</span>
             <span className="ins-card-sub">in {days} days</span>
           </div>
           <div className="ins-card">
             <span className="ins-card-lbl">Projected Savings</span>
-            <span className="ins-card-val" style={{color:'var(--accent)'}}>{currency(endSavings)}</span>
+            <span className="ins-card-val" style={{color:'var(--accent)'}}>{moneyForecast(endSavings)}</span>
             <span className="ins-card-sub">in {days} days</span>
           </div>
         </div>
         {events.length === 0
           ? <VizEmpty message="No upcoming bills, paychecks, or recurring transactions to project." hint="Add a bill or recurring transaction to see a forecast."/>
-          : <LineTrendChart labels={series.labels} formatY={v=>currency(v)}
+          : <LineTrendChart labels={series.labels} formatY={moneyForecast}
               series={[
                 { key:'checking', label:'Checking',    color:VIZ_SERIES[0], points:series.checking },
                 { key:'credit',   label:'Credit Card',  color:'#FF5000',     points:series.credit   },
