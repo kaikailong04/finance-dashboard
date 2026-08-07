@@ -31,9 +31,20 @@
   const safeNum = n => (typeof n === 'number' && isFinite(n)) ? n : 0;
   const round2  = n => Math.round(((+n || 0) + Number.EPSILON) * 100) / 100;
 
-  // The 9-value classification the Phase 1 audit's PRD asked for.
+  // The 9-value classification the Phase 1 audit's PRD asked for, PLUS
+  // 'paycheck' — a kind this app already had, already wrote (Dashboard's
+  // Log Paycheck flow), and already read in four places (paychecksThisMonth
+  // count driving "Log Paycheck N of 2", ytdEmployerMatch's annual-cap
+  // math, and two transaction-list display spots) BEFORE this file existed.
+  // Omitting it here was a real bug in the first version of this file: the
+  // migration below didn't recognize 'paycheck' as already-valid, so it
+  // silently reclassified every existing paycheck transaction to plain
+  // 'income' — which would have broken paycheck-count and employer-match
+  // tracking for any user who loaded the app after that shipped. See the
+  // repair pass in migrateTransactionKinds() below, which corrects that.
   const TX_KINDS = [
     'income',
+    'paycheck',
     'expense',
     'transfer',
     'savingsContribution',
@@ -63,6 +74,15 @@
     return m;
   }
 
+  // Structural check, not a keyword guess: the Dashboard's Log Paycheck
+  // flow is the only place that ever sets employee401k/employer401k or
+  // allocations on a transaction, so their presence reliably identifies a
+  // paycheck regardless of what `kind` (if any) the row currently carries.
+  function looksLikePaycheck(tx) {
+    if (!tx || tx.type !== 'income') return false;
+    return tx.employee401k != null || tx.employer401k != null || !!tx.allocations;
+  }
+
   // Classifies a transaction into the richer `kind` taxonomy from its
   // existing `type` + category + (optional) account context. Idempotent —
   // if a transaction already carries a valid `kind` (set at creation time,
@@ -78,7 +98,7 @@
       if (to && to.type === 'credit') return 'creditCardPayment';
       return 'transfer';
     }
-    if (tx.type === 'income') return 'income';
+    if (tx.type === 'income') return looksLikePaycheck(tx) ? 'paycheck' : 'income';
     // type === 'expense' from here down.
     if (looksLikeRefund(tx)) return 'refund';
     if (tx.category === 'hysa') return 'savingsContribution';
@@ -177,10 +197,26 @@
   // pure computation) and never re-derives or overwrites a value that
   // was already set, whether by an earlier run of this same migration or
   // by a user action.
+  //
+  // Also carries a narrow, one-time REPAIR: the very first version of
+  // this file didn't include 'paycheck' in TX_KINDS, so on any device
+  // that already ran it, a real paycheck transaction (kind:'paycheck',
+  // set by the Dashboard's Log Paycheck flow, predating this file) would
+  // have been wrongly reclassified to plain 'income' — silently breaking
+  // "Log Paycheck N of 2" counting and the employer-match annual-cap
+  // math, both of which filter specifically on kind==='paycheck'. This
+  // repair is safe to leave in permanently: looksLikePaycheck() is a
+  // structural check (employee401k/employer401k/allocations), not a
+  // one-time flag, so it only ever fixes rows that are actually
+  // paychecks and never touches anything else.
   function migrateTransactionKinds(transactions, accounts) {
     const byId = accountsById(accounts);
     let changed = false;
     const next = (transactions || []).map(t => {
+      if (looksLikePaycheck(t) && t.kind !== 'paycheck') {
+        changed = true;
+        return Object.assign({}, t, { kind: 'paycheck' });
+      }
       if (t.kind && TX_KINDS.indexOf(t.kind) !== -1) return t;
       changed = true;
       return Object.assign({}, t, { kind: classifyTransaction(t, byId) });
@@ -205,6 +241,7 @@
     monthKeyOf,
     accountsById,
     looksLikeRefund,
+    looksLikePaycheck,
     safeNum,
     round2,
   };

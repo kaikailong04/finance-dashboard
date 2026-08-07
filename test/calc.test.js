@@ -158,3 +158,47 @@ test('migrateTransactionKinds: never mutates the input array or its rows in plac
   calc.migrateTransactionKinds(legacy, accounts);
   assert.equal(JSON.stringify(legacy), before);
 });
+
+// ── Regression: 'paycheck' kind (predates this file) ─────────────────
+// The Dashboard's Log Paycheck flow has always stamped kind:'paycheck'
+// on income transactions, and four separate pieces of logic depend on
+// that exact string: paychecksThisMonth's "Log Paycheck N of 2" count,
+// ytdEmployerMatch's annual-cap math, and two transaction-list display
+// spots. The very first version of this file omitted 'paycheck' from
+// TX_KINDS, so its migration silently reclassified every existing
+// paycheck to plain 'income' — these tests pin the fix so it can't
+// regress again.
+test('classifyTransaction: an income transaction with 401(k)/allocations data → paycheck, not plain income', () => {
+  const tx = { type: 'income', date: d(1), amount: 1713, employee401k: 138.48, employer401k: 69.24, allocations: { hysa: 900 } };
+  assert.equal(calc.classifyTransaction(tx, calc.accountsById(accounts)), 'paycheck');
+});
+
+test('classifyTransaction: a plain manually-entered income row stays "income", not "paycheck"', () => {
+  const tx = { type: 'income', date: d(1), amount: 200, description: 'Freelance gig' };
+  assert.equal(calc.classifyTransaction(tx, calc.accountsById(accounts)), 'income');
+});
+
+test('migrateTransactionKinds: preserves an existing kind:"paycheck" row untouched', () => {
+  const paycheck = { type: 'income', kind: 'paycheck', date: d(1), amount: 1713, employee401k: 138.48, employer401k: 69.24 };
+  const { transactions: migrated, changed } = calc.migrateTransactionKinds([paycheck], accounts);
+  assert.equal(changed, false);
+  assert.equal(migrated[0].kind, 'paycheck');
+});
+
+test('migrateTransactionKinds: REPAIRS a paycheck that was wrongly reclassified to kind:"income"', () => {
+  // Simulates a device that already ran the buggy first version of this
+  // migration: a real paycheck (has employee401k/allocations) whose kind
+  // got overwritten to 'income'.
+  const corrupted = { type: 'income', kind: 'income', date: d(1), amount: 1713, employee401k: 138.48, employer401k: 69.24, allocations: { hysa: 900 } };
+  const { transactions: repaired, changed } = calc.migrateTransactionKinds([corrupted], accounts);
+  assert.equal(changed, true);
+  assert.equal(repaired[0].kind, 'paycheck');
+});
+
+test('migrateTransactionKinds: repair is idempotent — a second pass over already-repaired data changes nothing', () => {
+  const corrupted = { type: 'income', kind: 'income', date: d(1), amount: 1713, employee401k: 138.48, allocations: { hysa: 900 } };
+  const first  = calc.migrateTransactionKinds([corrupted], accounts);
+  const second = calc.migrateTransactionKinds(first.transactions, accounts);
+  assert.equal(second.changed, false);
+  assert.deepEqual(second.transactions, first.transactions);
+});
