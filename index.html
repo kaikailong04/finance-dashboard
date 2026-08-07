@@ -2298,11 +2298,25 @@ function getBudgetVsActual(transactions, budgets) {
 // One composite 0-100 read of "how's this month going", combining the same
 // numbers the rest of the app already tracks — budget adherence, savings
 // rate, the worst credit utilization across any card, and overdue bills.
-// Never a black box: every point lost here traces to a specific, visible
-// number elsewhere in the app.
-function financialHealthScore({ budgetPctUsed, savingsRate, maxUtilization, overdueBillsCount }) {
+// Never a black box: healthReasons() below traces every point lost here to
+// a specific, visible number elsewhere in the app.
+//
+// `dayProgress` (0-1, elapsed days / days in month) makes budget adherence
+// PACE-aware rather than a flat end-of-month percentage — without it, a
+// score computed on the 3rd of the month sees "12% of budget used" and
+// reports a flawless 100 even if that 12% was blown through in the first
+// 3 days (a pace that will land 10x over budget by month-end); it also
+// meant a genuinely bad pace never dinged the score until the total
+// crossed 90-100% absolute, by which point the month was already lost.
+// Omitting dayProgress (or passing a full month) falls back to the
+// original flat-percentage behavior.
+function financialHealthScore({ budgetPctUsed, savingsRate, maxUtilization, overdueBillsCount, dayProgress }) {
   let score = 100;
+  const dp = (typeof dayProgress === 'number' && dayProgress > 0) ? Math.min(dayProgress, 1) : 1;
+  const expectedPct = dp * 100;
+  const paceOver = budgetPctUsed - expectedPct;
   if (budgetPctUsed > 100) score -= Math.min((budgetPctUsed - 100) * 0.7, 35);
+  else if (paceOver > 15) score -= Math.min((paceOver - 15) * 0.5, 20);
   else if (budgetPctUsed > 90) score -= 6;
   if (savingsRate < 10) score -= Math.min((10 - savingsRate) * 1.5, 20);
   else if (savingsRate >= 20) score += 5;
@@ -2310,11 +2324,35 @@ function financialHealthScore({ budgetPctUsed, savingsRate, maxUtilization, over
   score -= Math.min((overdueBillsCount||0) * 8, 24);
   return Math.max(0, Math.min(100, Math.round(score)));
 }
+// Plain-language reasons behind financialHealthScore's number above — the
+// same inputs, read back out as sentences, so the score is never a black
+// box (PRD: "The score should explain why it changed").
+function healthReasons({ budgetPctUsed, savingsRate, maxUtilization, overdueBillsCount, dayProgress }) {
+  const reasons = [];
+  const dp = (typeof dayProgress === 'number' && dayProgress > 0) ? Math.min(dayProgress, 1) : 1;
+  const expectedPct = dp * 100;
+  const paceOver = budgetPctUsed - expectedPct;
+  if (budgetPctUsed > 100)
+    reasons.push(`${(budgetPctUsed-100).toFixed(0)}% over your total budget this month.`);
+  else if (paceOver > 15)
+    reasons.push(`Spending is ahead of pace — ${budgetPctUsed.toFixed(0)}% of budget used with only ${expectedPct.toFixed(0)}% of the month gone.`);
+  else if (budgetPctUsed > 90)
+    reasons.push(`Budget is nearly used up (${budgetPctUsed.toFixed(0)}%).`);
+  else if (dp < 1 && budgetPctUsed > 0)
+    reasons.push(`Spending is on pace — ${budgetPctUsed.toFixed(0)}% of budget used, ${expectedPct.toFixed(0)}% of the month elapsed.`);
+  if (savingsRate < 10) reasons.push(`Savings rate is low (${savingsRate.toFixed(0)}%).`);
+  else if (savingsRate >= 20) reasons.push(`Savings rate is strong (${savingsRate.toFixed(0)}%).`);
+  if (maxUtilization > 30) reasons.push(`A credit card is elevated at ${maxUtilization.toFixed(0)}% utilization.`);
+  if (overdueBillsCount > 0) reasons.push(`${overdueBillsCount} bill${overdueBillsCount===1?'':'s'} overdue.`);
+  else reasons.push('No bills are overdue.');
+  return reasons.slice(0, 4);
+}
 function healthLabel(score) {
   if (score >= 90) return { label:'Excellent',       color:'#00C805' };
-  if (score >= 75) return { label:'Good',            color:'#00C805' };
-  if (score >= 60) return { label:'Fair',             color:'#F5A623' };
-  return                  { label:'Needs Attention',  color:'#FF5000' };
+  if (score >= 80) return { label:'On Track',        color:'#00C805' };
+  if (score >= 70) return { label:'Fair',             color:'#F5A623' };
+  if (score >= 60) return { label:'Needs Attention',  color:'#f97316' };
+  return                  { label:'At Risk',          color:'#FF5000' };
 }
 
 // ── Monthly Review (Priority 9) ─────────────────────────────────────────
@@ -3983,14 +4021,26 @@ function SavingsGoalsMini({ settings, goals, goTo }) {
 // Combines a budget read, the top spending category, and the worst credit
 // utilization into 2-3 sentences — the same never-shaming, plain-language
 // style as the Credit Card Dashboard's insights.
-function DashboardAIInsights({ settings, accounts, goals, netWorth, byCategory, totalSpent, totalBudgeted }) {
+function DashboardAIInsights({ settings, accounts, goals, netWorth, byCategory, totalSpent, totalBudgeted, dayProgress }) {
   const ctx = { settings, goals, netWorth };
   const lines = [];
   if (totalBudgeted > 0) {
     const usedPct = safePct(totalSpent, totalBudgeted);
-    lines.push(usedPct > 100
-      ? `You're ${currency(totalSpent-totalBudgeted)} over your total budget this month.`
-      : `You've used ${usedPct.toFixed(0)}% of this month's budget.`);
+    const dp = (typeof dayProgress === 'number' && dayProgress > 0) ? Math.min(dayProgress, 1) : 1;
+    if (usedPct > 100) {
+      lines.push(`You're ${currency(totalSpent-totalBudgeted)} over your total budget this month.`);
+    } else if (dp < 1 && dp > 0.03) {
+      // Predictive, pace-based read (PRD §8) rather than a flat percentage:
+      // project the CURRENT daily burn rate out across the rest of the
+      // month and say what it implies, instead of just restating "X% used".
+      const projected = totalSpent / dp;
+      const overBy = round2(projected - totalBudgeted);
+      lines.push(overBy > 0
+        ? `You've used ${usedPct.toFixed(0)}% of this month's budget with ${(100-dp*100).toFixed(0)}% of the month remaining. At your current pace, you may exceed budget by ${currency(overBy)}.`
+        : `You've used ${usedPct.toFixed(0)}% of this month's budget with ${(100-dp*100).toFixed(0)}% of the month remaining — on pace to stay within budget.`);
+    } else {
+      lines.push(`You've used ${usedPct.toFixed(0)}% of this month's budget.`);
+    }
   }
   const topCat = Object.entries(byCategory||{}).filter(([k,v]) => k!=='__401k__' && v>0).sort((a,b) => b[1]-a[1])[0];
   if (topCat) lines.push(`${catLabel(topCat[0])} is your top spending category this month at ${currency(topCat[1])}.`);
@@ -4195,6 +4245,30 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
     };
   }, [transactions, goals, monthStr, totalBudgeted, now.getFullYear(), now.getMonth(), now.getDate(), netWorth, accounts, settings]);
 
+  // ── Financial Health score (PRD §8) — the same composite score, label,
+  // and "why" reasons Spending Insights computes, surfaced here too since
+  // Home is where a financial-health headline actually belongs. Pace-aware
+  // via dayProgress, so it can't read as a false "100" just because it's
+  // early in the month and the absolute totals still look small.
+  const acctCtxForHealth = { settings, goals, netWorth };
+  const daysInMonth  = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  const dayProgress  = now.getDate() / daysInMonth;
+  const budgetPctUsedForHealth = totalBudgeted > 0 ? safePct(health.spent, totalBudgeted) : 0;
+  const maxUtilizationForHealth = (accounts||[]).filter(a=>a.type==='credit' && !a.archived).reduce((max,a) => {
+    const card = a.card || defaultCardFields();
+    return Math.max(max, creditUtilization(accountBalance(a, acctCtxForHealth), card.creditLimit));
+  }, 0);
+  const overdueBillsCountForHealth = useMemo(() => {
+    const billsCtx = { accounts, settings, goals, netWorth, transactions };
+    const ccOverdue   = creditCardBills(accounts, billsCtx).filter(cc => !cc.paid && billStatus({recurring:true,dueDay:cc.dueDay})==='overdue').length;
+    const userOverdue = (bills||[]).filter(b => billStatus(b)==='overdue').length;
+    return ccOverdue + userOverdue;
+  }, [accounts, bills, settings, goals, netWorth, transactions]);
+  const healthScoreInputs = { budgetPctUsed: budgetPctUsedForHealth, savingsRate, maxUtilization: maxUtilizationForHealth, overdueBillsCount: overdueBillsCountForHealth, dayProgress };
+  const healthScore = financialHealthScore(healthScoreInputs);
+  const healthInfo   = healthLabel(healthScore);
+  const healthWhy    = useMemo(() => healthReasons(healthScoreInputs), [budgetPctUsedForHealth, savingsRate, maxUtilizationForHealth, overdueBillsCountForHealth, dayProgress]);
+
   // Paycheck breakdown — built around the actual net paycheck. The 401(k) rows
   // are informational (already withheld); they are NOT deducted from take-home.
   const empMonthly  = round2(empContrib  * perMonth);
@@ -4361,6 +4435,15 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
           again), and the employer match is reported separately from cash. */}
       <div>
         <div className="section-head">Financial Health</div>
+        <div className="card" style={{marginBottom:12,display:'flex',alignItems:'center',gap:16}}>
+          <div className="grade-badge" style={{width:56,height:56,fontSize:'1.3rem',borderColor:healthInfo.color,color:healthInfo.color,flexShrink:0}}>
+            {healthScore}
+          </div>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:'.95rem',fontWeight:700,color:healthInfo.color}}>{healthInfo.label}</div>
+            <div style={{fontSize:'.76rem',color:'var(--t3)',marginTop:2,lineHeight:1.5}}>{healthWhy.join(' · ')}</div>
+          </div>
+        </div>
         <div className="ins-cards">
           <button type="button" className="ins-card" onClick={()=>goTo&&goTo('insights')}>
             <span className="ins-card-lbl">Spent This Month</span>
@@ -4515,7 +4598,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
       )}
 
       <DashboardAIInsights settings={settings} accounts={accounts} goals={goals} netWorth={netWorth}
-        byCategory={byCategory} totalSpent={totalSpent} totalBudgeted={totalBudgeted}/>
+        byCategory={byCategory} totalSpent={totalSpent} totalBudgeted={totalBudgeted} dayProgress={dayProgress}/>
 
       {/* Paycheck confirmation modal */}
       {payOpen && (
@@ -5913,8 +5996,11 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
     const userOverdue = (bills||[]).filter(b => billStatus(b)==='overdue').length;
     return ccOverdue + userOverdue;
   }, [accounts, bills, settings, goals, netWorth, transactions]);
-  const healthScore = financialHealthScore({ budgetPctUsed, savingsRate, maxUtilization, overdueBillsCount });
-  const healthInfo   = healthLabel(healthScore);
+  const dayProgress   = daysElapsed / Math.max(daysIn, 1);
+  const healthScore   = financialHealthScore({ budgetPctUsed, savingsRate, maxUtilization, overdueBillsCount, dayProgress });
+  const healthInfo    = healthLabel(healthScore);
+  const healthWhyList = useMemo(() => healthReasons({ budgetPctUsed, savingsRate, maxUtilization, overdueBillsCount, dayProgress }),
+    [budgetPctUsed, savingsRate, maxUtilization, overdueBillsCount, dayProgress]);
 
   const recommendations = useMemo(() => {
     const out = [];
@@ -6026,7 +6112,7 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
           <div className="ins-card">
             <span className="ins-card-lbl">Financial Health</span>
             <span className="ins-card-val" style={{color:healthInfo.color}}>{healthScore} · {healthInfo.label}</span>
-            <span className="ins-card-sub">budget, savings rate, utilization &amp; bills</span>
+            <span className="ins-card-sub">{healthWhyList[0]}</span>
           </div>
           <div className="ins-card">
             <span className="ins-card-lbl">Avg Spend / Day</span>
@@ -6556,19 +6642,29 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
 // ── Commission ─────────────────────────────────────────────────────────
 function Commission({ settings, commissions, setCommissions, setGoals }) {
   const [showForm,setShowForm]=useState(false);
-  const [form,setForm]=useState({date:new Date().toISOString().split('T')[0],amount:'',note:''});
+  const [form,setForm]=useState({date:new Date().toISOString().split('T')[0],amount:'',taxes:'',note:''});
   const hysaPct=settings.commissionHYSAPct/100;
   const personalPct=settings.commissionPersonalPct/100;
-  const preview=form.amount&&!isNaN(parseFloat(form.amount))?{hysa:parseFloat(form.amount)*hysaPct,personal:parseFloat(form.amount)*personalPct}:null;
+  // Estimated taxes are optional and withheld BEFORE the split — the HYSA/
+  // Personal percentages apply to what's actually left to allocate, never
+  // to the pre-tax gross (PRD §11: "Log gross commission, optionally log
+  // estimated taxes, show net commission, show where each dollar is
+  // allocated").
+  const grossAmt = parseFloat(form.amount);
+  const taxAmt   = form.taxes ? Math.max(parseFloat(form.taxes)||0, 0) : 0;
+  const netAmt   = !isNaN(grossAmt) ? Math.max(round2(grossAmt - taxAmt), 0) : null;
+  const preview  = netAmt!=null ? {hysa:netAmt*hysaPct, personal:netAmt*personalPct} : null;
 
   const handleAdd=e=>{
     e.preventDefault();const amt=parseFloat(form.amount);
     if(!amt||isNaN(amt))return;
-    const hysaAdd=+(amt*hysaPct).toFixed(2);
-    setCommissions(prev=>[{id:String(Date.now()),date:form.date,amount:amt,note:form.note.trim(),hysaPortion:hysaAdd,personalPortion:+(amt*personalPct).toFixed(2)},...prev]);
+    const tax = form.taxes ? Math.max(parseFloat(form.taxes)||0, 0) : 0;
+    const net = Math.max(round2(amt-tax), 0);
+    const hysaAdd=+(net*hysaPct).toFixed(2);
+    setCommissions(prev=>[{id:String(Date.now()),date:form.date,amount:amt,estimatedTaxes:tax,netAmount:net,note:form.note.trim(),hysaPortion:hysaAdd,personalPortion:+(net*personalPct).toFixed(2)},...prev]);
     // 60% HYSA split flows into the Emergency Fund balance (syncs Goals + Net Worth)
     setGoals(g=>({...g,hysaBalance:+(((g.hysaBalance||0)+hysaAdd)).toFixed(2)}));
-    setForm(f=>({...f,amount:'',note:''}));setShowForm(false);
+    setForm(f=>({...f,amount:'',taxes:'',note:''}));setShowForm(false);
   };
   const del=id=>{
     if(!window.confirm('Delete this commission?'))return;
@@ -6623,11 +6719,18 @@ function Commission({ settings, commissions, setCommissions, setGoals }) {
             <div className="fgrid">
               <div className="fg"><label>Date</label><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} required /></div>
               <div className="fg"><label>Gross Amount</label><input type="number" step="0.01" min="0.01" placeholder="0.00" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} required /></div>
+              <div className="fg"><label>Estimated Taxes (optional)</label><input type="number" step="0.01" min="0" placeholder="0.00" value={form.taxes} onChange={e=>setForm(f=>({...f,taxes:e.target.value}))} /></div>
+              <div className="fg"><label>Net Commission</label>
+                <div style={{padding:'8px 12px',border:'1px solid var(--border2)',borderRadius:'var(--r-s)',background:'var(--s2)',color:'var(--t1)',fontSize:'.84rem',fontVariantNumeric:'tabular-nums'}}>
+                  {netAmt!=null ? currency(netAmt,2) : '—'}
+                </div>
+              </div>
               <div className="fg fspan"><label>Note</label><input type="text" placeholder="Deal name, pay period…" value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))} /></div>
               {preview&&(
-                <div className="fspan" style={{display:'flex',gap:8}}>
+                <div className="fspan" style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                   <span className="badge badge-green">HYSA +{currency(preview.hysa,2)}</span>
                   <span className="badge badge-blue">Personal +{currency(preview.personal,2)}</span>
+                  {taxAmt>0 && <span className="badge badge-yellow">Taxes −{currency(taxAmt,2)}</span>}
                 </div>
               )}
               <div className="factions">
@@ -6646,6 +6749,11 @@ function Commission({ settings, commissions, setCommissions, setGoals }) {
             <div key={c.id} className="comm-row">
               <div style={{flex:1}}>
                 <div className="comm-amt">{currency(c.amount,2)}</div>
+                {c.estimatedTaxes>0 && (
+                  <div style={{fontSize:'.68rem',color:'var(--t3)',marginTop:1}}>
+                    −{currency(c.estimatedTaxes,2)} est. taxes · {currency(c.netAmount ?? c.amount,2)} net
+                  </div>
+                )}
                 {c.note?<div className="comm-note">{c.note}</div>:<div className="comm-note" style={{color:'var(--t4)'}}>No note</div>}
                 <div className="comm-date">{new Date(c.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
               </div>
@@ -7056,6 +7164,15 @@ function Settings({ settings, setSettings, accounts, setAccounts, goals, setGoal
             <SettingField {...fld('commissionHYSAPct','HYSA %')} prefix="%" />
             <SettingField {...fld('commissionPersonalPct','Personal %')} prefix="%" />
           </div>
+          {/* PRD §16: allocation percentages must total 100% — the two
+              fields above are independent inputs, so nothing else stops
+              them from summing to something else and silently losing (or
+              double-counting) part of every future commission payment. */}
+          {round2(safeNum(local.commissionHYSAPct)+safeNum(local.commissionPersonalPct)) !== 100 && (
+            <div style={{fontSize:'.72rem',color:'var(--red)',marginTop:10}}>
+              HYSA % + Personal % = {round2(safeNum(local.commissionHYSAPct)+safeNum(local.commissionPersonalPct))}% — should total 100% so every commission dollar is accounted for.
+            </div>
+          )}
         </div>
 
         <div className="card">
