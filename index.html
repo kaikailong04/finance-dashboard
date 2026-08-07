@@ -853,6 +853,35 @@ html{-webkit-text-size-adjust:100%}
 }
 .flt-field select:focus,.flt-field input:focus{outline:2px solid var(--accent);outline-offset:-1px}
 
+/* ── Compact filter bar (PRD §12) — search + a Filter button that opens
+   the full field set in a sheet, instead of ~10 fields always expanded
+   inline on a phone screen. ─────────────────────────────────────────── */
+.filter-summary-row{display:flex;gap:8px;align-items:center}
+.filter-btn{
+  position:relative;display:flex;align-items:center;gap:6px;flex-shrink:0;
+  background:var(--s2);border:1px solid var(--border2);border-radius:var(--r-s);
+  color:var(--t1);padding:9px 13px;font-size:.8rem;font-weight:600;font-family:inherit;cursor:pointer;
+}
+.filter-btn:hover{background:var(--s3)}
+.filter-btn-count{
+  background:var(--accent);color:#000;border-radius:99px;
+  min-width:17px;height:17px;padding:0 4px;font-size:.62rem;font-weight:800;
+  display:flex;align-items:center;justify-content:center;
+}
+.filter-chips{display:flex;flex-wrap:wrap;gap:7px}
+.filter-chip{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--accent-lt);border:1px solid rgba(0,200,5,.25);border-radius:99px;
+  color:var(--accent);padding:5px 6px 5px 11px;font-size:.72rem;font-weight:600;font-family:inherit;cursor:pointer;
+}
+.filter-chip:hover{background:rgba(0,200,5,.14)}
+.filter-chip-x{
+  width:16px;height:16px;border-radius:50%;background:rgba(0,200,5,.18);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.filter-clear-all{background:none;border:none;color:var(--t3);font-size:.72rem;font-weight:600;font-family:inherit;cursor:pointer;padding:5px 2px}
+.filter-clear-all:hover{color:var(--t1)}
+
 /* ── Stat cards ── */
 .ins-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(146px,1fr));gap:10px}
 .ins-card{
@@ -1949,6 +1978,28 @@ window.isInternalTransfer         = isInternalTransfer;
 window.isIncomeTransaction        = isIncomeTransaction;
 const categoryOf = t => (t && t.category) || 'uncategorized';
 const accountOf  = t => (t && t.account) || 'Unspecified';
+// One shared read of "what kind of money movement is this row" — label,
+// color, icon, and cash-flow sign — so a transaction list never colors a
+// savings/investment contribution or an internal transfer the same red as
+// a real expense just because money left the account (PRD: "do not color
+// every outgoing transfer as an expense without context"). Falls back to
+// classifying off `type` for any pre-Phase-1 row that predates `kind`.
+function txKindInfo(t) {
+  const kind = (t && t.kind) || (t && t.type==='transfer' ? 'transfer' : t && t.type==='income' ? 'income' : 'expense');
+  switch (kind) {
+    case 'income':
+    case 'paycheck':                return { label:'Income',       color:'var(--accent)', icon:'dollar',     sign:'+' };
+    case 'refund':                  return { label:'Refund',       color:'var(--accent)', icon:'trendUp',    sign:'+' };
+    case 'transfer':                return { label:'Transfer',     color:'var(--blue)',   icon:'swap',       sign:'−' };
+    case 'creditCardPayment':       return { label:'Card Payment', color:'var(--blue)',   icon:'creditCard', sign:'−' };
+    case 'savingsContribution':     return { label:'Savings',      color:'var(--accent)', icon:'piggy',      sign:'−' };
+    case 'investmentContribution':  return { label:'Investment',   color:'var(--purple)', icon:'trendUp',    sign:'−' };
+    case 'creditCardPurchase':
+    case 'fee':
+    case 'expense':
+    default:                        return { label:'Expense',      color:'var(--t1)',     icon:null,         sign:'−' };
+  }
+}
 
 // ── Merchant normalization ────────────────────────────────────────────
 // Groups obvious variants WITHOUT touching t.description — the original is
@@ -4892,6 +4943,15 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
   const monthTxAllForSpend = getFilteredTransactions(transactions, { month: monthStr });
   const catTotalsForSpend  = getCategorySpendingTotals(monthTxAllForSpend);
   const totalSpent = round2(Object.values(catTotalsForSpend).reduce((s,c)=>s+c.total,0));
+  // "Spent" alone was ambiguous about what it did and didn't include — this
+  // page now clearly distinguishes three separate things happening to the
+  // user's money this month, matching what Home/Budget already track.
+  const savedInvestedTotal = round2(monthTxAllForSpend
+    .filter(t => t.kind==='savingsContribution' || t.kind==='investmentContribution')
+    .reduce((s,t) => s+safeNum(t.amount), 0));
+  const incomeTotal = round2(monthTxAllForSpend
+    .filter(isIncomeTransaction)
+    .reduce((s,t) => s+safeNum(t.amount), 0));
   // Phase is based on the MONTH BEING VIEWED, not today — so each month is
   // compared against the right budget. Rent-free = pre-employment + Months 1-3
   // (with Start Date = Jul 1 2026 that is Jun/Jul/Aug/Sep 2026); rest = Month 4-12.
@@ -4960,6 +5020,14 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
     : catBudget;
 
   const totalBudget = Object.values(effectiveCatBudget).reduce((s,v)=>s+v, 0);
+  // The header's "of $X budget" line must compare like with like — totalSpent
+  // never includes HYSA/Roth IRA (they're not spending), so the budget total
+  // it's measured against can't either, or "97% of budget used" would be
+  // comparing a numerator that excludes savings to a denominator that
+  // includes it.
+  const expenseBudgetTotal = round2(Object.entries(effectiveCatBudget)
+    .filter(([cat]) => cat!=='hysa' && cat!=='rothIRA')
+    .reduce((s,[,v])=>s+v, 0));
 
   // Logging a HYSA or Roth IRA transaction here is a real contribution, so it
   // syncs the same goals balance the paycheck flow and Commission tracker
@@ -4999,8 +5067,14 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
   const sorted = [...monthTx].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const monthLabel = new Date(viewMonth.y,viewMonth.m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
 
-  // Categories that have either spending or a budget allocation
-  const activeCats = CATEGORIES.filter(c=>byCategory[c.id]>0||effectiveCatBudget[c.id]>0);
+  // Categories that have either spending or a budget allocation — HYSA and
+  // Roth IRA are excluded here on purpose: they're contribution lines, not
+  // spending, and the Budget page already owns their "contributed/
+  // remaining" progress with the right framing. Showing them again here,
+  // in a list literally headed "By Category" spending, would either
+  // re-introduce the "HYSA is your top spending category" bug or just
+  // duplicate what Budget already shows.
+  const activeCats = CATEGORIES.filter(c=>c.id!=='hysa' && c.id!=='rothIRA' && (byCategory[c.id]>0||effectiveCatBudget[c.id]>0));
 
   return (
     <div className="page">
@@ -5013,20 +5087,33 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
         </div>
       )}
 
-      {/* Hero header */}
+      {/* Hero header — Spent stays primary (this page is about spending),
+          but Saved & Invested and Income sit right beside it so the three
+          are never confused for one number, matching Home/Budget. */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
         <div>
           <div className="eyebrow" style={{marginBottom:8}}>Spent This Month</div>
-          <div className="mega" style={{color:totalSpent>totalBudget&&totalBudget>0?'var(--red)':'var(--t1)'}}>
+          <div className="mega" style={{color:totalSpent>expenseBudgetTotal&&expenseBudgetTotal>0?'var(--red)':'var(--t1)'}}>
             {currency(totalSpent)}
           </div>
           <div style={{fontSize:'.8rem',color:'var(--t3)',marginTop:8,fontVariantNumeric:'tabular-nums'}}>
-            {totalBudget>0 ? `of ${currency(totalBudget)} budget` : 'no budget yet'}
+            {expenseBudgetTotal>0 ? `of ${currency(expenseBudgetTotal)} budget` : 'no budget yet'}
           </div>
         </div>
         <button className="add-btn" onClick={()=>openAddTx(null,null)}>
           <Icon name="plus" size={14} color="#000" strokeWidth={2.5}/>Add
         </button>
+      </div>
+
+      <div className="g2">
+        <div className="stat">
+          <div className="stat-label">Saved &amp; Invested</div>
+          <div className="stat-val" style={{fontSize:'1.2rem',color:'var(--accent)'}}>{currency(savedInvestedTotal)}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-label">Income</div>
+          <div className="stat-val" style={{fontSize:'1.2rem'}}>{currency(incomeTotal)}</div>
+        </div>
       </div>
 
       {/* Month nav */}
@@ -5082,11 +5169,17 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
             ? <p className="empty">No transactions this month.</p>
             : <div className="tx-list">
                 {sorted.map(t=>{
+                  // Every row's icon, amount color, and type label come from
+                  // one shared read of the transaction's kind — a savings or
+                  // investment contribution (or an internal transfer) is
+                  // never colored the same red as a real expense just
+                  // because money left the account (PRD §10).
+                  const info = txKindInfo(t);
                   return (
                     <SwipeableRow key={t.id} onDelete={()=>del(t.id)} deleteLabel={`Delete ${t.description||'transaction'}`}>
                       <div className="tx-row">
-                        {t.type==='transfer'
-                          ? <div className="tx-icon"><Icon name="swap" size={14} color="var(--blue)"/></div>
+                        {info.icon
+                          ? <div className="tx-icon"><Icon name={info.icon} size={14} color={info.color}/></div>
                           : <MerchantLogo description={t.description}/>}
                         <div className="tx-body">
                           <div className="tx-desc">
@@ -5095,14 +5188,15 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
                           </div>
                           <div className="tx-meta">
                             {catLabel(t.category)} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                            {info.label!=='Expense' && <> · <span style={{color:info.color}}>{info.label}</span></>}
                             {t.splitGroupId && ` · split ${t.splitIndex+1}/${t.splitCount}`}
                           </div>
                           {t.tags && t.tags.length > 0 && (
                             <div className="tx-tags">{t.tags.map(tg => <span key={tg} className="tx-tag">#{tg}</span>)}</div>
                           )}
                         </div>
-                        <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
-                          {t.type==='income'?'+':'-'}{currency(t.amount)}
+                        <div className="tx-amt" style={{color:info.color}}>
+                          {info.sign}{currency(t.amount)}
                         </div>
                         <button className="tx-del btn-icon-del" onClick={()=>del(t.id)}>×</button>
                       </div>
@@ -5909,6 +6003,10 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
   const [filters, setFilters]   = useState({ from:'', to:'', category:'all', merchant:'all', account:'all', status:'all', search:'', minAmount:'', maxAmount:'', paymentMethod:'all', type:'all' });
   const [showReview, setShowReview] = useState(false);
   const [showYearReview, setShowYearReview] = useState(false);
+  // Compact filter bar (PRD §12) — the ~10 advanced fields (everything
+  // except Search, which stays inline) live in this sheet instead of an
+  // always-expanded bar; active ones surface as removable chips underneath.
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
   const monthKey = `${cursor.y}-${String(cursor.m+1).padStart(2,'0')}`;
   const setF = (k,v) => setFilters(f => ({ ...f, [k]: v }));
@@ -5917,6 +6015,21 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
     setUseRange(false); setSelDate(null); setDrillCat(null);
     setCursor({ y: today.getFullYear(), m: today.getMonth() });
   };
+  // One chip per non-default advanced filter (Search, Month/Year navigation
+  // and the Period toggle stay outside the sheet as everyday controls, not
+  // "advanced" filters, so they don't get a chip/count of their own).
+  const activeFilterChips = [
+    filters.category!=='all'      && { key:'category',      label:`Category: ${catLabel(filters.category)}`,                clear:()=>setF('category','all') },
+    filters.merchant!=='all'      && { key:'merchant',       label:`Merchant: ${filters.merchant}`,                          clear:()=>setF('merchant','all') },
+    filters.account!=='all'       && { key:'account',        label:`Account: ${filters.account}`,                            clear:()=>setF('account','all') },
+    filters.status!=='all'        && { key:'status',         label:`Status: ${filters.status}`,                              clear:()=>setF('status','all') },
+    filters.type!=='all'          && { key:'type',           label:`Type: ${filters.type}`,                                  clear:()=>setF('type','all') },
+    filters.paymentMethod!=='all' && { key:'paymentMethod',  label:`Payment: ${filters.paymentMethod}`,                      clear:()=>setF('paymentMethod','all') },
+    filters.minAmount!==''        && { key:'minAmount',      label:`Min $${filters.minAmount}`,                              clear:()=>setF('minAmount','') },
+    filters.maxAmount!==''        && { key:'maxAmount',      label:`Max $${filters.maxAmount}`,                              clear:()=>setF('maxAmount','') },
+    useRange && filters.from      && { key:'from',           label:`From ${filters.from}`,                                   clear:()=>setF('from','') },
+    useRange && filters.to        && { key:'to',             label:`To ${filters.to}`,                                       clear:()=>setF('to','') },
+  ].filter(Boolean);
 
   // ── THE filtered set. Everything below derives from this one array. ──
   const activeFilters = useMemo(() => ({
@@ -6246,114 +6359,148 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
         </div>
       </div>
 
-      {/* ── Filters ── */}
+      {/* ── Filters (PRD §12) — search stays inline; everything else lives
+          in a sheet behind a Filter button, not an always-expanded bar. ── */}
       <div className="card">
         <div className="fg" style={{marginBottom:12}}>
           <label htmlFor="f-search">Search</label>
           <input id="f-search" type="text" placeholder="Merchant, category, account, notes…"
             value={filters.search} onChange={e=>setF('search',e.target.value)}/>
         </div>
-        <div className="flt-bar">
-          <div className="flt-field">
-            <label htmlFor="f-period">Period</label>
-            <select id="f-period" value={useRange?'range':'month'} onChange={e=>setUseRange(e.target.value==='range')}>
-              <option value="month">By month</option>
-              <option value="range">Custom range</option>
-            </select>
+        <div className="filter-summary-row">
+          <button type="button" className="filter-btn" onClick={()=>setFilterSheetOpen(true)}>
+            <Icon name="chart" size={14}/> Filter
+            {activeFilterChips.length>0 && <span className="filter-btn-count">{activeFilterChips.length}</span>}
+          </button>
+          <span style={{fontSize:'.76rem',color:'var(--t3)'}}>
+            {useRange ? `${filters.from||'…'} – ${filters.to||'…'}` : new Date(cursor.y,cursor.m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'})}
+          </span>
+        </div>
+        {activeFilterChips.length>0 && (
+          <div className="filter-chips" style={{marginTop:10}}>
+            {activeFilterChips.map(c => (
+              <button key={c.key} type="button" className="filter-chip" onClick={c.clear}>
+                {c.label}
+                <span className="filter-chip-x"><Icon name="x" size={9}/></span>
+              </button>
+            ))}
+            <button type="button" className="filter-clear-all" onClick={resetFilters}>Clear all</button>
           </div>
-          {useRange ? (
-            <>
-              <div className="flt-field">
-                <label htmlFor="f-from">From</label>
-                <input id="f-from" type="date" value={filters.from} onChange={e=>setF('from',e.target.value)}/>
+        )}
+      </div>
+
+      {filterSheetOpen && (
+        <div className="modal-overlay" onClick={e=>{ if(e.target===e.currentTarget) setFilterSheetOpen(false); }}>
+          <div className="modal-card modal-card-lg">
+            <div className="modal-hd">
+              <div className="modal-title">Filters</div>
+              <button className="btn-icon" onClick={()=>setFilterSheetOpen(false)} aria-label="Close"><Icon name="x" size={18}/></button>
+            </div>
+            <div className="modal-body">
+              <div className="flt-bar">
+                <div className="flt-field">
+                  <label htmlFor="f-period">Period</label>
+                  <select id="f-period" value={useRange?'range':'month'} onChange={e=>setUseRange(e.target.value==='range')}>
+                    <option value="month">By month</option>
+                    <option value="range">Custom range</option>
+                  </select>
+                </div>
+                {useRange ? (
+                  <>
+                    <div className="flt-field">
+                      <label htmlFor="f-from">From</label>
+                      <input id="f-from" type="date" value={filters.from} onChange={e=>setF('from',e.target.value)}/>
+                    </div>
+                    <div className="flt-field">
+                      <label htmlFor="f-to">To</label>
+                      <input id="f-to" type="date" value={filters.to} onChange={e=>setF('to',e.target.value)}/>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flt-field">
+                      <label htmlFor="f-month">Month</label>
+                      <select id="f-month" value={cursor.m} onChange={e=>setCursor(c=>({...c,m:+e.target.value}))}>
+                        {MONTH_NAMES.map((n,i) => <option key={n} value={i}>{n}</option>)}
+                      </select>
+                    </div>
+                    <div className="flt-field">
+                      <label htmlFor="f-year">Year</label>
+                      <select id="f-year" value={cursor.y} onChange={e=>setCursor(c=>({...c,y:+e.target.value}))}>
+                        {[...Array(7)].map((_,i) => {
+                          const y = today.getFullYear()-3+i;
+                          return <option key={y} value={y}>{y}</option>;
+                        })}
+                      </select>
+                    </div>
+                  </>
+                )}
+                <div className="flt-field">
+                  <label htmlFor="f-cat">Category</label>
+                  <select id="f-cat" value={filters.category} onChange={e=>setF('category',e.target.value)}>
+                    <option value="all">All categories</option>
+                    {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                    <option value="uncategorized">Uncategorized</option>
+                  </select>
+                </div>
+                <div className="flt-field">
+                  <label htmlFor="f-merch">Merchant</label>
+                  <select id="f-merch" value={filters.merchant} onChange={e=>setF('merchant',e.target.value)}>
+                    <option value="all">All merchants</option>
+                    {allMerchants.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div className="flt-field">
+                  <label htmlFor="f-acct">Account</label>
+                  <select id="f-acct" value={filters.account} onChange={e=>setF('account',e.target.value)}>
+                    <option value="all">All accounts</option>
+                    {allAccounts.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <div className="flt-field">
+                  <label htmlFor="f-status">Status</label>
+                  <select id="f-status" value={filters.status} onChange={e=>setF('status',e.target.value)}>
+                    <option value="all">All</option>
+                    <option value="completed">Completed</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                </div>
+                <div className="flt-field">
+                  <label htmlFor="f-type">Type</label>
+                  <select id="f-type" value={filters.type} onChange={e=>setF('type',e.target.value)}>
+                    <option value="all">All</option>
+                    <option value="expense">Expense</option>
+                    <option value="income">Income</option>
+                    <option value="transfer">Transfer</option>
+                    <option value="recurring">Recurring</option>
+                  </select>
+                </div>
+                <div className="flt-field">
+                  <label htmlFor="f-pm">Payment Method</label>
+                  <select id="f-pm" value={filters.paymentMethod} onChange={e=>setF('paymentMethod',e.target.value)}>
+                    <option value="all">All methods</option>
+                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                    <option value="Transfer">Transfer</option>
+                    <option value="Recurring">Recurring</option>
+                  </select>
+                </div>
+                <div className="flt-field" style={{flex:'1 1 90px'}}>
+                  <label htmlFor="f-min">Min Amount</label>
+                  <input id="f-min" type="number" min="0" step="1" placeholder="$0" value={filters.minAmount} onChange={e=>setF('minAmount',e.target.value)}/>
+                </div>
+                <div className="flt-field" style={{flex:'1 1 90px'}}>
+                  <label htmlFor="f-max">Max Amount</label>
+                  <input id="f-max" type="number" min="0" step="1" placeholder="Any" value={filters.maxAmount} onChange={e=>setF('maxAmount',e.target.value)}/>
+                </div>
               </div>
-              <div className="flt-field">
-                <label htmlFor="f-to">To</label>
-                <input id="f-to" type="date" value={filters.to} onChange={e=>setF('to',e.target.value)}/>
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                <button type="button" className="btn btn-ghost" onClick={resetFilters}>Reset Filters</button>
+                <button type="button" className="btn btn-primary" onClick={()=>setFilterSheetOpen(false)}>Done</button>
               </div>
-            </>
-          ) : (
-            <>
-              <div className="flt-field">
-                <label htmlFor="f-month">Month</label>
-                <select id="f-month" value={cursor.m} onChange={e=>setCursor(c=>({...c,m:+e.target.value}))}>
-                  {MONTH_NAMES.map((n,i) => <option key={n} value={i}>{n}</option>)}
-                </select>
-              </div>
-              <div className="flt-field">
-                <label htmlFor="f-year">Year</label>
-                <select id="f-year" value={cursor.y} onChange={e=>setCursor(c=>({...c,y:+e.target.value}))}>
-                  {[...Array(7)].map((_,i) => {
-                    const y = today.getFullYear()-3+i;
-                    return <option key={y} value={y}>{y}</option>;
-                  })}
-                </select>
-              </div>
-            </>
-          )}
-          <div className="flt-field">
-            <label htmlFor="f-cat">Category</label>
-            <select id="f-cat" value={filters.category} onChange={e=>setF('category',e.target.value)}>
-              <option value="all">All categories</option>
-              {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-              <option value="uncategorized">Uncategorized</option>
-            </select>
-          </div>
-          <div className="flt-field">
-            <label htmlFor="f-merch">Merchant</label>
-            <select id="f-merch" value={filters.merchant} onChange={e=>setF('merchant',e.target.value)}>
-              <option value="all">All merchants</option>
-              {allMerchants.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div className="flt-field">
-            <label htmlFor="f-acct">Account</label>
-            <select id="f-acct" value={filters.account} onChange={e=>setF('account',e.target.value)}>
-              <option value="all">All accounts</option>
-              {allAccounts.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-          <div className="flt-field">
-            <label htmlFor="f-status">Status</label>
-            <select id="f-status" value={filters.status} onChange={e=>setF('status',e.target.value)}>
-              <option value="all">All</option>
-              <option value="completed">Completed</option>
-              <option value="pending">Pending</option>
-            </select>
-          </div>
-          <div className="flt-field">
-            <label htmlFor="f-type">Type</label>
-            <select id="f-type" value={filters.type} onChange={e=>setF('type',e.target.value)}>
-              <option value="all">All</option>
-              <option value="expense">Expense</option>
-              <option value="income">Income</option>
-              <option value="transfer">Transfer</option>
-              <option value="recurring">Recurring</option>
-            </select>
-          </div>
-          <div className="flt-field">
-            <label htmlFor="f-pm">Payment Method</label>
-            <select id="f-pm" value={filters.paymentMethod} onChange={e=>setF('paymentMethod',e.target.value)}>
-              <option value="all">All methods</option>
-              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-              <option value="Transfer">Transfer</option>
-              <option value="Recurring">Recurring</option>
-            </select>
-          </div>
-          <div className="flt-field" style={{flex:'1 1 90px'}}>
-            <label htmlFor="f-min">Min Amount</label>
-            <input id="f-min" type="number" min="0" step="1" placeholder="$0" value={filters.minAmount} onChange={e=>setF('minAmount',e.target.value)}/>
-          </div>
-          <div className="flt-field" style={{flex:'1 1 90px'}}>
-            <label htmlFor="f-max">Max Amount</label>
-            <input id="f-max" type="number" min="0" step="1" placeholder="Any" value={filters.maxAmount} onChange={e=>setF('maxAmount',e.target.value)}/>
-          </div>
-          <div className="flt-field" style={{flex:'0 0 auto'}}>
-            <label aria-hidden="true">&nbsp;</label>
-            <button type="button" className="cal-btn" onClick={resetFilters}>Reset Filters</button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── Summary cards ── */}
       <div className="ins-cards">
