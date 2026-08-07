@@ -4706,37 +4706,80 @@ function Budget({ settings, transactions }) {
   const eb = settings.earlyBudget;
   const lb = settings.laterBudget;
 
-  const earlyRows = [
+  // Split into two clearly separate sections — true expenses vs. saving &
+  // investing — instead of one undifferentiated list. This is a render-only
+  // grouping of the SAME per-category limits Spending/Insights already
+  // read from settings.earlyBudget/laterBudget, so the two never disagree.
+  const earlySpendRows = [
     { label:'Utilities & Fee',   limit:eb.utilitiesAndFee,  cat:'utilities', icon:'zap',     iconBg:'rgba(245,166,35,.1)',  iconClr:'#F5A623'         },
     { label:'Renters Insurance', limit:eb.rentersInsurance, cat:'other',     icon:'shield',  iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
-    { label:'Roth IRA',          limit:eb.rothIRA,          cat:'rothIRA',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
-    { label:'HYSA',              limit:eb.hysa,             cat:'hysa',      icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
     { label:'Groceries',         limit:eb.groceries,        cat:'groceries', icon:'cart',    iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Gas',               limit:eb.gas,              cat:'gas',       icon:'fuel',    iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Travel',            limit:eb.funTravel,        cat:'travel',    icon:'plane',   iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Dining',            limit:eb.outToEat,         cat:'dining',    icon:'fork',    iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Shopping',          limit:eb.shopping,         cat:'shopping',  icon:'bag',     iconBg:'var(--wash-2)',iconClr:'#666'            },
   ];
-  const laterRows = [
+  const earlySaveRows = [
+    { label:'Roth IRA',          limit:eb.rothIRA,          cat:'rothIRA',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
+    { label:'HYSA',              limit:eb.hysa,             cat:'hysa',      icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
+  ];
+  const laterSpendRows = [
     { label:'Rent & Fee',        limit:lb.rentAndFee,       cat:'housing',   icon:'home',    iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
     { label:'Utilities',         limit:lb.utilities,        cat:'utilities', icon:'zap',     iconBg:'rgba(245,166,35,.1)',  iconClr:'#F5A623'         },
     { label:'Renters Insurance', limit:lb.rentersInsurance, cat:'other',     icon:'shield',  iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
-    { label:'Roth IRA',          limit:lb.rothIRA,          cat:'rothIRA',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
-    { label:'HYSA',              limit:lb.hysa,             cat:'hysa',      icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
     { label:'Groceries',         limit:lb.groceries,        cat:'groceries', icon:'cart',    iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Gas',               limit:lb.gas,              cat:'gas',       icon:'fuel',    iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Travel',            limit:lb.funTravel,        cat:'travel',    icon:'plane',   iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Dining',            limit:lb.outToEat,         cat:'dining',    icon:'fork',    iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Shopping',          limit:lb.shopping,         cat:'shopping',  icon:'bag',     iconBg:'var(--wash-2)',iconClr:'#666'            },
   ];
+  const laterSaveRows = [
+    { label:'Roth IRA',          limit:lb.rothIRA,          cat:'rothIRA',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
+    { label:'HYSA',              limit:lb.hysa,             cat:'hysa',      icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
+  ];
 
-  const rows    = sel === 0 ? earlyRows : laterRows;
-  const total   = rows.reduce((s,r)=>s+r.limit, 0);
-  const surplus = monthlyNetIncome(settings) - total;
+  const spendRows = sel === 0 ? earlySpendRows : laterSpendRows;
+  const saveRows  = sel === 0 ? earlySaveRows  : laterSaveRows;
+  const expenseTotal  = spendRows.reduce((s,r)=>s+r.limit, 0);
+  const savingsTotal  = saveRows.reduce((s,r)=>s+r.limit, 0);
+  const total    = expenseTotal + savingsTotal;
+  const takeHome = monthlyNetIncome(settings);
+  const unallocated = round2(takeHome - total);
+  const savingsRateForBudget = takeHome > 0 ? safePct(savingsTotal, takeHome) : 0;
 
   const isEarlyActive = phase.isEarly || phase.isPreEmployment;
   const isLaterActive = phase.isFull;
   const currentlyActive = sel===0 ? isEarlyActive : isLaterActive;
+
+  // One row renderer shared by both sections — `kind` only changes the
+  // wording ("spent"/"left"/"over" for real expenses vs. "contributed"/
+  // "remaining" for saving & investing, which is never framed as "over
+  // budget" since contributing more than planned isn't a problem).
+  const budgetRow = (row, kind) => {
+    const s   = spent[row.cat]||0;
+    const rem = round2(row.limit - s);
+    const over = kind==='spend' && rem < 0;
+    return (
+      <div key={row.label} className="b-row">
+        <div className="b-left">
+          <div className="b-icon" style={{background:row.iconBg}}>
+            <Icon name={row.icon} size={16} color={row.iconClr} strokeWidth={1.7}/>
+          </div>
+          <div>
+            <div className="b-name">{row.label}</div>
+            {s > 0 && (
+              <div style={{fontSize:'.68rem',marginTop:2,color:over?'var(--red)':'var(--t3)',fontVariantNumeric:'tabular-nums'}}>
+                {kind==='spend'
+                  ? <>{currency(s)} spent · {over ? currency(Math.abs(rem))+' over' : currency(rem)+' left'}</>
+                  : <>{currency(s)} contributed · {currency(Math.max(rem,0))} remaining</>}
+              </div>
+            )}
+          </div>
+        </div>
+        <span className="b-amt">{currency(row.limit)}</span>
+      </div>
+    );
+  };
 
   return (
     <div className="page">
@@ -4768,48 +4811,54 @@ function Budget({ settings, transactions }) {
         </button>
       </div>
 
-      {/* Budget rows */}
-      <div className="card-flush">
-        {rows.map(row => {
-          const s   = spent[row.cat]||0;
-          const rem = row.limit - s;
-          const over = rem < 0;
-          return (
-            <div key={row.label} className="b-row">
-              <div className="b-left">
-                <div className="b-icon" style={{background:row.iconBg}}>
-                  <Icon name={row.icon} size={16} color={row.iconClr} strokeWidth={1.7}/>
-                </div>
-                <div>
-                  <div className="b-name">{row.label}</div>
-                  {s > 0 && (
-                    <div style={{fontSize:'.68rem',marginTop:2,color:over?'var(--red)':'var(--t3)',fontVariantNumeric:'tabular-nums'}}>
-                      {currency(s)} spent · {over ? currency(Math.abs(rem))+' over' : currency(rem)+' left'}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <span className="b-amt">{currency(row.limit)}</span>
-            </div>
-          );
-        })}
-
-        {/* Total + surplus footer */}
-        <div className="b-total-row">
-          <div>
-            <div className="b-total-lbl">Monthly Total</div>
-            {surplus >= 0
-              ? <div className="b-surplus">+{currency(surplus)} surplus</div>
-              : <div style={{fontSize:'.78rem',color:'var(--red)',fontWeight:600}}>{currency(Math.abs(surplus))} over budget</div>
-            }
+      {/* Spending — true expenses only */}
+      <div>
+        <div className="section-head" style={{padding:0,marginBottom:10}}>Spending</div>
+        <div className="card-flush">
+          {spendRows.map(row => budgetRow(row, 'spend'))}
+          <div className="b-total-row">
+            <div className="b-total-lbl">Expense Budget</div>
+            <div className="large-num" style={{color:'var(--t1)'}}>{currency(expenseTotal)}</div>
           </div>
+        </div>
+      </div>
+
+      {/* Saving & Investing — contributions, never framed as "spending" */}
+      <div>
+        <div className="section-head" style={{padding:0,marginBottom:10}}>Saving &amp; Investing</div>
+        <div className="card-flush">
+          {saveRows.map(row => budgetRow(row, 'save'))}
+          <div className="b-total-row">
+            <div className="b-total-lbl">Saving &amp; Investing Total</div>
+            <div className="large-num" style={{color:'var(--accent)'}}>{currency(savingsTotal)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Monthly allocation summary — one authoritative total, unambiguous
+          about what "assigned" means (expenses + saving & investing, out of
+          take-home), instead of a bare "Monthly Total" that read like it
+          might mean only expenses. */}
+      <div className="card">
+        <div className="card-label">Monthly Allocation</div>
+        <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',marginBottom:4}}>
           <div className="large-num" style={{color:'var(--t1)'}}>{currency(total)}</div>
+          <div style={{fontSize:'.76rem',color:'var(--t3)'}}>of {currency(takeHome)} take-home</div>
+        </div>
+        {unallocated >= 0
+          ? <div className="b-surplus">{currency(unallocated)} unallocated</div>
+          : <div style={{fontSize:'.78rem',color:'var(--red)',fontWeight:600}}>{currency(Math.abs(unallocated))} over take-home</div>
+        }
+        <div className="g3" style={{marginTop:16}}>
+          <div className="stat"><div className="stat-label">Expenses</div><div className="stat-val" style={{fontSize:'1.1rem'}}>{currency(expenseTotal)}</div></div>
+          <div className="stat"><div className="stat-label">Saving &amp; Investing</div><div className="stat-val" style={{fontSize:'1.1rem',color:'var(--accent)'}}>{currency(savingsTotal)}</div></div>
+          <div className="stat"><div className="stat-label">Savings Rate</div><div className="stat-val" style={{fontSize:'1.1rem',color:'var(--accent)'}}>{pct(savingsRateForBudget,0)}</div></div>
         </div>
       </div>
 
       {/* Quick info note */}
       <div style={{fontSize:'.72rem',color:'var(--t3)',textAlign:'center',marginTop:-8}}>
-        {currency(monthlyNetIncome(settings))} take-home ({checksPerMonth(settings)} × {currency(netPerCheck(settings),2)}) · edit amounts in Settings
+        {currency(takeHome)} take-home ({checksPerMonth(settings)} × {currency(netPerCheck(settings),2)}) · edit amounts in Settings
       </div>
     </div>
   );
