@@ -4674,6 +4674,25 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   // Each check starts from the plan — last check's one-off overrides must
   // not silently carry into the next one.
   const openPay = () => { setPayAmt(baseDeposit); resetAllocs(); setPayOpen(true); };
+
+  // ── Payday awareness ─────────────────────────────────────────────────
+  // The next check to log is payDates[checkCount] — the same index
+  // confirmPay dates the transaction with, so the prompt and the resulting
+  // row can never disagree about which payday this is. Compared date-only
+  // (midnight today vs midnight payday) so "today" doesn't flip based on
+  // the time of day the app happens to be opened.
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const duePayDate   = checkCount < perMonth ? payDates[checkCount] : null;
+  const payDueDays   = duePayDate
+    ? Math.round((duePayDate - startOfToday) / 86400000) : null;   // <0 past, 0 today, >0 upcoming
+  const payIsDue     = duePayDate != null && payDueDays <= 0;      // arrived and still unlogged
+  const payDateLabel = duePayDate
+    ? duePayDate.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) : '';
+  const payWhen      = payDueDays === 0 ? 'today'
+    : payDueDays === 1 ? 'tomorrow'
+    : payDueDays > 1 ? `in ${payDueDays} days`
+    : payDueDays === -1 ? 'yesterday'
+    : `${Math.abs(payDueDays)} days ago`;
   const confirmPay = () => {
     const amt = round2(parseFloat(payAmt)||0);
     if (!(amt>0)) return;
@@ -4895,21 +4914,47 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
         </div>
       )}
 
-      {/* Log Paycheck */}
-      <div>
-        {checkCount>=2
-          ? <button className="btn btn-ghost btn-full" disabled style={{opacity:.55,cursor:'default'}}>
-              ✓ Paychecks logged for {monthName}
-            </button>
-          : <button className="btn btn-primary btn-full" onClick={openPay}>
-              Log Paycheck {checkCount+1} of 2
-            </button>}
-        {checkCount===1 && (
-          <div style={{fontSize:'.68rem',color:'var(--t3)',textAlign:'center',marginTop:6}}>
-            Check 1 logged · {currency(paychecksThisMonth[0].amount,2)} deposited · 1 more to fully fund {now.toLocaleDateString('en-US',{month:'long'})}
+      {/* Log Paycheck — payday-aware. Prominent only when a payday has
+          actually arrived and is still unlogged; a quiet single line the
+          rest of the time, so a full-width green button isn't sitting on
+          Home on an ordinary Tuesday. */}
+      {payIsDue ? (
+        <div className="card" style={{borderColor:'rgba(0,200,5,.35)',background:'rgba(0,200,5,.04)'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:12}}>
+            <div style={{minWidth:0}}>
+              <div className="eyebrow" style={{marginBottom:3}}>Check {checkCount+1} of {perMonth}</div>
+              <div style={{fontSize:'.9rem',fontWeight:700,color:'var(--t1)'}}>
+                {payDueDays === 0 ? 'Payday' : 'Paycheck not logged'}
+              </div>
+              <div style={{fontSize:'.7rem',color:'var(--t3)',marginTop:2}}>
+                {payDateLabel} · {payWhen}
+              </div>
+            </div>
+            <div style={{fontSize:'1.05rem',fontWeight:700,color:'var(--accent)',fontVariantNumeric:'tabular-nums',flexShrink:0}}>
+              {currency(baseDeposit)}
+            </div>
           </div>
-        )}
-      </div>
+          <button className="btn btn-primary btn-full" onClick={openPay}>
+            Log this check
+          </button>
+        </div>
+      ) : (
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,
+          fontSize:'.72rem',color:'var(--t3)',padding:'2px 2px'}}>
+          <span style={{minWidth:0}}>
+            {checkCount >= perMonth
+              ? `✓ ${perMonth === 2 ? 'Both paychecks' : 'All paychecks'} logged for ${monthName}`
+              : `Next paycheck ${payDateLabel} · ${payWhen}`}
+          </span>
+          {checkCount < perMonth && (
+            <button type="button" onClick={openPay}
+              style={{background:'none',border:'none',padding:0,cursor:'pointer',fontFamily:'inherit',
+                fontSize:'.72rem',color:'var(--accent)',fontWeight:600,flexShrink:0}}>
+              Log early
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Financial Health ── */}
       {/* Reuses the corrected income + 401(k) logic: savings rate is out of
