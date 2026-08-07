@@ -1055,7 +1055,18 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
    "Capital One 360 High Yield Savings") visually overlapped the balance
    instead of ellipsizing. */
 .acct-body{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
-.acct-name{font-size:.92rem;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+/* Two-line wrap, not single-line ellipsis (PRD §8: "prefer two-line
+   wrapping... ellipsis only as a last resort") — a long account name gets
+   a second line before anything is cut off; -webkit-line-clamp then
+   ellipsizes only if it's STILL too long even wrapped. The account's full,
+   untruncated name is always one tap away on its own detail page
+   (.acct-hero-name, no truncation there), and a title attribute on the
+   row itself covers hover on desktop. */
+.acct-name{
+  font-size:.92rem;font-weight:600;color:var(--t1);
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+  line-height:1.25;word-break:break-word;
+}
 .acct-sub{font-size:.7rem;color:var(--t3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 /* Same bug/fix as .acct-body above, mirrored on the right side — .acct-bal
    and .acct-chg were plain inline spans with no display set, so a balance
@@ -1199,6 +1210,33 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .timeline-sub{font-size:.68rem;color:var(--t3);margin:2px 0 6px;font-variant-numeric:tabular-nums}
 .timeline-desc{font-size:.64rem;color:var(--t3);line-height:1.45}
 @media(max-width:700px){ .timeline{gap:14px} }
+/* Below ~560px the 3 fixed-width (128px) horizontal steps no longer fit
+   the card even with horizontal scroll enabled — and a scrollable region
+   with no visible affordance just reads as the last step being clipped/
+   missing (PRD §9: "Fix the Statement Timeline overflow... the third
+   timeline stage is clipped on mobile"). Switch to a vertical layout
+   instead: dot + connecting line on the left, label/sub/desc stacked on
+   the right — every step fits, nothing to scroll to find. */
+@media(max-width:560px){
+  .timeline{display:block;overflow-x:visible}
+  .timeline-step{
+    display:grid;grid-template-columns:26px 1fr;column-gap:12px;
+    flex:none;min-width:0;width:100%;position:relative;
+    padding:0 0 22px 0;
+  }
+  .timeline-step:last-child{padding-bottom:0}
+  .timeline-dot{grid-column:1;grid-row:1/4;align-self:start;margin-bottom:0}
+  .timeline-lbl{grid-column:2;grid-row:1}
+  .timeline-sub{grid-column:2;grid-row:2}
+  .timeline-desc{grid-column:2;grid-row:3}
+  /* Vertical connector: below this step's dot down to the next one's. */
+  .timeline-step::before{display:none}
+  .timeline-step:not(:last-child)::after{
+    content:'';position:absolute;left:12px;top:26px;
+    width:2px;height:calc(100% - 22px);background:var(--border2);
+  }
+  .timeline-step.done:not(:last-child)::after{background:var(--accent)}
+}
 
 /* ── Payment center ── */
 .pay-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
@@ -4553,7 +4591,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
           <button type="button" className="ins-card" onClick={()=>goTo&&goTo('networth')}>
             <span className="ins-card-lbl">Net Worth</span>
             <span className="ins-card-val" style={{color:health.nw>=0?'var(--t1)':'var(--red)'}}>{money2(health.nw)}</span>
-            <span className="ins-card-sub">{money0(health.cash)} cash · {money0(health.retirement)} retirement</span>
+            <span className="ins-card-sub">{money0(health.cash)} liquid · {money0(health.retirement)} retirement</span>
             <span className="ins-card-link">Net Worth →</span>
           </button>
           {health.topCat ? (
@@ -6315,7 +6353,10 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
             <span className="ins-card-sub">{daysElapsed} day{daysElapsed===1?'':'s'} this period</span>
           </div>
           <div className="ins-card">
-            <span className="ins-card-lbl">Most Expensive Day</span>
+            {/* Distinct from "Highest-Spend Date" below — this aggregates
+                every occurrence of a weekday across the period ("Sundays
+                tend to be worst"), not one specific calendar day. */}
+            <span className="ins-card-lbl">Priciest Weekday</span>
             <span className="ins-card-val">{weekdayTotals[maxWeekdayIdx]>0 ? WEEKDAY_NAMES[maxWeekdayIdx] : '—'}</span>
             <span className="ins-card-sub">{money2(weekdayTotals[maxWeekdayIdx])} total this period</span>
           </div>
@@ -6539,7 +6580,7 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
         )}
         {peakDay ? (
           <button type="button" className="ins-card" onClick={()=>setSelDate(peakDay[0])}>
-            <span className="ins-card-lbl">Highest Day</span>
+            <span className="ins-card-lbl">Highest-Spend Date</span>
             <span className="ins-card-val">{money2(peakDay[1].total)}</span>
             <span className="ins-card-sub">
               {parseLocalDate(peakDay[0]).toLocaleDateString('en-US',{month:'long',day:'numeric'})}
@@ -6547,7 +6588,7 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
             <span className="ins-card-link">See the day →</span>
           </button>
         ) : (
-          <div className="ins-card"><span className="ins-card-lbl">Highest Day</span>
+          <div className="ins-card"><span className="ins-card-lbl">Highest-Spend Date</span>
             <span className="ins-card-val">—</span><span className="ins-card-sub">no spending yet</span></div>
         )}
         <div className="ins-card">
@@ -7737,9 +7778,13 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
       {/* Composition + change cards */}
       <div className="ins-cards">
         <div className="ins-card">
-          <span className="ins-card-lbl">Cash</span>
+          {/* "Cash" implied all of this was immediately spendable, but HYSA
+              — while liquid — isn't quite the same as checking cash on
+              hand (PRD §15: "replace 'Cash · spendable' with 'Liquid
+              assets'"). */}
+          <span className="ins-card-lbl">Liquid Assets</span>
           <span className="ins-card-val">{money2(snap.cash)}</span>
-          <span className="ins-card-sub">checking + HYSA · spendable</span>
+          <span className="ins-card-sub">checking + HYSA</span>
         </div>
         <div className="ins-card">
           <span className="ins-card-lbl">Retirement</span>
@@ -9234,7 +9279,7 @@ function AccountsPage({ accounts, setAccounts, transactions, settings, goals, ne
                 const chg = monthlyAccountChange(transactions, a, ymd(new Date()).slice(0,7));
                 return (
                   <div key={a.id} style={{display:'flex',alignItems:'center',gap:6}}>
-                    <button className={'acct-card'+(a.hidden?' hidden-acct':'')} onClick={()=>setOpenId(a.id)}>
+                    <button className={'acct-card'+(a.hidden?' hidden-acct':'')} onClick={()=>setOpenId(a.id)} title={a.name}>
                       <span className="acct-icon" style={{background:a.color+'20'}}><Icon name={a.icon} size={20} color={a.color}/></span>
                       <span className="acct-body">
                         <span className="acct-name">{a.name}</span>
