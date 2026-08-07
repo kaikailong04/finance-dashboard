@@ -1557,6 +1557,11 @@ const DEFAULT_GOALS = {
   k401EmployeeYTDBaseline: 0,
   k401EmployerYTDBaseline: 0,
   rothYTDBaseline:         0,
+  // Contributions banked in EARLIER calendar years. Only used when the
+  // ledger-fallback above has to stand in for missing transaction history,
+  // so a multi-year balance isn't reported as this year's progress.
+  k401PriorYearsEmployee:  0,
+  k401PriorYearsEmployer:  0,
 };
 
 const DEFAULT_NETWORTH = {
@@ -1862,9 +1867,17 @@ function employerMatchForPaycheck(s, employeeContrib, ytdMatch) {
   return round2(Math.max(Math.min((employeeContrib || 0) * rate, remaining), 0));
 }
 // Employer match already banked in a given calendar year (from logged paychecks).
+// Structural, not kind-dependent: a row carrying employee401k/employer401k IS
+// a paycheck for this purpose regardless of whether `kind` was ever set on it.
+// Requiring kind==='paycheck' silently returned 0 for paychecks logged before
+// the kind taxonomy existed (or before a migration ran), which is how the
+// annual 401(k) bar ended up reading $0 next to a funded balance.
+function isPaycheckLike401k(t) {
+  return !!t && (t.kind === 'paycheck' || t.employee401k != null || t.employer401k != null);
+}
 function ytdEmployerMatch(transactions, year) {
   return round2((transactions || [])
-    .filter(t => t.kind === 'paycheck' && t.date && Number(t.date.slice(0,4)) === year)
+    .filter(t => isPaycheckLike401k(t) && t.date && Number(t.date.slice(0,4)) === year)
     .reduce((s, t) => s + (t.employer401k || 0), 0));
 }
 // This calendar year's employEE 401(k) contributions — the IRS employee
@@ -1874,7 +1887,7 @@ function ytdEmployerMatch(transactions, year) {
 // progress each January 1. Do not reset the actual account balance.").
 function ytd401kEmployeeContributions(transactions, year) {
   return round2((transactions || [])
-    .filter(t => t.kind === 'paycheck' && t.date && Number(t.date.slice(0,4)) === year)
+    .filter(t => isPaycheckLike401k(t) && t.date && Number(t.date.slice(0,4)) === year)
     .reduce((s, t) => s + (t.employee401k || 0), 0));
 }
 // This calendar year's Roth IRA contributions — same reasoning as above,
@@ -2506,13 +2519,44 @@ function topSpendingCategory(byCategory) {
 // transactions behind them). Without that baseline the annual-progress bar
 // reads $0 while the account balance shows thousands — the exact
 // contradiction this app is supposed to make impossible.
+// Unlike Roth (rothIRAOverride is a MARKET VALUE that grows with returns and
+// so can never be read as a contribution count), goals.k401Employee /
+// k401Employer are pure contribution ledgers — confirmPay only ever ADDS this
+// check's contribution to them, nothing else writes them except a manual
+// correction. That makes them a valid reconciliation floor: if the
+// transaction history yields nothing (paychecks logged before the
+// employee401k field existed, an import, a manual balance entry), reporting
+// $0 against a ledger that plainly holds contributions is the one outcome
+// that is definitely wrong. `k401PriorYears` lets a multi-year user subtract
+// contributions banked before this January so the floor stays a YTD figure.
+function reconciled401kYTD(fromTx, baseline, ledger, priorYears) {
+  const counted = round2(safeNum(baseline) + safeNum(fromTx));
+  if (counted > 0) return counted;
+  const thisYearLedger = round2(safeNum(ledger) - safeNum(priorYears));
+  return thisYearLedger > 0 ? thisYearLedger : 0;
+}
 function employee401kYTD(transactions, goals, year) {
   const y = year != null ? year : new Date().getFullYear();
-  return round2(safeNum(goals && goals.k401EmployeeYTDBaseline) + ytd401kEmployeeContributions(transactions, y));
+  const g = goals || {};
+  return reconciled401kYTD(
+    ytd401kEmployeeContributions(transactions, y),
+    g.k401EmployeeYTDBaseline, g.k401Employee, g.k401PriorYearsEmployee);
 }
 function employer401kYTD(transactions, goals, year) {
   const y = year != null ? year : new Date().getFullYear();
-  return round2(safeNum(goals && goals.k401EmployerYTDBaseline) + ytdEmployerMatch(transactions, y));
+  const g = goals || {};
+  return reconciled401kYTD(
+    ytdEmployerMatch(transactions, y),
+    g.k401EmployerYTDBaseline, g.k401Employer, g.k401PriorYearsEmployer);
+}
+// True when the YTD figure came from the ledger fallback rather than real
+// transaction history — the UI says so instead of implying precision it
+// doesn't have.
+function is401kYTDEstimated(transactions, goals, year) {
+  const y = year != null ? year : new Date().getFullYear();
+  const g = goals || {};
+  const counted = safeNum(g.k401EmployeeYTDBaseline) + ytd401kEmployeeContributions(transactions, y);
+  return counted <= 0 && safeNum(g.k401Employee) > 0;
 }
 // Total tracked 401(k) account value — what Accounts and Net Worth show.
 function total401kBalance(goals) {
@@ -5791,6 +5835,7 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
   const k401Limit = annual401kEmployeeLimit(settings);
   // Employer match never counts against the employee deferral limit.
   const k401EmpYTD = employee401kYTD(transactions, goals, now.getFullYear());
+  const k401YTDEstimated = is401kYTDEstimated(transactions, goals, now.getFullYear());
   const k401Pct_ = k401Limit > 0 ? Math.min((k401EmpYTD / k401Limit) * 100, 100) : 0;
   const k401Rem  = Math.max(k401Limit - k401EmpYTD, 0);
   const matchCap    = settings.employerMatchAnnualCap != null ? settings.employerMatchAnnualCap : 0;
@@ -5820,6 +5865,7 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
   const [hysaIn, setHysaIn]   = useState('');
   const [k401EmpIn,  setK401EmpIn]  = useState('');
   const [k401BaseIn, setK401BaseIn] = useState('');
+  const [k401PriorIn, setK401PriorIn] = useState('');
   const [k401EmprIn, setK401EmprIn] = useState('');
   const [rothIn, setRothIn] = useState('');
 
@@ -5836,6 +5882,14 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
   const upd401kBaseline = e => { e.preventDefault(); const v=parseFloat(k401BaseIn);
     if(!isNaN(v)) setGoals(g=>({...g, k401EmployeeYTDBaseline: round2(Math.max(v,0))}));
     setK401BaseIn(''); };
+  // Splits a multi-year tracked balance so the ledger fallback reports only
+  // THIS year's share against the annual IRS limit.
+  const upd401kPriorYears = e => { e.preventDefault(); const v=parseFloat(k401PriorIn);
+    if(!isNaN(v)) setGoals(g=>({...g,
+      k401PriorYearsEmployee: round2(Math.max(v,0)),
+      k401PriorYearsEmployer: round2(Math.max(v,0) * (safeNum(g.k401Employee)>0 ? safeNum(g.k401Employer)/safeNum(g.k401Employee) : 0)),
+    }));
+    setK401PriorIn(''); };
   const upd401kEmpr = e => { e.preventDefault(); const v=parseFloat(k401EmprIn);
     if(!isNaN(v)) setGoals(g=>({...g,k401Employer:v,ira401kBalance:round2((g.k401Employee||0)+v)}));
     setK401EmprIn(''); };
@@ -6073,7 +6127,23 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
           {safeNum(goals.k401EmployeeYTDBaseline) > 0
             && ` (${currency(goals.k401EmployeeYTDBaseline)} before tracking + ${currency(round2(k401EmpYTD - safeNum(goals.k401EmployeeYTDBaseline)))} from logged paychecks)`}
           . Employer match is tracked separately and never counts toward the IRS employee limit.
+          {k401YTDEstimated && (
+            <span style={{color:'var(--t2)'}}>
+              {' '}Taken from your tracked employee balance — the logged paychecks don't
+              carry 401(k) amounts, so there's no per-check history to add up. If any of
+              it was contributed in an earlier year, set that below so this stays a
+              this-year figure.
+            </span>
+          )}
         </div>
+        {k401YTDEstimated && (
+          <form onSubmit={upd401kPriorYears} className="goal-update" style={{marginTop:8}}>
+            <input type="number" step="0.01" min="0"
+              placeholder={`Contributed in earlier years (${currency(safeNum(goals.k401PriorYearsEmployee))})`}
+              value={k401PriorIn} onChange={e=>setK401PriorIn(e.target.value)} />
+            <button type="submit" className="btn btn-ghost btn-sm">Set</button>
+          </form>
+        )}
       </div>
 
       <div style={{fontSize:'.68rem',color:'var(--t4)',textAlign:'center'}}>
