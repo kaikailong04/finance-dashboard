@@ -1959,7 +1959,21 @@ function ytd401kEmployeeContributions(transactions, year) {
 // clearly marked, so a user (or anyone debugging on their behalf) can see
 // precisely which transaction produced or was dropped from a total,
 // rather than being handed a number with no way to check it.
-function rothContributionRows(transactions, year) {
+// A "Transfer · Checking → Roth IRA" logged through the Transfer quick
+// action moves money into the account exactly as really as an expense
+// logged with category:'rothIRA' does — they're two different UI paths to
+// the same event. Only recognizing the expense-shaped path meant a
+// transfer-shaped contribution was invisible to every total in the app: it
+// correctly moved the account BALANCE (accounts.js's own transfer handling
+// already does that) while silently vanishing from what counted as a
+// contribution. Resolved dynamically off the account's `linked` field, not
+// a hardcoded id, so a user's own account naming/reordering can't break it.
+function transferContributionAmount(t, accounts, linkedType) {
+  if (!t || t.type !== 'transfer' || !t.toAccountId) return 0;
+  const to = (accounts || []).find(a => a.id === t.toAccountId);
+  return (to && to.linked === linkedType) ? safeNum(t.amount) : 0;
+}
+function rothContributionRows(transactions, year, accounts) {
   const list = transactions || [];
   const rows = [];
   list.forEach((t, i) => {
@@ -1969,26 +1983,29 @@ function rothContributionRows(transactions, year) {
       amount = safeNum(t.allocations.rothIRA); source = 'paycheck';
     } else if (t.type === 'expense' && t.category === 'rothIRA') {
       amount = safeNum(t.amount); source = 'manual';
+    } else {
+      const xfer = transferContributionAmount(t, accounts, 'roth');
+      if (xfer) { amount = xfer; source = 'transfer'; }
     }
     if (amount == null) return;
     rows.push({
       id: t.id, date: t.date, source, amount,
-      description: t.description || (source === 'paycheck' ? 'Paycheck' : 'Roth IRA contribution'),
+      description: t.description || (source === 'paycheck' ? 'Paycheck' : source === 'transfer' ? 'Transfer to Roth IRA' : 'Roth IRA contribution'),
       excluded: isDuplicateTransaction(t, list, i),
     });
   });
   return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 }
-function ytdRothContributions(transactions, year) {
-  return round2(rothContributionRows(transactions, year)
+function ytdRothContributions(transactions, year, accounts) {
+  return round2(rothContributionRows(transactions, year, accounts)
     .filter(r => !r.excluded).reduce((s, r) => s + r.amount, 0));
 }
 // Same shape as employee401kYTD/employer401kYTD: transaction-derived
 // contributions plus any pre-tracking baseline, so a mid-year onboard
 // doesn't show $0 progress beside a funded account.
-function rothContributionsYTD(transactions, goals, year) {
+function rothContributionsYTD(transactions, goals, year, accounts) {
   const y = year != null ? year : new Date().getFullYear();
-  return round2(safeNum(goals && goals.rothYTDBaseline) + ytdRothContributions(transactions, y));
+  return round2(safeNum(goals && goals.rothYTDBaseline) + ytdRothContributions(transactions, y, accounts));
 }
 // Has the 401(k) started as of a given date?
 function k401Active(s, ref) {
@@ -2583,13 +2600,16 @@ function getCategorySpendingTotals(transactions) {
 // this month" needs BOTH sources, or it silently misses the majority of
 // real contributions — paychecks fund these lines automatically every
 // payday, on top of anything manually logged.
-function monthlyContributionAmount(monthTxAll, allocationKey, category) {
+function monthlyContributionAmount(monthTxAll, allocationKey, category, accounts) {
+  const linkedType = allocationKey === 'rothIRA' ? 'roth' : allocationKey; // 'hysa' already matches
   let total = 0;
   for (const t of (monthTxAll || [])) {
     if (isPaycheckTransaction(t) && t.allocations && t.allocations[allocationKey] != null) {
       total += safeNum(t.allocations[allocationKey]);
     } else if (t.type === 'expense' && t.category === category) {
       total += safeNum(t.amount);
+    } else {
+      total += transferContributionAmount(t, accounts, linkedType);
     }
   }
   return round2(total);
@@ -4563,14 +4583,14 @@ function UpcomingBillsMini({ accounts, bills, transactions, settings, goals, net
   );
 }
 
-function SavingsGoalsMini({ settings, goals, transactions, goTo, setTransactions }) {
+function SavingsGoalsMini({ settings, goals, transactions, goTo, setTransactions, accounts }) {
   const year = new Date().getFullYear();
   const hysaBal = goals.hysaBalance || 0;
   const hysaPct = settings.hysaGoal > 0 ? Math.min((hysaBal/settings.hysaGoal)*100,100) : 0;
   // Roth/401(k) progress is measured against THIS YEAR's contributions, not
   // the all-time balance (which inflates with growth and prior years) —
   // same fix as the Goals page (PRD §15).
-  const rothYTD = rothContributionsYTD(transactions, goals, year);
+  const rothYTD = rothContributionsYTD(transactions, goals, year, accounts);
   const rothPct = settings.rothIRAYearlyLimit > 0 ? Math.min((rothYTD/settings.rothIRAYearlyLimit)*100,100) : 0;
   const k401EmpYTD = employee401kYTD(transactions, goals, year);
   const k401Goal = annual401kGoal(settings);
@@ -4600,7 +4620,7 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo, setTransactions
   // Roth/HYSA ride under allocations.*, 401(k) is its own top-level field —
   // so an edit made in the modal below writes back to the right place.
   const breakdown = breakdownKey === 'roth'
-    ? { title:'Roth IRA', subtitle:`Contributions counted toward ${year}`, rows:rothContributionRows(transactions, year), total:rothYTD,
+    ? { title:'Roth IRA', subtitle:`Contributions counted toward ${year}`, rows:rothContributionRows(transactions, year, accounts), total:rothYTD,
         field:{ kind:'allocations', key:'rothIRA' } }
     : breakdownKey === '401k'
     ? { title:'401(k) — You', subtitle:`Employee contributions counted toward ${year}`, rows:k401ContributionRows(transactions, 'employee401k', year), total:k401EmpYTD,
@@ -4846,8 +4866,8 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   // categorized transaction logged this month AND whatever this month's
   // logged paychecks already withheld via allocations — same shared helper
   // the Budget and Spending pages read from, so this can never disagree.
-  byCategory.hysa    = monthlyContributionAmount(monthTxAllForSpend, 'hysa', 'hysa');
-  byCategory.rothIRA = monthlyContributionAmount(monthTxAllForSpend, 'rothIRA', 'rothIRA');
+  byCategory.hysa    = monthlyContributionAmount(monthTxAllForSpend, 'hysa', 'hysa', accounts);
+  byCategory.rothIRA = monthlyContributionAmount(monthTxAllForSpend, 'rothIRA', 'rothIRA', accounts);
   const recentTx = [...transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
 
   // ── Paycheck logging — 1st & 3rd Thursday, exactly 2 per month ──────
@@ -5114,7 +5134,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
         <UpcomingBillsMini accounts={accounts} bills={bills} transactions={transactions} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
       </div>
 
-      <SavingsGoalsMini settings={settings} goals={goals} transactions={transactions} goTo={goTo} setTransactions={setTransactions}/>
+      <SavingsGoalsMini settings={settings} goals={goals} transactions={transactions} goTo={goTo} setTransactions={setTransactions} accounts={accounts}/>
 
       {/* Paycheck Breakdown */}
       <div>
@@ -5445,7 +5465,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
 }
 
 // ── Budget Tab ─────────────────────────────────────────────────────────
-function Budget({ settings, transactions }) {
+function Budget({ settings, transactions, accounts }) {
   const phase = getPhaseInfo(settings.startDate);
   // Default the toggle to whichever phase is currently active
   const [sel, setSel] = useState(phase.isFull ? 1 : 0);
@@ -5466,8 +5486,8 @@ function Budget({ settings, transactions }) {
   // whatever this month's logged paychecks already withheld via allocations
   // — each reads its OWN key, not a shared 'savings' bucket, so a Roth IRA
   // contribution never shows up as HYSA spending or vice versa.
-  spent.hysa    = monthlyContributionAmount(monthTxAllForSpend, 'hysa', 'hysa');
-  spent.rothIRA = monthlyContributionAmount(monthTxAllForSpend, 'rothIRA', 'rothIRA');
+  spent.hysa    = monthlyContributionAmount(monthTxAllForSpend, 'hysa', 'hysa', accounts);
+  spent.rothIRA = monthlyContributionAmount(monthTxAllForSpend, 'rothIRA', 'rothIRA', accounts);
 
   const eb = settings.earlyBudget;
   const lb = settings.laterBudget;
@@ -5665,8 +5685,8 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
   // BOTH manually-logged hysa/rothIRA transactions AND whatever this
   // month's logged paychecks already withheld via allocations — the same
   // shared helper Home and Budget use, so this can never disagree with them.
-  const hysaContribThisMonth = monthlyContributionAmount(monthTxAllForSpend, 'hysa', 'hysa');
-  const rothContribThisMonth = monthlyContributionAmount(monthTxAllForSpend, 'rothIRA', 'rothIRA');
+  const hysaContribThisMonth = monthlyContributionAmount(monthTxAllForSpend, 'hysa', 'hysa', accounts);
+  const rothContribThisMonth = monthlyContributionAmount(monthTxAllForSpend, 'rothIRA', 'rothIRA', accounts);
   const savedInvestedTotal = round2(hysaContribThisMonth + rothContribThisMonth);
   const incomeTotal = round2(monthTxAllForSpend
     .filter(isIncomeTransaction)
@@ -6043,7 +6063,7 @@ function ContributionBreakdownModal({ title, subtitle, rows, total, onClose, onE
                     </div>
                     <div style={{fontSize:'.66rem',color:r.excluded?'var(--red)':'var(--t3)',marginTop:1}}>
                       {new Date(r.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
-                      {' · '}{r.source==='paycheck' ? 'assumed by the paycheck' : 'logged directly'}
+                      {' · '}{r.source==='paycheck' ? 'assumed by the paycheck' : r.source==='transfer' ? 'via transfer' : 'logged directly'}
                       {r.excluded && ' · excluded as a duplicate'}
                     </div>
                   </div>
@@ -6291,7 +6311,7 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
   // never the account's total balance, which inflates with every prior
   // year's contributions plus any investment growth (PRD §15: "Do not use
   // total account value as the annual contribution amount").
-  const rothYTD   = rothContributionsYTD(transactions, goals, now.getFullYear());
+  const rothYTD   = rothContributionsYTD(transactions, goals, now.getFullYear(), accounts);
   const rothPct_  = settings.rothIRAYearlyLimit > 0 ? Math.min((rothYTD / settings.rothIRAYearlyLimit) * 100, 100) : 0;
   const rothRem   = Math.max(settings.rothIRAYearlyLimit - rothYTD, 0);
   const rothMonthsLeft = rothRate > 0 && rothRem > 0
@@ -8542,7 +8562,7 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
   const k401Bal  = total401kBalance(goals);             // derived, not editable
   // This year's contributions — for the IRS-limit "Goal Progress" card
   // below, never the all-time balance above (PRD §15).
-  const rothYTD    = rothContributionsYTD(transactions, goals, new Date().getFullYear());
+  const rothYTD    = rothContributionsYTD(transactions, goals, new Date().getFullYear(), accounts);
   const k401EmpYTD = employee401kYTD(transactions, goals, new Date().getFullYear());
 
   const setHYSA = v => setGoals(g => ({ ...g, hysaBalance:     v }));
@@ -10782,7 +10802,7 @@ function App() {
     // This year's contributions, matching the Goals page's own ETA — using
     // the raw account balance here would compute a "days to target" the
     // Goals page's displayed ETA no longer agrees with (PRD §15).
-    const rothYTD  = rothContributionsYTD(transactions, goals, new Date().getFullYear());
+    const rothYTD  = rothContributionsYTD(transactions, goals, new Date().getFullYear(), accounts);
     const track = (key, rem, rate, done) => {
       if (done) { next[key] = 0; delete hl[key]; return; }
       if (!(rate > 0)) return;
@@ -10806,7 +10826,7 @@ function App() {
     bills:      <BillsPage   bills={bills} setBills={setBills} accounts={accounts} transactions={transactions} settings={settings} goals={goals}
                   netWorth={nwData} setGoals={setGoals} setNetWorth={setNwData} setAccounts={setAccounts} setTransactions={setTx}
                   openAddTx={openAddTx} goToAccount={goToAccount} />,
-    budget:     <Budget     settings={settings} transactions={transactions} />,
+    budget:     <Budget     settings={settings} transactions={transactions} accounts={accounts} />,
     spending:   <Spending   settings={settings} transactions={transactions} setTransactions={setTx} goals={goals} setGoals={setGoals}
                   accounts={accounts} setAccounts={setAccounts} netWorth={nwData} setNetWorth={setNwData} openAddTx={openAddTx} />,
     insights:   <SpendingInsights settings={settings} transactions={transactions} setTransactions={setTx} goTo={setTab}
