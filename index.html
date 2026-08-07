@@ -4618,6 +4618,28 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
   const endCredit   = series.credit[series.credit.length-1] || 0;
   const endSavings  = series.savings[series.savings.length-1] || 0;
 
+  // The exact ledger the cards and the chart are computed from — same
+  // `events` array, not a re-derivation — so a projected balance can always
+  // be traced to the dated events that produced it. Legs of one transfer
+  // share a date+label, so they collapse into a single row showing money
+  // leaving one bucket and arriving in another (net worth unchanged).
+  const ledgerRows = useMemo(() => {
+    const byKey = new Map();
+    for (const e of events) {
+      const k = ymd(e.date) + '|' + e.label;
+      if (!byKey.has(k)) byKey.set(k, { date:e.date, label:e.label, checking:0, credit:0, savings:0 });
+      const row = byKey.get(k);
+      row[e.bucket] = round2(safeNum(row[e.bucket]) + safeNum(e.delta));
+    }
+    const cell = v => v ? (v > 0 ? '+' : '−') + currency(Math.abs(v), 2) : '—';
+    return [...byKey.values()]
+      .sort((a,b) => a.date - b.date)
+      .map(r => [
+        r.date.toLocaleDateString('en-US',{month:'short',day:'numeric'}),
+        r.label, cell(r.checking), cell(r.credit), cell(r.savings),
+      ]);
+  }, [events]);
+
   return (
     <div>
       <div className="cal-head">
@@ -4664,6 +4686,8 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
             Checking is projected to go negative within {days} days based on known upcoming bills and paychecks.
           </div>
         )}
+        <VizTable caption={`Scheduled events over the next ${days} days`}
+          cols={['Date','Event','Checking','Credit Card','Savings']} rows={ledgerRows}/>
       </div>
     </div>
   );
