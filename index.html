@@ -8599,7 +8599,7 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
         <div className="card">
           <div className="card-label">All-Time Spending</div>
           {topCats.map(([cat,amt]) => (
-            <HBar key={cat} label={cat.charAt(0).toUpperCase()+cat.slice(1)}
+            <HBar key={cat} label={catLabel(cat)}
               value={amt} max={maxCatSpend} color={CAT_COLOR[cat]||'var(--t3)'}/>
           ))}
         </div>
