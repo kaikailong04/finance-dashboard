@@ -4489,10 +4489,16 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
   const k401EmpYTD = employee401kYTD(transactions, goals, year);
   const k401Goal = annual401kGoal(settings);
   const k401Pct = k401Goal > 0 ? Math.min((k401EmpYTD/k401Goal)*100,100) : 0;
+  // These three rows do NOT measure the same thing, and rendering them
+  // identically made them look comparable when they aren't: HYSA tracks an
+  // account BALANCE toward a savings target, while Roth and 401(k) track
+  // THIS YEAR'S CONTRIBUTIONS toward an annual figure. Without the
+  // qualifier, the Roth row reads as a balance and disagrees with the very
+  // different balance shown on Accounts/Net Worth for the same account.
   const rows = [
-    { label:'HYSA',     bal:hysaBal,  goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
-    { label:'Roth IRA', bal:rothYTD,  goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)' },
-    { label:'401(k)',   bal:k401EmpYTD, goal:k401Goal, pct:k401Pct, color:'var(--yellow)' },
+    { label:'HYSA',     note:'balance',                    bal:hysaBal,    goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
+    { label:'Roth IRA', note:`contributed ${year}`,        bal:rothYTD,    goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)' },
+    { label:'401(k)',   note:`contributed ${year}`,        bal:k401EmpYTD, goal:k401Goal,                    pct:k401Pct, color:'var(--yellow)' },
   ];
   return (
     <div>
@@ -4503,9 +4509,14 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
       <div className="card">
         {rows.map((r,i) => (
           <div key={r.label} style={{marginBottom:i<rows.length-1?14:0}}>
-            <div style={{display:'flex',justifyContent:'space-between',fontSize:'.78rem',marginBottom:6}}>
-              <span style={{color:'var(--t2)'}}>{r.label}</span>
-              <span style={{color:'var(--t1)',fontWeight:600}}>{currency(r.bal)} / {currency(r.goal)}</span>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:10,fontSize:'.78rem',marginBottom:6}}>
+              <span style={{color:'var(--t2)',minWidth:0}}>
+                {r.label}
+                <span style={{color:'var(--t3)',fontSize:'.66rem',marginLeft:6}}>{r.note}</span>
+              </span>
+              <span style={{color:'var(--t1)',fontWeight:600,flexShrink:0,fontVariantNumeric:'tabular-nums'}}>
+                {currency(r.bal)} / {currency(r.goal)}
+              </span>
             </div>
             <div className="track" role="progressbar" aria-label={`${r.label} progress`}
               aria-valuenow={round2(r.bal)} aria-valuemin={0} aria-valuemax={round2(r.goal)}>
