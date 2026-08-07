@@ -8438,6 +8438,12 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
   const [customizing, setCustomizing] = useState(false);
   const [editingCard, setEditingCard] = useState(false);
   const [notesDraft, setNotesDraft]   = useState(acct.notes || '');
+  const [menuOpen, setMenuOpen]       = useState(false);
+  // Segmented sub-nav (Phase 4, PRD §7) — Overview/Payments/Rewards/Activity
+  // only applies to credit cards, which are the account type with enough
+  // content to justify splitting; every other account type keeps its
+  // existing single-scroll layout below.
+  const [acctTab, setAcctTab]         = useState('overview');
 
   const patch = p => setAccounts(list => list.map(a => a.id===acct.id ? { ...a, ...p } : a));
 
@@ -8490,14 +8496,57 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
         </div>
       </div>
 
-      <div className="acct-menu-row">
+      {/* Only "Add Transaction" — the one action someone actually comes to an
+          account page to do — stays up top. Rename/icon/hide/archive/delete
+          are account SETTINGS, not primary actions, so they live behind the
+          ••• menu instead of crowding the top of the page (PRD §7: "Do not
+          put rename, icon, archive, hide, and delete controls at the top of
+          the main account experience"). */}
+      <div className="acct-menu-row" style={{justifyContent:'space-between'}}>
         <button className="btn btn-ghost btn-sm" onClick={()=>onOpenAdd(acct.id)}><Icon name="plus" size={13}/>Add Transaction</button>
-        <button className="btn btn-ghost btn-sm" onClick={()=>setRenaming(r=>!r)}><Icon name="edit" size={13}/>Rename</button>
-        <button className="btn btn-ghost btn-sm" onClick={()=>setCustomizing(c=>!c)}><Icon name="wallet" size={13}/>Icon &amp; Color</button>
-        <button className="btn btn-ghost btn-sm" onClick={()=>patch({hidden:!acct.hidden})}><Icon name={acct.hidden?'eye':'eyeOff'} size={13}/>{acct.hidden?'Unhide':'Hide'}</button>
-        <button className="btn btn-ghost btn-sm" onClick={()=>patch({archived:!acct.archived})}><Icon name="archive" size={13}/>{acct.archived?'Unarchive':'Archive'}</button>
-        <button className="btn btn-ghost btn-sm" style={{color:'var(--red)'}} onClick={doDelete}><Icon name="trash" size={13}/>Delete</button>
+        <div style={{position:'relative'}}>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setMenuOpen(o=>!o)} aria-label="Account settings">
+            <Icon name="dots" size={15}/>
+          </button>
+          {menuOpen && (
+            <>
+              <div className="quick-menu-overlay" onClick={()=>setMenuOpen(false)}/>
+              <div className="quick-menu" style={{position:'absolute',left:'auto',right:0,top:'calc(100% + 6px)',bottom:'auto',minWidth:196}}>
+                <button className="quick-menu-item" onClick={()=>{setRenaming(r=>!r);setMenuOpen(false);}}>
+                  <span className="quick-menu-icon"><Icon name="edit" size={14}/></span>Rename
+                </button>
+                <button className="quick-menu-item" onClick={()=>{setCustomizing(c=>!c);setMenuOpen(false);}}>
+                  <span className="quick-menu-icon"><Icon name="wallet" size={14}/></span>Icon &amp; Color
+                </button>
+                <button className="quick-menu-item" onClick={()=>{patch({hidden:!acct.hidden});setMenuOpen(false);}}>
+                  <span className="quick-menu-icon"><Icon name={acct.hidden?'eye':'eyeOff'} size={14}/></span>{acct.hidden?'Unhide':'Hide'}
+                </button>
+                <button className="quick-menu-item" onClick={()=>{patch({archived:!acct.archived});setMenuOpen(false);}}>
+                  <span className="quick-menu-icon"><Icon name="archive" size={14}/></span>{acct.archived?'Unarchive':'Archive'}
+                </button>
+                <button className="quick-menu-item" style={{color:'var(--red)'}} onClick={()=>{setMenuOpen(false);doDelete();}}>
+                  <span className="quick-menu-icon"><Icon name="trash" size={14}/></span>Delete
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
+
+      {card && (
+        <div className="subnav-row">
+          {[
+            { id:'overview', label:'Overview' },
+            { id:'payments', label:'Payments' },
+            { id:'rewards',  label:'Rewards'  },
+            { id:'activity', label:'Activity' },
+          ].map(s => (
+            <button key={s.id} className={'subnav-pill '+(acctTab===s.id?'subnav-pill-on':'subnav-pill-off')} onClick={()=>setAcctTab(s.id)}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <Collapse open={customizing}>
         <div className="card">
@@ -8518,7 +8567,11 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
         </div>
       </Collapse>
 
-      {card && (
+      {/* ── Overview: current/statement balance, limit, utilization, due
+          dates, autopay, balance history, and the account's own quick
+          stats + AI read — for non-credit accounts (no tabs) this is just
+          "the page," same as before this restructuring. ────────────────── */}
+      {card && acctTab==='overview' && (
         <div className="card">
           <div className="card-label">Credit Card</div>
           <div style={{display:'flex',gap:24,flexWrap:'wrap',alignItems:'center'}}>
@@ -8553,7 +8606,10 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
         </div>
       )}
 
-      {card && (
+      {/* ── Payments: statement timeline + the payment center (minimum
+          payment, pay statement/current balance, early-payment and
+          target-utilization calculators). ─────────────────────────────── */}
+      {card && acctTab==='payments' && (
         <div>
           <div className="section-head">Statement Timeline</div>
           <div className="card">
@@ -8562,11 +8618,12 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
         </div>
       )}
 
-      {card && (
+      {card && acctTab==='payments' && (
         <CreditPaymentCenter acct={acct} card={card} balance={balance} transactions={transactions} accounts={accounts} onOpenAdd={onOpenAdd}/>
       )}
 
-      {card && (
+      {/* ── Rewards: per-category + monthly/lifetime rewards breakdown. ── */}
+      {card && acctTab==='rewards' && (
         <div>
           <div className="section-head">Rewards Dashboard</div>
           <div className="card-flush" style={{padding:'6px 20px'}}>
@@ -8575,7 +8632,8 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
         </div>
       )}
 
-      {card && (
+      {/* ── Activity: alerts, the transaction ledger, and notes. ────────── */}
+      {card && acctTab==='activity' && (
         <div>
           <div className="section-head">Notifications</div>
           <div className="card-flush" style={{padding:'2px 20px'}}>
@@ -8584,62 +8642,72 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
         </div>
       )}
 
-      <div>
-        <div className="section-head">Balance History</div>
-        <div className="card">
-          {hist.points.every(p=>p===hist.points[0]) && hist.points[0]===0
-            ? <VizEmpty message="No history yet." hint="Log a few transactions on this account to see a trend."/>
-            : <LineTrendChart labels={hist.labels} series={[{ key:'bal', label:acct.name, color:acct.color, points:hist.points }]}/>}
+      {(!card || acctTab==='overview') && (
+        <div>
+          <div className="section-head">Balance History</div>
+          <div className="card">
+            {hist.points.every(p=>p===hist.points[0]) && hist.points[0]===0
+              ? <VizEmpty message="No history yet." hint="Log a few transactions on this account to see a trend."/>
+              : <LineTrendChart labels={hist.labels} series={[{ key:'bal', label:acct.name, color:acct.color, points:hist.points }]}/>}
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="g3">
-        <div className="stat"><div className="stat-label">Largest Transaction</div><div className="stat-val" style={{fontSize:'1.3rem'}}>{currency(largest,2)}</div></div>
-        <div className="stat"><div className="stat-label">Avg Monthly Spend</div><div className="stat-val" style={{fontSize:'1.3rem'}}>{currency(avgMonthlySpend,2)}</div></div>
-        <div className="stat"><div className="stat-label">Cash Flow (this mo)</div><div className="stat-val" style={{fontSize:'1.3rem',color:inFlow>=outFlow?'var(--accent)':'var(--red)'}}>{inFlow>=outFlow?'+':'−'}{currency(Math.abs(inFlow-outFlow),2)}</div></div>
-      </div>
+      {(!card || acctTab==='overview') && (
+        <div className="g3">
+          <div className="stat"><div className="stat-label">Largest Transaction</div><div className="stat-val" style={{fontSize:'1.3rem'}}>{currency(largest,2)}</div></div>
+          <div className="stat"><div className="stat-label">Avg Monthly Spend</div><div className="stat-val" style={{fontSize:'1.3rem'}}>{currency(avgMonthlySpend,2)}</div></div>
+          <div className="stat"><div className="stat-label">Cash Flow (this mo)</div><div className="stat-val" style={{fontSize:'1.3rem',color:inFlow>=outFlow?'var(--accent)':'var(--red)'}}>{inFlow>=outFlow?'+':'−'}{currency(Math.abs(inFlow-outFlow),2)}</div></div>
+        </div>
+      )}
 
-      <div className="card" style={{borderColor:'rgba(0,200,5,.2)',background:'rgba(0,200,5,.03)'}}>
-        <div className="card-label">AI Insights</div>
-        {card ? (
-          <div>{creditSmartInsights(acct, ctx).map((line,i) => <div key={i} className="insight-row">{line}</div>)}</div>
-        ) : (
-          <div style={{fontSize:'.84rem',color:'var(--t1)',lineHeight:1.5}}>{accountInsight(acct, ctx, stats)}</div>
-        )}
-      </div>
-
-      <div>
-        <div className="section-head">Recent Transactions</div>
-        <div className="card-flush">
-          {acctTx.length===0 ? <div className="empty">No transactions on this account yet.</div> : (
-            <div className="tx-list" style={{padding:'4px 20px'}}>
-              {acctTx.slice(0,12).map(t => (
-                <div className="tx-row" key={t.id}>
-                  {t.type==='transfer'
-                    ? <div className="tx-icon"><Icon name="swap" size={14} color="var(--blue)"/></div>
-                    : <MerchantLogo description={t.description}/>}
-                  <div className="tx-body">
-                    <div className="tx-desc">{t.description || catLabel(categoryOf(t))}</div>
-                    <div className="tx-meta">{txDateKey(t)} · {t.type==='transfer' ? (t.accountId===acct.id?`to ${t.toAccount||'—'}`:`from ${t.account||'—'}`) : catLabel(categoryOf(t))}</div>
-                  </div>
-                  <div className="tx-amt" style={{color:t.type==='income'?'var(--accent)':t.type==='transfer'?'var(--blue)':'var(--t1)'}}>
-                    {t.type==='income'?'+':t.type==='expense'?'−':''}{currency(t.amount,2)}
-                  </div>
-                </div>
-              ))}
-            </div>
+      {(!card || acctTab==='overview') && (
+        <div className="card" style={{borderColor:'rgba(0,200,5,.2)',background:'rgba(0,200,5,.03)'}}>
+          <div className="card-label">AI Insights</div>
+          {card ? (
+            <div>{creditSmartInsights(acct, ctx).map((line,i) => <div key={i} className="insight-row">{line}</div>)}</div>
+          ) : (
+            <div style={{fontSize:'.84rem',color:'var(--t1)',lineHeight:1.5}}>{accountInsight(acct, ctx, stats)}</div>
           )}
         </div>
-      </div>
+      )}
 
-      <div>
-        <div className="section-head">Notes</div>
-        <div className="card">
-          <textarea className="fg" style={{width:'100%',minHeight:80,background:'var(--s2)',border:'1px solid var(--border2)',borderRadius:'var(--r-s)',color:'var(--t1)',padding:'10px 12px',fontSize:'.82rem',outline:'none',resize:'vertical',fontFamily:'inherit'}}
-            value={notesDraft} onChange={e=>setNotesDraft(e.target.value)} onBlur={()=>patch({notes:notesDraft})}
-            placeholder="Add a note about this account…"/>
+      {(!card || acctTab==='activity') && (
+        <div>
+          <div className="section-head">Recent Transactions</div>
+          <div className="card-flush">
+            {acctTx.length===0 ? <div className="empty">No transactions on this account yet.</div> : (
+              <div className="tx-list" style={{padding:'4px 20px'}}>
+                {acctTx.slice(0,12).map(t => (
+                  <div className="tx-row" key={t.id}>
+                    {t.type==='transfer'
+                      ? <div className="tx-icon"><Icon name="swap" size={14} color="var(--blue)"/></div>
+                      : <MerchantLogo description={t.description}/>}
+                    <div className="tx-body">
+                      <div className="tx-desc">{t.description || catLabel(categoryOf(t))}</div>
+                      <div className="tx-meta">{txDateKey(t)} · {t.type==='transfer' ? (t.accountId===acct.id?`to ${t.toAccount||'—'}`:`from ${t.account||'—'}`) : catLabel(categoryOf(t))}</div>
+                    </div>
+                    <div className="tx-amt" style={{color:t.type==='income'?'var(--accent)':t.type==='transfer'?'var(--blue)':'var(--t1)'}}>
+                      {t.type==='income'?'+':t.type==='expense'?'−':''}{currency(t.amount,2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {(!card || acctTab==='activity') && (
+        <div>
+          <div className="section-head">Notes</div>
+          <div className="card">
+            <textarea className="fg" style={{width:'100%',minHeight:80,background:'var(--s2)',border:'1px solid var(--border2)',borderRadius:'var(--r-s)',color:'var(--t1)',padding:'10px 12px',fontSize:'.82rem',outline:'none',resize:'vertical',fontFamily:'inherit'}}
+              value={notesDraft} onChange={e=>setNotesDraft(e.target.value)} onBlur={()=>patch({notes:notesDraft})}
+              placeholder="Add a note about this account…"/>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
