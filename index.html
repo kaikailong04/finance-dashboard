@@ -1875,6 +1875,43 @@ function employerMatchForPaycheck(s, employeeContrib, ytdMatch) {
 function isPaycheckLike401k(t) {
   return !!t && (t.kind === 'paycheck' || t.employee401k != null || t.employer401k != null);
 }
+// ── Paycheck identity — THE definition, used everywhere ───────────────
+// A paycheck must look like one to every screen at once. Requiring
+// kind==='paycheck' alone produced a genuinely impossible state: a row
+// logged without allocations or 401(k) fields classifies as plain
+// 'income', so the Home prompt reported "Paycheck not logged" while
+// Recent Activity listed that very deposit on the same date. Three
+// widening signals, each sufficient:
+//   1. an explicit kind (anything the current flow writes)
+//   2. structural fields only the Log Paycheck flow sets
+//   3. the description that flow writes, for rows predating both
+function isPaycheckTransaction(t) {
+  if (!t) return false;
+  if (t.kind === 'paycheck') return true;
+  if (t.type !== 'income') return false;
+  if (t.employee401k != null || t.employer401k != null || t.allocations) return true;
+  return /\bpay\s?check\b/i.test(t.description || '');
+}
+// Every paycheck logged in a given month (YYYY-MM), newest date last.
+function paychecksForMonth(transactions, monthKey) {
+  return (transactions || [])
+    .filter(t => isPaycheckTransaction(t) && (t.date || '').startsWith(monthKey))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
+// Has the payday on `dateStr` already been logged? Matches on the date
+// itself, then falls back to a nearby date + similar amount so a check
+// logged a day early/late (or through the generic Add sheet) still counts
+// as that payday rather than inviting a duplicate.
+function paycheckLoggedFor(transactions, dateStr, expectedAmount) {
+  const target = new Date(dateStr + 'T12:00:00').getTime();
+  const tol    = Math.max(safeNum(expectedAmount) * 0.35, 50);
+  return (transactions || []).find(t => {
+    if (!isPaycheckTransaction(t) || !t.date) return false;
+    if (t.date === dateStr) return true;
+    const dt = Math.abs(new Date(t.date + 'T12:00:00').getTime() - target) / 86400000;
+    return dt <= 3 && Math.abs(safeNum(t.amount) - safeNum(expectedAmount)) <= tol;
+  }) || null;
+}
 function ytdEmployerMatch(transactions, year) {
   return round2((transactions || [])
     .filter(t => isPaycheckLike401k(t) && t.date && Number(t.date.slice(0,4)) === year)
@@ -1901,7 +1938,7 @@ function ytdRothContributions(transactions, year) {
   let total = 0;
   for (const t of (transactions || [])) {
     if (!t.date || Number(t.date.slice(0,4)) !== year) continue;
-    if (t.kind === 'paycheck' && t.allocations && t.allocations.rothIRA) total += safeNum(t.allocations.rothIRA);
+    if (isPaycheckTransaction(t) && t.allocations && t.allocations.rothIRA) total += safeNum(t.allocations.rothIRA);
     else if (t.type === 'expense' && t.category === 'rothIRA') total += safeNum(t.amount);
   }
   return round2(total);
@@ -2477,7 +2514,7 @@ function getCategorySpendingTotals(transactions) {
 function monthlyContributionAmount(monthTxAll, allocationKey, category) {
   let total = 0;
   for (const t of (monthTxAll || [])) {
-    if (t.kind === 'paycheck' && t.allocations && t.allocations[allocationKey] != null) {
+    if (isPaycheckTransaction(t) && t.allocations && t.allocations[allocationKey] != null) {
       total += safeNum(t.allocations[allocationKey]);
     } else if (t.type === 'expense' && t.category === category) {
       total += safeNum(t.amount);
@@ -2564,6 +2601,24 @@ function total401kBalance(goals) {
 }
 // The IRS employee deferral limit, stored once in settings.
 function annual401kEmployeeLimit(settings) { return safeNum(settings && settings.ira401kYearlyMax); }
+// What the user actually plans to contribute this year, from their own
+// per-check election and pay frequency.
+function plannedAnnual401kContribution(settings) {
+  return round2(employee401kPerCheck(settings) * checksPerYear(settings));
+}
+// THE denominator for 401(k) goal progress. Measuring a $138/check plan
+// against the $24,500 IRS ceiling reports ~1% forever and tells the user
+// nothing about whether they're on track for THEIR plan — the ceiling is a
+// legal limit, not a goal. Progress runs against the plan (capped by the
+// limit, since you cannot exceed it) unless the user has explicitly opted
+// into maxing out.
+function annual401kGoal(settings) {
+  const irs     = annual401kEmployeeLimit(settings);
+  const planned = plannedAnnual401kContribution(settings);
+  if (settings && settings.k401GoalMode === 'irsMax') return irs;
+  if (!(planned > 0)) return irs;
+  return irs > 0 ? Math.min(planned, irs) : planned;
+}
 
 // ── Savings rate — ONE formula, used everywhere ───────────────────────
 // Personal savings = HYSA + Roth IRA + EMPLOYEE 401(k). The employer match
@@ -3413,11 +3468,30 @@ function buildForecastEvents({ settings, accounts, bills, recurring, transaction
   const endDate = new Date(today); endDate.setDate(endDate.getDate() + days);
   const events = [];
 
-  // Paychecks — always credited to the Checking bucket.
+  // Paychecks — credited to Checking, then the savings/investment share
+  // immediately moved back OUT again. Crediting the full deposit without
+  // the allocations leaving overstated projected checking by the whole
+  // HYSA + Roth transfer on every future payday (and understated projected
+  // savings by the same amount), so the forecast drifted further from
+  // reality with each check it projected. 401(k) is deliberately NOT
+  // modelled here: netPerCheck is already net of that withholding, so
+  // subtracting it again would double-count it.
+  const perCheckAlloc  = perCheckAllocations(settings);
+  const allocFor       = k => safeNum((perCheckAlloc.find(a => a.key === k) || {}).amount);
+  const toSavings      = round2(allocFor('hysa') + allocFor('rothIRA'));
   let probeMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   for (let m = 0; m < Math.ceil(days/28) + 1; m++) {
-    for (const d of paycheckDatesForMonth(probeMonth.getFullYear(), probeMonth.getMonth()))
-      if (d >= today && d <= endDate) events.push({ date:d, bucket:'checking', delta:netPerCheck(settings), label:'Paycheck' });
+    for (const d of paycheckDatesForMonth(probeMonth.getFullYear(), probeMonth.getMonth())) {
+      if (!(d >= today && d <= endDate)) continue;
+      // Skip a payday that has already been logged — its money is in the
+      // starting balances, so projecting it again would count it twice.
+      if (paycheckLoggedFor(transactions, ymd(d), netPerCheck(settings))) continue;
+      events.push({ date:d, bucket:'checking', delta:netPerCheck(settings), label:'Paycheck' });
+      if (toSavings > 0) {
+        events.push({ date:d, bucket:'checking', delta:-toSavings, label:'HYSA + Roth transfer' });
+        events.push({ date:d, bucket:'savings',  delta: toSavings, label:'HYSA + Roth transfer' });
+      }
+    }
     probeMonth = new Date(probeMonth.getFullYear(), probeMonth.getMonth()+1, 1);
   }
 
@@ -4413,11 +4487,12 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
   const rothYTD = rothContributionsYTD(transactions, goals, year);
   const rothPct = settings.rothIRAYearlyLimit > 0 ? Math.min((rothYTD/settings.rothIRAYearlyLimit)*100,100) : 0;
   const k401EmpYTD = employee401kYTD(transactions, goals, year);
-  const k401Pct = annual401kEmployeeLimit(settings) > 0 ? Math.min((k401EmpYTD/annual401kEmployeeLimit(settings))*100,100) : 0;
+  const k401Goal = annual401kGoal(settings);
+  const k401Pct = k401Goal > 0 ? Math.min((k401EmpYTD/k401Goal)*100,100) : 0;
   const rows = [
     { label:'HYSA',     bal:hysaBal,  goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
     { label:'Roth IRA', bal:rothYTD,  goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)' },
-    { label:'401(k)',   bal:k401EmpYTD, goal:settings.ira401kYearlyMax, pct:k401Pct, color:'var(--yellow)' },
+    { label:'401(k)',   bal:k401EmpYTD, goal:k401Goal, pct:k401Pct, color:'var(--yellow)' },
   ];
   return (
     <div>
@@ -4515,7 +4590,12 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
   return (
     <div>
       <div className="cal-head">
-        <div className="section-head" style={{padding:0,marginBottom:0}}>Cash Flow Forecast</div>
+        <div style={{minWidth:0}}>
+          <div className="section-head" style={{padding:0,marginBottom:0}}>Cash Flow Forecast</div>
+          <div style={{fontSize:'.66rem',color:'var(--t3)',marginTop:2}}>
+            Scheduled income, bills, transfers &amp; card payments
+          </div>
+        </div>
         <div className="seg" role="group" aria-label="Forecast range">
           {[[30,'30D'],[60,'60D'],[90,'90D']].map(([v,l]) => (
             <button key={l} className={days===v?'on':''} onClick={()=>setDays(v)}>{l}</button>
@@ -4607,7 +4687,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   // ── Paycheck logging — 1st & 3rd Thursday, exactly 2 per month ──────
   const perMonth    = checksPerMonth(settings);
   const payDates    = paycheckDatesForMonth(now.getFullYear(), now.getMonth());
-  const paychecksThisMonth = transactions.filter(t=>t.kind==='paycheck' && t.date && t.date.startsWith(monthStr));
+  const paychecksThisMonth = paychecksForMonth(transactions, monthStr);
   const checkCount  = Math.min(paychecksThisMonth.length, perMonth);
   // 401(k) isn't a category any transaction is tagged with — it's withheld
   // automatically per logged paycheck — so its "actual" for the This Month
@@ -4699,6 +4779,10 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
     const checkNo  = checkCount+1;
     const payDate  = payDates[Math.min(checkNo-1, perMonth-1)];   // 1st / 3rd Thursday
     const dateStr  = ymd(payDate);
+    // Never post the same payday twice — a double tap, a re-opened sheet, or
+    // a check already logged through the generic Add sheet would otherwise
+    // each create a second income row and double that month's income.
+    if (paycheckLoggedFor(transactions, dateStr, amt)) { setPayOpen(false); return; }
     const allocObj = Object.fromEntries(scaledAlloc.map(a=>[a.key,a.amount]));
     setTransactions(prev=>[{
       id:String(Date.now()), date:dateStr, type:'income', kind:'paycheck', category:'income',
@@ -4992,6 +5076,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
             <span className="ins-card-lbl">Savings Rate</span>
             <span className="ins-card-val" style={{color:'var(--accent)'}}>{pct(savingsRate,0)}</span>
             <span className="ins-card-sub">{money0(monthlyContrib)}/mo of {money0(savingsRateParts.base)} earned</span>
+            <span className="ins-card-sub" style={{color:'var(--t3)'}}>HYSA + Roth + employee 401(k)</span>
           </div>
           <button type="button" className="ins-card" onClick={()=>goTo&&goTo('networth')}>
             <span className="ins-card-lbl">Net Worth</span>
@@ -5062,12 +5147,12 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
                 const cat = CATEGORIES.find(c=>c.id===t.category);
                 return (
                   <div key={t.id} className="tx-row">
-                    {t.kind==='paycheck' ? <div className="tx-icon">PAY</div>
+                    {isPaycheckTransaction(t) ? <div className="tx-icon">PAY</div>
                       : t.type==='transfer' ? <div className="tx-icon"><Icon name="swap" size={14} color="var(--blue)"/></div>
                       : <MerchantLogo description={t.description}/>}
                     <div className="tx-body">
                       <div className="tx-desc">{t.description}</div>
-                      <div className="tx-meta">{(t.kind==='paycheck' ? 'Paycheck' : (cat?.label||'Other'))} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+                      <div className="tx-meta">{(isPaycheckTransaction(t) ? 'Paycheck' : (cat?.label||'Other'))} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
                     </div>
                     <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
                       {t.type==='income'?'+':'-'}{currency(t.amount)}
@@ -5962,7 +6047,8 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
   const k401Emp   = goals.k401Employee || 0;
   const k401Empr  = goals.k401Employer || 0;
   const k401Bal   = total401kBalance(goals);
-  const k401Limit = annual401kEmployeeLimit(settings);
+  const k401Limit = annual401kGoal(settings);           // plan, not the IRS ceiling
+  const k401IRSMax = annual401kEmployeeLimit(settings);  // ceiling, shown as context
   // Employer match never counts against the employee deferral limit.
   const k401EmpYTD = employee401kYTD(transactions, goals, now.getFullYear());
   const k401YTDEstimated = is401kYTDEstimated(transactions, goals, now.getFullYear());
@@ -6045,6 +6131,9 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
             {phase.isRentFree && <span style={{color:'var(--t4)'}}> · rent-free, HYSA accelerated</span>}
             {phase.isRentMonth && <span style={{color:'var(--t4)'}}> · rent month</span>}
             <span style={{color:'var(--accent)',marginLeft:8,fontSize:'.76rem'}}>{srOpen ? 'Hide' : 'How?'}</span>
+          </div>
+          <div style={{fontSize:'.7rem',color:'var(--t3)',marginTop:4}}>
+            of earned income · includes HYSA, Roth IRA and employee 401(k)
           </div>
         </button>
         {srOpen && (
@@ -6170,7 +6259,9 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
         <div className="gc-head">
           <div>
             <div className="gc-name">401(k)</div>
-            <div className="gc-sub">Pre-tax · IRS max {now.getFullYear()}: {currency(settings.ira401kYearlyMax)}</div>
+            <div className="gc-sub">
+              Pre-tax · your {now.getFullYear()} plan {currency(k401Limit)} · IRS max {currency(k401IRSMax)}
+            </div>
           </div>
           <div>
             <div className="gc-pct" style={{color:'var(--yellow)'}}>
@@ -6194,7 +6285,7 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
               sub:matchCapped ? 'annual cap reached'
                               : `${currency(matchPerCheck,2)}/check` },
             { lbl:'Combined',       val:k401Bal,  c:'var(--t1)',
-              sub:`${currency(k401Rem)} to IRS max` },
+              sub:`${currency(k401Rem)} to your ${currency(k401Limit)} plan` },
           ].map((x,i,arr)=>(
             <div key={x.lbl} style={{
               flex:1, paddingRight:i<arr.length-1?14:0, marginRight:i<arr.length-1?14:0,
@@ -6226,7 +6317,7 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
           <span className="gc-rate">{currency(empPerCheck,2)} + {currency(matchPerCheck,2)} employer / check</span>
           <span className="gc-date">
             {!k401Started ? `Starts ${k401StartLabel}`
-              : k401Bal > 0 ? `${currency(k401Rem)} to IRS max` : 'Capturing employer match'}
+              : k401Bal > 0 ? `${currency(k401Rem)} to your ${currency(k401Limit)} plan` : 'Capturing employer match'}
           </span>
         </div>
         <form onSubmit={upd401kEmp} className="goal-update" style={{marginTop:14}}>
