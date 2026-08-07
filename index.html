@@ -1490,6 +1490,14 @@ const DEFAULT_GOALS = {
   k401Employee:     0,   // employee contributions only
   k401Employer:     0,   // employer match only (NOT spendable income)
   rothIRAOverride:  null,
+  // Contributions already made THIS CALENDAR YEAR before the app started
+  // tracking them. Anyone onboarding mid-year has months of real
+  // contributions with no paycheck transactions behind them; without these,
+  // annual-limit progress reads $0 while the account balance shows
+  // thousands. Added to the transaction-derived YTD, never replacing it.
+  k401EmployeeYTDBaseline: 0,
+  k401EmployerYTDBaseline: 0,
+  rothYTDBaseline:         0,
 };
 
 const DEFAULT_NETWORTH = {
@@ -1825,6 +1833,13 @@ function ytdRothContributions(transactions, year) {
     else if (t.type === 'expense' && t.category === 'rothIRA') total += safeNum(t.amount);
   }
   return round2(total);
+}
+// Same shape as employee401kYTD/employer401kYTD: transaction-derived
+// contributions plus any pre-tracking baseline, so a mid-year onboard
+// doesn't show $0 progress beside a funded account.
+function rothContributionsYTD(transactions, goals, year) {
+  const y = year != null ? year : new Date().getFullYear();
+  return round2(safeNum(goals && goals.rothYTDBaseline) + ytdRothContributions(transactions, y));
 }
 // Has the 401(k) started as of a given date?
 function k401Active(s, ref) {
@@ -2398,6 +2413,81 @@ function monthlyContributionAmount(monthTxAll, allocationKey, category) {
   }
   return round2(total);
 }
+
+// ── Contribution vs. consumer spending — ONE definition ───────────────
+// Moving money into an account you own (HYSA, Roth IRA, 401(k)) is a
+// CONTRIBUTION, never consumer spending. These keys ride along in the
+// per-category maps because pages legitimately need to display "how much
+// went to HYSA this month" beside the real expense rows — but anything
+// answering "what did I SPEND / what's my top spending category" must
+// filter them out first, or a $900 HYSA transfer outranks every real
+// purchase and reports itself as the month's biggest expense.
+const CONTRIBUTION_CATEGORY_KEYS = ['hysa', 'rothIRA', '__401k__', 'savings', 'investments', 'retirement'];
+function isConsumerSpendingCategory(key) { return !CONTRIBUTION_CATEGORY_KEYS.includes(key); }
+// Entries of a byCategory/spent map that represent real consumer spending.
+function consumerSpendingEntries(byCategory) {
+  return Object.entries(byCategory || {}).filter(([k, v]) => isConsumerSpendingCategory(k) && safeNum(v) > 0);
+}
+// THE "top spending category" — used by Smart Insights, the Dashboard's
+// Top Category card, and anywhere else that ranks categories, so they can
+// never disagree or surface a savings transfer as spending.
+function topSpendingCategory(byCategory) {
+  return consumerSpendingEntries(byCategory).sort((a, b) => b[1] - a[1])[0] || null;
+}
+
+// ── 401(k): three DIFFERENT numbers, never interchangeable ────────────
+// 1. employee YTD  — counts toward the IRS annual employee deferral limit
+// 2. employer YTD  — real retirement money, but NEVER against that limit
+// 3. total balance — employee + employer (+ any opening balance/growth)
+// Each has exactly one selector here; no component recomputes them.
+//
+// YTD figures are reconstructed from logged paychecks, PLUS an optional
+// baseline for money contributed before the app started tracking (someone
+// onboarding in August has 7 months of real contributions with no
+// transactions behind them). Without that baseline the annual-progress bar
+// reads $0 while the account balance shows thousands — the exact
+// contradiction this app is supposed to make impossible.
+function employee401kYTD(transactions, goals, year) {
+  const y = year != null ? year : new Date().getFullYear();
+  return round2(safeNum(goals && goals.k401EmployeeYTDBaseline) + ytd401kEmployeeContributions(transactions, y));
+}
+function employer401kYTD(transactions, goals, year) {
+  const y = year != null ? year : new Date().getFullYear();
+  return round2(safeNum(goals && goals.k401EmployerYTDBaseline) + ytdEmployerMatch(transactions, y));
+}
+// Total tracked 401(k) account value — what Accounts and Net Worth show.
+function total401kBalance(goals) {
+  return round2(safeNum(goals && goals.k401Employee) + safeNum(goals && goals.k401Employer));
+}
+// The IRS employee deferral limit, stored once in settings.
+function annual401kEmployeeLimit(settings) { return safeNum(settings && settings.ira401kYearlyMax); }
+
+// ── Savings rate — ONE formula, used everywhere ───────────────────────
+// Personal savings = HYSA + Roth IRA + EMPLOYEE 401(k). The employer match
+// is real wealth but is not the user's own money set aside, so it is
+// reported separately and never inflates this percentage.
+//
+// The denominator is take-home PLUS the employee 401(k) deferral: the
+// displayed take-home is already net of that withholding, so counting the
+// 401(k) in the numerator while leaving it out of the denominator would
+// measure a share of income against an income figure that never contained
+// it (and can exceed 100%). Adding it back to both sides answers the
+// question actually being asked — "of everything I earned, how much did I
+// keep?" — consistently.
+function computeSavingsRate({ hysa = 0, roth = 0, employee401k = 0, takeHome = 0 }) {
+  const saved = safeNum(hysa) + safeNum(roth) + safeNum(employee401k);
+  const base  = safeNum(takeHome) + safeNum(employee401k);
+  if (!(base > 0)) return 0;
+  return Math.max(Math.min((saved / base) * 100, 100), 0);
+}
+// The plain-language explanation behind whatever computeSavingsRate returned,
+// so the tooltip and any "how is this calculated" copy stay in step with it.
+function savingsRateBreakdown({ hysa = 0, roth = 0, employee401k = 0, takeHome = 0 }) {
+  const saved = round2(safeNum(hysa) + safeNum(roth) + safeNum(employee401k));
+  const base  = round2(safeNum(takeHome) + safeNum(employee401k));
+  return { saved, base, hysa: safeNum(hysa), roth: safeNum(roth), employee401k: safeNum(employee401k),
+           rate: computeSavingsRate({ hysa, roth, employee401k, takeHome }) };
+}
 // rankingMode: 'spend' | 'largest' | 'frequency'
 function merchantStats(transactions) {
   const m = {};
@@ -2638,7 +2728,10 @@ function computeAchievements({ transactions, netWorth, goals, settings, customGo
 function getNetWorthSnapshot(accounts, goals, dynamicAccounts, ctx) {
   const a = accounts || {}, g = goals || {};
   const cash       = safeNum(a.checking) + safeNum(g.hysaBalance);
-  const k401       = safeNum(g.k401Employee) + safeNum(g.k401Employer) || safeNum(g.ira401kBalance);
+  // Full 401(k) balance — employee AND employer. Same shared selector the
+  // Accounts row and Goals page read, so net worth can never show a
+  // different retirement figure than the account it came from.
+  const k401       = total401kBalance(g) || safeNum(g.ira401kBalance);
   const retirement = safeNum(g.rothIRAOverride) + k401;
   let other        = safeNum(a.brokerage);
   let liabilities  = safeNum(a.creditCard) + safeNum(a.loans);
@@ -3334,8 +3427,32 @@ function vizColor(catId) {
   const i = catOrder().indexOf(catId);
   return i >= 0 ? VIZ_SERIES[i % VIZ_SERIES.length] : VIZ_OTHER;
 }
+// The budget object uses its own keys for several lines (outToEat, funTravel,
+// rentAndFee…) that have no matching CATEGORIES row. Without these aliases the
+// fallback below renders them literally — "OutToEat", "FunTravel",
+// "RentersInsurance" — anywhere a budget key reaches a label, including the
+// Top Category card and Smart Insights.
+const CATEGORY_LABEL_ALIASES = {
+  outToEat:         'Dining',
+  funTravel:        'Travel',
+  rentAndFee:       'Rent',
+  utilitiesAndFee:  'Utilities',
+  rentersInsurance: 'Renters Insurance',
+  __401k__:         '401(k)',
+  uncategorized:    'Uncategorized',
+};
+// Last-resort humanizer: splits camelCase into words and capitalizes, so an
+// unknown key reads "Some Category" rather than "SomeCategory".
+function humanizeCategoryId(id) {
+  return String(id)
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
 const catLabel = id => (CATEGORIES.find(c => c.id === id) || {}).label
-  || (id === 'uncategorized' ? 'Uncategorized' : id ? id.charAt(0).toUpperCase()+id.slice(1) : 'Uncategorized');
+  || CATEGORY_LABEL_ALIASES[id]
+  || (id ? humanizeCategoryId(id) : 'Uncategorized');
 
 function Bar({ value, max, color='var(--blue)', lg=false, label }) {
   const p = max ? Math.min((value/max)*100, 100) : 0;
@@ -4179,10 +4296,10 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
   // Roth/401(k) progress is measured against THIS YEAR's contributions, not
   // the all-time balance (which inflates with growth and prior years) —
   // same fix as the Goals page (PRD §15).
-  const rothYTD = ytdRothContributions(transactions, year);
+  const rothYTD = rothContributionsYTD(transactions, goals, year);
   const rothPct = settings.rothIRAYearlyLimit > 0 ? Math.min((rothYTD/settings.rothIRAYearlyLimit)*100,100) : 0;
-  const k401EmpYTD = ytd401kEmployeeContributions(transactions, year);
-  const k401Pct = settings.ira401kYearlyMax > 0 ? Math.min((k401EmpYTD/settings.ira401kYearlyMax)*100,100) : 0;
+  const k401EmpYTD = employee401kYTD(transactions, goals, year);
+  const k401Pct = annual401kEmployeeLimit(settings) > 0 ? Math.min((k401EmpYTD/annual401kEmployeeLimit(settings))*100,100) : 0;
   const rows = [
     { label:'HYSA',     bal:hysaBal,  goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
     { label:'Roth IRA', bal:rothYTD,  goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)' },
@@ -4233,8 +4350,20 @@ function DashboardAIInsights({ settings, accounts, goals, netWorth, byCategory, 
       lines.push(`You've used ${usedPct.toFixed(0)}% of this month's budget.`);
     }
   }
-  const topCat = Object.entries(byCategory||{}).filter(([k,v]) => k!=='__401k__' && v>0).sort((a,b) => b[1]-a[1])[0];
+  // Shared ranking — savings/retirement contributions are contributions,
+  // not spending, so a big HYSA transfer can never be reported as the
+  // month's top spending category.
+  const topCat = topSpendingCategory(byCategory);
   if (topCat) lines.push(`${catLabel(topCat[0])} is your top spending category this month at ${currency(topCat[1])}.`);
+  // Contributions get their own affirmative line instead of being silently
+  // dropped — money moved into savings is worth surfacing, just not as spending.
+  const contributed = round2(safeNum((byCategory||{}).hysa) + safeNum((byCategory||{}).rothIRA));
+  if (contributed > 0) {
+    const parts = [];
+    if (safeNum((byCategory||{}).hysa) > 0)    parts.push(`${currency(byCategory.hysa)} to your HYSA`);
+    if (safeNum((byCategory||{}).rothIRA) > 0) parts.push(`${currency(byCategory.rothIRA)} to your Roth IRA`);
+    lines.push(`You've contributed ${parts.join(' and ')} this month.`);
+  }
   const worstCard = (accounts||[]).filter(a => a.type==='credit' && !a.archived)
     .map(a => ({ a, util: creditUtilization(accountBalance(a,ctx), (a.card||defaultCardFields()).creditLimit) }))
     .sort((x,y) => y.util-x.util)[0];
@@ -4319,10 +4448,18 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   const budget     = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget : settings.laterBudget;
   const eb         = settings.earlyBudget;
   const netMonthly = monthlyNetIncome(settings);   // 2 × net paycheck
-  // Savings rate = HYSA + Roth IRA out of take-home. The 401(k) is already
-  // deducted before the paycheck lands, so it is NOT subtracted again here.
-  const monthlyContrib = (budget.hysa||0) + (budget.rothIRA||0);
-  const savingsRate    = netMonthly > 0 ? (monthlyContrib / netMonthly) * 100 : 0;
+  // Savings rate runs through the one shared formula (computeSavingsRate),
+  // so this card, the Goals hero, and the Financial Health score can never
+  // report three different percentages. Employee 401(k) counts as personal
+  // savings and is added back to the denominator, since take-home is already
+  // net of it — see computeSavingsRate for the full reasoning.
+  const monthlyEmployee401k = round2(employee401kPerCheck(settings) * checksPerMonth(settings));
+  const monthlyContrib = round2((budget.hysa||0) + (budget.rothIRA||0) + monthlyEmployee401k);
+  const savingsRateParts = savingsRateBreakdown({
+    hysa: budget.hysa||0, roth: budget.rothIRA||0,
+    employee401k: monthlyEmployee401k, takeHome: netMonthly,
+  });
+  const savingsRate = savingsRateParts.rate;
 
   const totalBudgeted = phase.isEarly || phase.isPreEmployment
     ? (eb.utilitiesAndFee||0)+(eb.rentersInsurance||0)+(eb.rothIRA||0)+(eb.hysa||0)+(eb.groceries||0)+(eb.gas||0)+(eb.funTravel||0)+(eb.outToEat||0)+(eb.shopping||0)
@@ -4383,7 +4520,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   // employerMatchAnnualCap).
   const baseEmpContrib = k401Active(settings, nextPayDate) ? employee401kPerCheck(settings) : 0;
   const empContrib  = round2(baseEmpContrib * payScale);
-  const matchYTD    = ytdEmployerMatch(transactions, now.getFullYear());
+  const matchYTD    = employer401kYTD(transactions, goals, now.getFullYear());
   const emprContrib = employerMatchForPaycheck(settings, empContrib, matchYTD);
   const openPay = () => { setPayAmt(baseDeposit); setPayOpen(true); };
   const confirmPay = () => {
@@ -4658,7 +4795,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
           <div className="ins-card">
             <span className="ins-card-lbl">Savings Rate</span>
             <span className="ins-card-val" style={{color:'var(--accent)'}}>{pct(savingsRate,0)}</span>
-            <span className="ins-card-sub">{money0(monthlyContrib)}/mo of {money0(netMonthly)} take-home</span>
+            <span className="ins-card-sub">{money0(monthlyContrib)}/mo of {money0(savingsRateParts.base)} earned</span>
           </div>
           <button type="button" className="ins-card" onClick={()=>goTo&&goTo('networth')}>
             <span className="ins-card-lbl">Net Worth</span>
@@ -5559,7 +5696,7 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
   // never the account's total balance, which inflates with every prior
   // year's contributions plus any investment growth (PRD §15: "Do not use
   // total account value as the annual contribution amount").
-  const rothYTD   = ytdRothContributions(transactions, now.getFullYear());
+  const rothYTD   = rothContributionsYTD(transactions, goals, now.getFullYear());
   const rothPct_  = settings.rothIRAYearlyLimit > 0 ? Math.min((rothYTD / settings.rothIRAYearlyLimit) * 100, 100) : 0;
   const rothRem   = Math.max(settings.rothIRAYearlyLimit - rothYTD, 0);
   const rothMonthsLeft = rothRate > 0 && rothRem > 0
@@ -5569,20 +5706,22 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
     return d.toLocaleDateString('en-US', {month:'short', year:'numeric'});
   })() : null;
 
-  // ── 401(k) — employee and employer tracked separately ─────────────────
+  // ── 401(k) — three distinct numbers, all from shared selectors ────────
+  // BALANCE (employee + employer, what the account is worth) is a different
+  // number from YTD CONTRIBUTIONS (what counts against this year's IRS
+  // limit), which is different again from the employer match. Every one of
+  // them comes from the selectors above so Accounts, Net Worth, and this
+  // page cannot drift apart.
   const k401Emp   = goals.k401Employee || 0;
   const k401Empr  = goals.k401Employer || 0;
-  // Combined is DERIVED from the two sources — never an independently editable
-  // number, so the split and the total can never disagree.
-  const k401Bal   = round2(k401Emp + k401Empr);
-  // Same fix as Roth above: the IRS employee deferral limit resets every
-  // January 1 — measure progress against this year's employee
-  // contributions, not the all-time cumulative total k401Emp holds.
-  const k401EmpYTD = ytd401kEmployeeContributions(transactions, now.getFullYear());
-  const k401Pct_ = settings.ira401kYearlyMax > 0 ? Math.min((k401EmpYTD / settings.ira401kYearlyMax) * 100, 100) : 0;
-  const k401Rem  = Math.max(settings.ira401kYearlyMax - k401EmpYTD, 0);
+  const k401Bal   = total401kBalance(goals);
+  const k401Limit = annual401kEmployeeLimit(settings);
+  // Employer match never counts against the employee deferral limit.
+  const k401EmpYTD = employee401kYTD(transactions, goals, now.getFullYear());
+  const k401Pct_ = k401Limit > 0 ? Math.min((k401EmpYTD / k401Limit) * 100, 100) : 0;
+  const k401Rem  = Math.max(k401Limit - k401EmpYTD, 0);
   const matchCap    = settings.employerMatchAnnualCap != null ? settings.employerMatchAnnualCap : 0;
-  const matchUsed   = ytdEmployerMatch(transactions, now.getFullYear());
+  const matchUsed   = employer401kYTD(transactions, goals, now.getFullYear());
   const matchCapped = matchCap > 0 && matchUsed >= matchCap;
   const empPerCheck   = k401Active(settings) ? employee401kPerCheck(settings) : 0;
   const matchPerCheck = employerMatchForPaycheck(settings, empPerCheck, matchUsed);
@@ -5591,15 +5730,23 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
     ? parseLocalDate(settings.contribution401kStart).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '';
 
   // ── Savings rate ──────────────────────────────────────────────────────
-  // Only HYSA + Roth IRA count — 401k is pre-tax and deducted before take-home
+  // Same shared formula the Dashboard card and Financial Health score use,
+  // so this hero percentage can never disagree with them.
   const activeBudget   = phase.isEarly || phase.isPreEmployment ? settings.earlyBudget : settings.laterBudget;
-  const monthlyContrib = (activeBudget.hysa||0) + (activeBudget.rothIRA||0);
-  const savingsRate    = monthlyNetIncome(settings) > 0 ? (monthlyContrib / monthlyNetIncome(settings)) * 100 : 0;
+  const monthlyEmp401k = round2(employee401kPerCheck(settings) * checksPerMonth(settings));
+  const monthlyContrib = round2((activeBudget.hysa||0) + (activeBudget.rothIRA||0) + monthlyEmp401k);
+  const srParts        = savingsRateBreakdown({
+    hysa: activeBudget.hysa||0, roth: activeBudget.rothIRA||0,
+    employee401k: monthlyEmp401k, takeHome: monthlyNetIncome(settings),
+  });
+  const savingsRate    = srParts.rate;
   const totalComm      = commissions.reduce((s,c) => s+c.amount, 0);
 
   // ── Form state ────────────────────────────────────────────────────────
+  const [srOpen, setSrOpen]   = useState(false);
   const [hysaIn, setHysaIn]   = useState('');
   const [k401EmpIn,  setK401EmpIn]  = useState('');
+  const [k401BaseIn, setK401BaseIn] = useState('');
   const [k401EmprIn, setK401EmprIn] = useState('');
   const [rothIn, setRothIn] = useState('');
 
@@ -5609,6 +5756,13 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
   const upd401kEmp = e => { e.preventDefault(); const v=parseFloat(k401EmpIn);
     if(!isNaN(v)) setGoals(g=>({...g,k401Employee:v,ira401kBalance:round2(v+(g.k401Employer||0))}));
     setK401EmpIn(''); };
+  // Sets the pre-tracking YTD baseline. Deliberately separate from the
+  // balance fields above: a balance is what the account holds, a baseline
+  // is what was contributed this calendar year — the two move independently
+  // (growth changes one, not the other).
+  const upd401kBaseline = e => { e.preventDefault(); const v=parseFloat(k401BaseIn);
+    if(!isNaN(v)) setGoals(g=>({...g, k401EmployeeYTDBaseline: round2(Math.max(v,0))}));
+    setK401BaseIn(''); };
   const upd401kEmpr = e => { e.preventDefault(); const v=parseFloat(k401EmprIn);
     if(!isNaN(v)) setGoals(g=>({...g,k401Employer:v,ira401kBalance:round2((g.k401Employee||0)+v)}));
     setK401EmprIn(''); };
@@ -5620,15 +5774,53 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
   return (
     <div className="page">
 
-      {/* Hero — savings rate */}
+      {/* Hero — savings rate. Tappable: the number is a composite of three
+          contribution lines over an adjusted income base, which is not
+          self-evident from a bare percentage, so the breakdown is one tap
+          away rather than something to reverse-engineer. */}
       <div>
         <div className="eyebrow" style={{marginBottom:8}}>Savings Rate</div>
-        <div className="mega" style={{color:'var(--accent)'}}>{pct(savingsRate, 0)}</div>
-        <div style={{fontSize:'.85rem',color:'var(--t3)',marginTop:10,fontVariantNumeric:'tabular-nums'}}>
-          {currency(monthlyContrib)}/mo this month
-          {phase.isRentFree && <span style={{color:'var(--t4)'}}> · rent-free, HYSA accelerated</span>}
-          {phase.isRentMonth && <span style={{color:'var(--t4)'}}> · rent month</span>}
-        </div>
+        <button type="button" onClick={()=>setSrOpen(o=>!o)} aria-expanded={srOpen}
+          style={{background:'none',border:'none',padding:0,textAlign:'left',cursor:'pointer',display:'block'}}>
+          <div className="mega" style={{color:'var(--accent)'}}>{pct(savingsRate, 0)}</div>
+          <div style={{fontSize:'.85rem',color:'var(--t3)',marginTop:10,fontVariantNumeric:'tabular-nums'}}>
+            {currency(monthlyContrib)}/mo this month
+            {phase.isRentFree && <span style={{color:'var(--t4)'}}> · rent-free, HYSA accelerated</span>}
+            {phase.isRentMonth && <span style={{color:'var(--t4)'}}> · rent month</span>}
+            <span style={{color:'var(--accent)',marginLeft:8,fontSize:'.76rem'}}>{srOpen ? 'Hide' : 'How?'}</span>
+          </div>
+        </button>
+        {srOpen && (
+          <div className="card" style={{marginTop:12,padding:'14px 16px'}}>
+            <div style={{fontSize:'.72rem',color:'var(--t2)',lineHeight:1.6,marginBottom:10}}>
+              How much of everything you earn is going into savings and retirement.
+            </div>
+            {[
+              { l:'HYSA',              v:srParts.hysa },
+              { l:'Roth IRA',          v:srParts.roth },
+              { l:'401(k) — you',      v:srParts.employee401k },
+            ].map(r => (
+              <div key={r.l} className="alloc-row">
+                <span className="alloc-name">{r.l}</span>
+                <span className="alloc-val">{currency(r.v,2)}</span>
+              </div>
+            ))}
+            <div className="alloc-row" style={{borderTop:'1px solid var(--border2)'}}>
+              <span className="alloc-name" style={{fontWeight:700,color:'var(--t1)'}}>Saved / month</span>
+              <span className="alloc-val" style={{fontWeight:700,color:'var(--accent)'}}>{currency(srParts.saved,2)}</span>
+            </div>
+            <div className="alloc-row">
+              <span className="alloc-name">Take-home + 401(k)</span>
+              <span className="alloc-val">{currency(srParts.base,2)}</span>
+            </div>
+            <div style={{fontSize:'.68rem',color:'var(--t3)',lineHeight:1.6,marginTop:10}}>
+              Your take-home is already net of the 401(k), so it's added back here — otherwise
+              money you saved would be missing from the income it came out of. The employer
+              match is real wealth but isn't your own money set aside, so it's tracked
+              separately and never counted in this percentage.
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Commission earned pill */}
@@ -5792,6 +5984,23 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
             value={k401EmprIn} onChange={e=>setK401EmprIn(e.target.value)} />
           <button type="submit" className="btn btn-primary btn-sm">Update</button>
         </form>
+        {/* Progress above is rebuilt from logged paychecks. Anyone who
+            started using the app partway through the year has real
+            contributions with no transactions behind them — this is where
+            that history goes, so the annual bar isn't stuck at $0 beside a
+            funded balance. */}
+        <form onSubmit={upd401kBaseline} className="goal-update" style={{marginTop:8}}>
+          <input type="number" step="0.01" min="0"
+            placeholder={`Contributed before tracking (${currency(safeNum(goals.k401EmployeeYTDBaseline))})`}
+            value={k401BaseIn} onChange={e=>setK401BaseIn(e.target.value)} />
+          <button type="submit" className="btn btn-ghost btn-sm">Set</button>
+        </form>
+        <div style={{fontSize:'.66rem',color:'var(--t3)',marginTop:6,lineHeight:1.5}}>
+          {currency(k401EmpYTD)} counted this year
+          {safeNum(goals.k401EmployeeYTDBaseline) > 0
+            && ` (${currency(goals.k401EmployeeYTDBaseline)} before tracking + ${currency(round2(k401EmpYTD - safeNum(goals.k401EmployeeYTDBaseline)))} from logged paychecks)`}
+          . Employer match is tracked separately and never counts toward the IRS employee limit.
+        </div>
       </div>
 
       <div style={{fontSize:'.68rem',color:'var(--t4)',textAlign:'center'}}>
@@ -7703,11 +7912,11 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
   const rothBal  = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
   const k401Emp  = goals.k401Employee  || 0;
   const k401Empr = goals.k401Employer  || 0;
-  const k401Bal  = round2(k401Emp + k401Empr);          // derived, not editable
+  const k401Bal  = total401kBalance(goals);             // derived, not editable
   // This year's contributions — for the IRS-limit "Goal Progress" card
   // below, never the all-time balance above (PRD §15).
-  const rothYTD    = ytdRothContributions(transactions, new Date().getFullYear());
-  const k401EmpYTD = ytd401kEmployeeContributions(transactions, new Date().getFullYear());
+  const rothYTD    = rothContributionsYTD(transactions, goals, new Date().getFullYear());
+  const k401EmpYTD = employee401kYTD(transactions, goals, new Date().getFullYear());
 
   const setHYSA = v => setGoals(g => ({ ...g, hysaBalance:     v }));
   const setRoth = v => setGoals(g => ({ ...g, rothIRAOverride: v }));
@@ -9946,7 +10155,7 @@ function App() {
     // This year's contributions, matching the Goals page's own ETA — using
     // the raw account balance here would compute a "days to target" the
     // Goals page's displayed ETA no longer agrees with (PRD §15).
-    const rothYTD  = ytdRothContributions(transactions, new Date().getFullYear());
+    const rothYTD  = rothContributionsYTD(transactions, goals, new Date().getFullYear());
     const track = (key, rem, rate, done) => {
       if (done) { next[key] = 0; delete hl[key]; return; }
       if (!(rate > 0)) return;
