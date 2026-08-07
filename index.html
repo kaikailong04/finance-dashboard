@@ -1894,8 +1894,10 @@ function isPaycheckTransaction(t) {
 }
 // Every paycheck logged in a given month (YYYY-MM), newest date last.
 function paychecksForMonth(transactions, monthKey) {
-  return (transactions || [])
-    .filter(t => isPaycheckTransaction(t) && (t.date || '').startsWith(monthKey))
+  const list = transactions || [];
+  return list
+    .filter((t, i) => isPaycheckTransaction(t) && (t.date || '').startsWith(monthKey)
+                      && !isDuplicateTransaction(t, list, i))
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 }
 // Has the payday on `dateStr` already been logged? Matches on the date
@@ -2124,8 +2126,40 @@ function isIncomeTransaction(t) {
 function isDuplicateTransaction(t, all, index) {
   if (!t || !Array.isArray(all)) return false;
   if (t.duplicate === true) return true;
-  const key = `${txDateKey(t)}|${safeNum(t.amount).toFixed(2)}|${normalizeMerchantName(t.description)}|${t.category||''}`;
   const upto = typeof index === 'number' ? index : all.indexOf(t);
+  // Paycheck-specific rule, checked FIRST and independent of the generic key
+  // below. Two genuine paychecks can never land on the same calendar date
+  // under this app's fixed 1st/3rd-Thursday schedule, so a second
+  // paycheck-like row dated the same day as an earlier one is a duplicate —
+  // full stop — even when their description or exact amount doesn't match,
+  // which is common: one row predating the `kind` field, the other logged
+  // later once the payday-status bug was fixed, can easily disagree on
+  // "Paycheck 1 of 2" vs "Paycheck 2 of 2" or a few cents of rounding. The
+  // generic key below requires an exact match on both and silently missed
+  // duplicates shaped exactly like that, letting a re-logged check double
+  // its contributions while correctly staying invisible as spending.
+  //
+  // Which of the two survives does NOT depend on array order (every insert
+  // in this app prepends, so "earlier index" means "added later" — easy to
+  // get backwards). Instead the more STRUCTURALLY COMPLETE row wins: the
+  // one actually carrying employee401k/employer401k/allocations, since
+  // that's real contribution data a bare income row never has. A tie
+  // (both complete, or both bare) falls back to array position so the
+  // choice is at least deterministic.
+  if (isPaycheckTransaction(t) && t.date) {
+    const completeness = x => (x.kind === 'paycheck' ? 2 : 0)
+      + (x.employee401k != null ? 1 : 0) + (x.allocations ? 1 : 0);
+    const mine = completeness(t);
+    for (let i = 0; i < all.length; i++) {
+      if (i === upto) continue;
+      const o = all[i];
+      if (!o || o.date !== t.date || !isPaycheckTransaction(o)) continue;
+      const theirs = completeness(o);
+      if (theirs > mine) return true;
+      if (theirs === mine && i < upto) return true;
+    }
+  }
+  const key = `${txDateKey(t)}|${safeNum(t.amount).toFixed(2)}|${normalizeMerchantName(t.description)}|${t.category||''}`;
   for (let i = 0; i < upto; i++) {
     const o = all[i];
     if (!o) continue;
