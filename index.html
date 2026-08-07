@@ -1913,8 +1913,10 @@ function paycheckLoggedFor(transactions, dateStr, expectedAmount) {
   }) || null;
 }
 function ytdEmployerMatch(transactions, year) {
-  return round2((transactions || [])
-    .filter(t => isPaycheckLike401k(t) && t.date && Number(t.date.slice(0,4)) === year)
+  const list = transactions || [];
+  return round2(list
+    .filter((t,i) => isPaycheckLike401k(t) && t.date && Number(t.date.slice(0,4)) === year
+                     && !isDuplicateTransaction(t, list, i))
     .reduce((s, t) => s + (t.employer401k || 0), 0));
 }
 // This calendar year's employEE 401(k) contributions — the IRS employee
@@ -1923,8 +1925,10 @@ function ytdEmployerMatch(transactions, year) {
 // cumulative total goals.k401Employee holds (PRD §15: "Reset contribution
 // progress each January 1. Do not reset the actual account balance.").
 function ytd401kEmployeeContributions(transactions, year) {
-  return round2((transactions || [])
-    .filter(t => isPaycheckLike401k(t) && t.date && Number(t.date.slice(0,4)) === year)
+  const list = transactions || [];
+  return round2(list
+    .filter((t,i) => isPaycheckLike401k(t) && t.date && Number(t.date.slice(0,4)) === year
+                     && !isDuplicateTransaction(t, list, i))
     .reduce((s, t) => s + (t.employee401k || 0), 0));
 }
 // This calendar year's Roth IRA contributions — same reasoning as above,
@@ -1935,12 +1939,18 @@ function ytd401kEmployeeContributions(transactions, year) {
 // same transaction history everything else already reads: paycheck
 // allocations plus any Roth IRA contribution logged directly.
 function ytdRothContributions(transactions, year) {
+  const list = transactions || [];
   let total = 0;
-  for (const t of (transactions || [])) {
-    if (!t.date || Number(t.date.slice(0,4)) !== year) continue;
+  list.forEach((t, i) => {
+    if (!t.date || Number(t.date.slice(0,4)) !== year) return;
+    // Same duplicate suppression every spending total already applies. It
+    // was missing here, so a re-logged paycheck was correctly ignored as
+    // spending while its allocations were counted twice as contributions —
+    // inflating YTD progress against the annual limit.
+    if (isDuplicateTransaction(t, list, i)) return;
     if (isPaycheckTransaction(t) && t.allocations && t.allocations.rothIRA) total += safeNum(t.allocations.rothIRA);
     else if (t.type === 'expense' && t.category === 'rothIRA') total += safeNum(t.amount);
-  }
+  });
   return round2(total);
 }
 // Same shape as employee401kYTD/employer401kYTD: transaction-derived
