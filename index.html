@@ -4563,7 +4563,7 @@ function UpcomingBillsMini({ accounts, bills, transactions, settings, goals, net
   );
 }
 
-function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
+function SavingsGoalsMini({ settings, goals, transactions, goTo, setTransactions }) {
   const year = new Date().getFullYear();
   const hysaBal = goals.hysaBalance || 0;
   const hysaPct = settings.hysaGoal > 0 ? Math.min((hysaBal/settings.hysaGoal)*100,100) : 0;
@@ -4596,11 +4596,31 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
   // asking the number to be trusted. HYSA is a plain balance (no transaction
   // list drives it), so it isn't tappable.
   const [breakdownKey, setBreakdownKey] = useState(null);
+  // `field` says WHERE on the transaction this row's amount actually lives —
+  // Roth/HYSA ride under allocations.*, 401(k) is its own top-level field —
+  // so an edit made in the modal below writes back to the right place.
   const breakdown = breakdownKey === 'roth'
-    ? { title:'Roth IRA', subtitle:`Contributions counted toward ${year}`, rows:rothContributionRows(transactions, year), total:rothYTD }
+    ? { title:'Roth IRA', subtitle:`Contributions counted toward ${year}`, rows:rothContributionRows(transactions, year), total:rothYTD,
+        field:{ kind:'allocations', key:'rothIRA' } }
     : breakdownKey === '401k'
-    ? { title:'401(k) — You', subtitle:`Employee contributions counted toward ${year}`, rows:k401ContributionRows(transactions, 'employee401k', year), total:k401EmpYTD }
+    ? { title:'401(k) — You', subtitle:`Employee contributions counted toward ${year}`, rows:k401ContributionRows(transactions, 'employee401k', year), total:k401EmpYTD,
+        field:{ kind:'top', key:'employee401k' } }
     : null;
+  // Corrects only the CONTRIBUTION record on that one transaction — a
+  // paycheck's allocation was what the app assumed at logging time, not
+  // necessarily a confirmed transfer. Deliberately does not touch the
+  // account balance in Goals: whether that balance was ever incremented by
+  // this specific paycheck isn't something this modal can know, and
+  // guessing risks trading one discrepancy for another. If the balance also
+  // needs correcting, that's still the separate "Update" field on Goals.
+  const onEditRow = setTransactions ? (txId, newAmount) => {
+    setTransactions(prev => prev.map(t => {
+      if (t.id !== txId || !breakdown) return t;
+      return breakdown.field.kind === 'allocations'
+        ? { ...t, allocations: { ...(t.allocations || {}), [breakdown.field.key]: newAmount } }
+        : { ...t, [breakdown.field.key]: newAmount };
+    }));
+  } : null;
   return (
     <div>
       <div className="cal-head">
@@ -4635,7 +4655,7 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
           );
         })}
       </div>
-      {breakdown && <ContributionBreakdownModal {...breakdown} onClose={()=>setBreakdownKey(null)}/>}
+      {breakdown && <ContributionBreakdownModal {...breakdown} onEditRow={onEditRow} onClose={()=>setBreakdownKey(null)}/>}
     </div>
   );
 }
@@ -5094,7 +5114,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
         <UpcomingBillsMini accounts={accounts} bills={bills} transactions={transactions} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
       </div>
 
-      <SavingsGoalsMini settings={settings} goals={goals} transactions={transactions} goTo={goTo}/>
+      <SavingsGoalsMini settings={settings} goals={goals} transactions={transactions} goTo={goTo} setTransactions={setTransactions}/>
 
       {/* Paycheck Breakdown */}
       <div>
@@ -5981,7 +6001,20 @@ function Confetti() {
 // A row the duplicate rule excluded is shown, not hidden, struck through
 // and labeled, so "why is this number what it is" has a real answer
 // instead of asking to be trusted.
-function ContributionBreakdownModal({ title, subtitle, rows, total, onClose }) {
+function ContributionBreakdownModal({ title, subtitle, rows, total, onClose, onEditRow }) {
+  // A row's amount here is whatever the Log Paycheck flow assumed would be
+  // allocated that check — not necessarily what actually happened. If it
+  // didn't, this is the one place that number can be corrected, right where
+  // it was found to be wrong, instead of deleting and re-logging a whole
+  // paycheck just to fix one of its sub-fields.
+  const [editingId, setEditingId] = useState(null);
+  const [editVal, setEditVal] = useState('');
+  const startEdit = r => { setEditingId(r.id); setEditVal(String(r.amount)); };
+  const saveEdit = r => {
+    const v = round2(Math.max(safeNum(parseFloat(editVal)), 0));
+    if (!isNaN(v)) onEditRow(r.id, v);
+    setEditingId(null);
+  };
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal-card" role="dialog" aria-modal="true" aria-label={title}>
@@ -5998,25 +6031,57 @@ function ContributionBreakdownModal({ title, subtitle, rows, total, onClose }) {
               No contributing transactions found this year.
             </div>
           )}
-          {rows.map(r => (
-            <div key={r.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,
-              padding:'10px 0',borderBottom:'1px solid var(--border)',opacity:r.excluded?.5:1}}>
-              <div style={{minWidth:0}}>
-                <div style={{fontSize:'.8rem',fontWeight:600,color:'var(--t1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                  {r.description}
+          {rows.map(r => {
+            const editable = onEditRow && r.source === 'paycheck' && !r.excluded;
+            const isEditing = editingId === r.id;
+            return (
+              <div key={r.id} style={{padding:'10px 0',borderBottom:'1px solid var(--border)',opacity:r.excluded?.5:1}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:'.8rem',fontWeight:600,color:'var(--t1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {r.description}
+                    </div>
+                    <div style={{fontSize:'.66rem',color:r.excluded?'var(--red)':'var(--t3)',marginTop:1}}>
+                      {new Date(r.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                      {' · '}{r.source==='paycheck' ? 'assumed by the paycheck' : 'logged directly'}
+                      {r.excluded && ' · excluded as a duplicate'}
+                    </div>
+                  </div>
+                  {isEditing ? (
+                    <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                      <span style={{color:'var(--t3)',fontSize:'.76rem'}}>$</span>
+                      <input type="number" step="0.01" min="0" inputMode="decimal" autoFocus value={editVal}
+                        onChange={e=>setEditVal(e.target.value)}
+                        style={{width:76,textAlign:'right',background:'var(--s2)',border:'1px solid var(--border2)',
+                          borderRadius:8,color:'var(--t1)',padding:'5px 7px',fontSize:'.78rem',fontWeight:600,
+                          outline:'none',fontVariantNumeric:'tabular-nums',fontFamily:'inherit'}}/>
+                      <button type="button" onClick={()=>saveEdit(r)} aria-label="Save"
+                        style={{background:'var(--accent)',border:'none',borderRadius:8,color:'#000',
+                          padding:'5px 9px',fontSize:'.72rem',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Save</button>
+                    </div>
+                  ) : (
+                    <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                      <div style={{fontSize:'.85rem',fontWeight:700,fontVariantNumeric:'tabular-nums',
+                        color:r.excluded?'var(--t3)':'var(--accent)',textDecoration:r.excluded?'line-through':'none'}}>
+                        {currency(r.amount,2)}
+                      </div>
+                      {editable && (
+                        <button type="button" onClick={()=>startEdit(r)} aria-label={`Edit ${r.description} amount`}
+                          style={{background:'none',border:'none',padding:2,cursor:'pointer',color:'var(--t3)'}}>
+                          <Icon name="edit" size={14}/>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div style={{fontSize:'.66rem',color:r.excluded?'var(--red)':'var(--t3)',marginTop:1}}>
-                  {new Date(r.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
-                  {' · '}{r.source==='paycheck' ? 'from a paycheck' : 'logged directly'}
-                  {r.excluded && ' · excluded as a duplicate'}
-                </div>
+                {editable && !isEditing && (
+                  <div style={{fontSize:'.62rem',color:'var(--t4)',marginTop:3}}>
+                    A budgeted amount, not a confirmed transfer — correct it if this money didn't actually move.
+                  </div>
+                )}
               </div>
-              <div style={{fontSize:'.85rem',fontWeight:700,flexShrink:0,fontVariantNumeric:'tabular-nums',
-                color:r.excluded?'var(--t3)':'var(--accent)',textDecoration:r.excluded?'line-through':'none'}}>
-                {currency(r.amount,2)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div style={{display:'flex',justifyContent:'space-between',padding:'14px 20px 20px',fontSize:'.85rem',fontWeight:700}}>
           <span style={{color:'var(--t2)'}}>Total counted</span>
