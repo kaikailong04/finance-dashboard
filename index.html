@@ -4583,7 +4583,7 @@ function UpcomingBillsMini({ accounts, bills, transactions, settings, goals, net
   );
 }
 
-function SavingsGoalsMini({ settings, goals, transactions, goTo, setTransactions, accounts }) {
+function SavingsGoalsMini({ settings, goals, transactions, goTo, setTransactions, accounts, netWorth, setGoals, setNetWorth, setAccounts }) {
   const year = new Date().getFullYear();
   const hysaBal = goals.hysaBalance || 0;
   const hysaPct = settings.hysaGoal > 0 ? Math.min((hysaBal/settings.hysaGoal)*100,100) : 0;
@@ -4641,6 +4641,29 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo, setTransactions
         : { ...t, [breakdown.field.key]: newAmount };
     }));
   } : null;
+  // A manual entry and a transfer can both represent the SAME real deposit
+  // logged twice — the fix there isn't correcting a number, it's removing
+  // the extra row entirely. Goes through the app's own account-aware
+  // delete (deleteAccountAwareTransaction), the exact path Recent Activity
+  // uses, so the balance this transaction moved gets reversed correctly
+  // rather than just vanishing from the transaction list while the account
+  // it funded stays inflated.
+  const canDelete = setTransactions && setGoals && setNetWorth && setAccounts;
+  const onDeleteRow = canDelete ? (row) => {
+    const t = transactions.find(x => x.id === row.id);
+    if (!t) return;
+    const ctx = { accounts, settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions };
+    if (t.accountId) {
+      deleteAccountAwareTransaction(t, ctx);
+    } else {
+      // Legacy row with no accountId — no balance-engine entry to reverse,
+      // just the direct goals field this row's amount was added to.
+      setTransactions(prev => prev.filter(x => x.id !== t.id));
+      if (breakdown && breakdown.field.kind === 'allocations' && breakdown.field.key === 'rothIRA') {
+        setGoals(g => ({ ...g, rothIRAOverride: round2(Math.max(currentRothBal(settings, g) - safeNum(t.amount), 0)) }));
+      }
+    }
+  } : null;
   return (
     <div>
       <div className="cal-head">
@@ -4675,7 +4698,7 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo, setTransactions
           );
         })}
       </div>
-      {breakdown && <ContributionBreakdownModal {...breakdown} onEditRow={onEditRow} onClose={()=>setBreakdownKey(null)}/>}
+      {breakdown && <ContributionBreakdownModal {...breakdown} onEditRow={onEditRow} onDeleteRow={onDeleteRow} onClose={()=>setBreakdownKey(null)}/>}
     </div>
   );
 }
@@ -5134,7 +5157,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
         <UpcomingBillsMini accounts={accounts} bills={bills} transactions={transactions} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
       </div>
 
-      <SavingsGoalsMini settings={settings} goals={goals} transactions={transactions} goTo={goTo} setTransactions={setTransactions} accounts={accounts}/>
+      <SavingsGoalsMini settings={settings} goals={goals} transactions={transactions} goTo={goTo} setTransactions={setTransactions} accounts={accounts} netWorth={netWorth} setGoals={setGoals} setNetWorth={setNetWorth} setAccounts={setAccounts}/>
 
       {/* Paycheck Breakdown */}
       <div>
@@ -6021,7 +6044,7 @@ function Confetti() {
 // A row the duplicate rule excluded is shown, not hidden, struck through
 // and labeled, so "why is this number what it is" has a real answer
 // instead of asking to be trusted.
-function ContributionBreakdownModal({ title, subtitle, rows, total, onClose, onEditRow }) {
+function ContributionBreakdownModal({ title, subtitle, rows, total, onClose, onEditRow, onDeleteRow }) {
   // A row's amount here is whatever the Log Paycheck flow assumed would be
   // allocated that check — not necessarily what actually happened. If it
   // didn't, this is the one place that number can be corrected, right where
@@ -6035,6 +6058,13 @@ function ContributionBreakdownModal({ title, subtitle, rows, total, onClose, onE
     if (!isNaN(v)) onEditRow(r.id, v);
     setEditingId(null);
   };
+  // A manual or transfer row IS the whole contribution, not one field of a
+  // larger transaction — the correction that makes sense here is removing
+  // it outright (e.g. the same real deposit logged twice, once directly
+  // and once as a transfer), not editing an amount down to zero and
+  // leaving a $0 phantom row behind. Two-step so a stray tap can't delete
+  // real money: the first tap arms it, the second confirms.
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal-card" role="dialog" aria-modal="true" aria-label={title}>
@@ -6053,7 +6083,9 @@ function ContributionBreakdownModal({ title, subtitle, rows, total, onClose, onE
           )}
           {rows.map(r => {
             const editable = onEditRow && r.source === 'paycheck' && !r.excluded;
+            const deletable = onDeleteRow && r.source !== 'paycheck' && !r.excluded;
             const isEditing = editingId === r.id;
+            const isConfirmingDelete = confirmDeleteId === r.id;
             return (
               <div key={r.id} style={{padding:'10px 0',borderBottom:'1px solid var(--border)',opacity:r.excluded?.5:1}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
@@ -6079,6 +6111,15 @@ function ContributionBreakdownModal({ title, subtitle, rows, total, onClose, onE
                         style={{background:'var(--accent)',border:'none',borderRadius:8,color:'#000',
                           padding:'5px 9px',fontSize:'.72rem',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Save</button>
                     </div>
+                  ) : isConfirmingDelete ? (
+                    <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                      <button type="button" onClick={()=>setConfirmDeleteId(null)}
+                        style={{background:'none',border:'1px solid var(--border2)',borderRadius:8,color:'var(--t2)',
+                          padding:'5px 9px',fontSize:'.72rem',fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Cancel</button>
+                      <button type="button" onClick={()=>{ onDeleteRow(r); setConfirmDeleteId(null); }}
+                        style={{background:'var(--red)',border:'none',borderRadius:8,color:'#fff',
+                          padding:'5px 9px',fontSize:'.72rem',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Delete</button>
+                    </div>
                   ) : (
                     <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
                       <div style={{fontSize:'.85rem',fontWeight:700,fontVariantNumeric:'tabular-nums',
@@ -6091,12 +6132,23 @@ function ContributionBreakdownModal({ title, subtitle, rows, total, onClose, onE
                           <Icon name="edit" size={14}/>
                         </button>
                       )}
+                      {deletable && (
+                        <button type="button" onClick={()=>setConfirmDeleteId(r.id)} aria-label={`Delete ${r.description}`}
+                          style={{background:'none',border:'none',padding:2,cursor:'pointer',color:'var(--t3)'}}>
+                          <Icon name="trash" size={14}/>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
                 {editable && !isEditing && (
                   <div style={{fontSize:'.62rem',color:'var(--t4)',marginTop:3}}>
                     A budgeted amount, not a confirmed transfer — correct it if this money didn't actually move.
+                  </div>
+                )}
+                {isConfirmingDelete && (
+                  <div style={{fontSize:'.62rem',color:'var(--red)',marginTop:3}}>
+                    Deletes the transaction and reverses its balance — can't be undone here.
                   </div>
                 )}
               </div>
