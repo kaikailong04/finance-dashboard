@@ -1914,12 +1914,26 @@ function paycheckLoggedFor(transactions, dateStr, expectedAmount) {
     return dt <= 3 && Math.abs(safeNum(t.amount) - safeNum(expectedAmount)) <= tol;
   }) || null;
 }
-function ytdEmployerMatch(transactions, year) {
+// Same line-item pattern as rothContributionRows, for the 401(k) field
+// ('employee401k' or 'employer401k') the caller is summing.
+function k401ContributionRows(transactions, field, year) {
   const list = transactions || [];
-  return round2(list
-    .filter((t,i) => isPaycheckLike401k(t) && t.date && Number(t.date.slice(0,4)) === year
-                     && !isDuplicateTransaction(t, list, i))
-    .reduce((s, t) => s + (t.employer401k || 0), 0));
+  const rows = [];
+  list.forEach((t, i) => {
+    if (!isPaycheckLike401k(t) || !t.date || Number(t.date.slice(0,4)) !== year) return;
+    const amount = safeNum(t[field]);
+    if (!amount) return;
+    rows.push({
+      id: t.id, date: t.date, source: 'paycheck', amount,
+      description: t.description || 'Paycheck',
+      excluded: isDuplicateTransaction(t, list, i),
+    });
+  });
+  return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
+function ytdEmployerMatch(transactions, year) {
+  return round2(k401ContributionRows(transactions, 'employer401k', year)
+    .filter(r => !r.excluded).reduce((s, r) => s + r.amount, 0));
 }
 // This calendar year's employEE 401(k) contributions — the IRS employee
 // deferral limit is a per-YEAR figure, never a lifetime one, so it must be
@@ -1927,11 +1941,8 @@ function ytdEmployerMatch(transactions, year) {
 // cumulative total goals.k401Employee holds (PRD §15: "Reset contribution
 // progress each January 1. Do not reset the actual account balance.").
 function ytd401kEmployeeContributions(transactions, year) {
-  const list = transactions || [];
-  return round2(list
-    .filter((t,i) => isPaycheckLike401k(t) && t.date && Number(t.date.slice(0,4)) === year
-                     && !isDuplicateTransaction(t, list, i))
-    .reduce((s, t) => s + (t.employee401k || 0), 0));
+  return round2(k401ContributionRows(transactions, 'employee401k', year)
+    .filter(r => !r.excluded).reduce((s, r) => s + r.amount, 0));
 }
 // This calendar year's Roth IRA contributions — same reasoning as above,
 // but Roth has no dedicated ledger field the way 401(k) contributions do
@@ -1940,20 +1951,37 @@ function ytd401kEmployeeContributions(transactions, year) {
 // safe to compare against the annual IRS limit). Reconstructed from the
 // same transaction history everything else already reads: paycheck
 // allocations plus any Roth IRA contribution logged directly.
-function ytdRothContributions(transactions, year) {
+// ── Contribution line items — the SAME pass a total is computed from ──
+// A printed sum that can't be broken back down into the transactions
+// behind it is a black box: it's asked to be trusted, not verified. This
+// walks the exact rows ytdRothContributions used to just add up, and
+// returns each one instead — including rows the duplicate rule EXCLUDED,
+// clearly marked, so a user (or anyone debugging on their behalf) can see
+// precisely which transaction produced or was dropped from a total,
+// rather than being handed a number with no way to check it.
+function rothContributionRows(transactions, year) {
   const list = transactions || [];
-  let total = 0;
+  const rows = [];
   list.forEach((t, i) => {
     if (!t.date || Number(t.date.slice(0,4)) !== year) return;
-    // Same duplicate suppression every spending total already applies. It
-    // was missing here, so a re-logged paycheck was correctly ignored as
-    // spending while its allocations were counted twice as contributions —
-    // inflating YTD progress against the annual limit.
-    if (isDuplicateTransaction(t, list, i)) return;
-    if (isPaycheckTransaction(t) && t.allocations && t.allocations.rothIRA) total += safeNum(t.allocations.rothIRA);
-    else if (t.type === 'expense' && t.category === 'rothIRA') total += safeNum(t.amount);
+    let amount = null, source = null;
+    if (isPaycheckTransaction(t) && t.allocations && safeNum(t.allocations.rothIRA) !== 0) {
+      amount = safeNum(t.allocations.rothIRA); source = 'paycheck';
+    } else if (t.type === 'expense' && t.category === 'rothIRA') {
+      amount = safeNum(t.amount); source = 'manual';
+    }
+    if (amount == null) return;
+    rows.push({
+      id: t.id, date: t.date, source, amount,
+      description: t.description || (source === 'paycheck' ? 'Paycheck' : 'Roth IRA contribution'),
+      excluded: isDuplicateTransaction(t, list, i),
+    });
   });
-  return round2(total);
+  return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
+function ytdRothContributions(transactions, year) {
+  return round2(rothContributionRows(transactions, year)
+    .filter(r => !r.excluded).reduce((s, r) => s + r.amount, 0));
 }
 // Same shape as employee401kYTD/employer401kYTD: transaction-derived
 // contributions plus any pre-tracking baseline, so a mid-year onboard
@@ -4556,13 +4584,23 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
   const k401EmprYTD = employer401kYTD(transactions, goals, year);
   const rows = [
     { label:'HYSA',     note:'balance',                     bal:hysaBal,    goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
-    { label:'Roth IRA', note:`you contributed ${year}`,     bal:rothYTD,    goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)' },
-    { label:'401(k)',   note:`you contributed ${year}`,     bal:k401EmpYTD, goal:k401Goal,                    pct:k401Pct, color:'var(--yellow)',
+    { label:'Roth IRA', note:`you contributed ${year}`,     bal:rothYTD,    goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)', breakdown:'roth' },
+    { label:'401(k)',   note:`you contributed ${year}`,     bal:k401EmpYTD, goal:k401Goal,                    pct:k401Pct, color:'var(--yellow)', breakdown:'401k',
       // Employer money is real retirement funding but is NOT the user's own
       // contribution and never counts toward the employee goal above, so it
       // rides alongside the row rather than inside its number.
       extra: k401EmprYTD > 0 ? `+ ${currency(k401EmprYTD)} employer match ${year}` : null },
   ];
+  // Tapping Roth/401(k) opens the exact transactions behind that total — the
+  // question "why is this number what it is" gets a real answer instead of
+  // asking the number to be trusted. HYSA is a plain balance (no transaction
+  // list drives it), so it isn't tappable.
+  const [breakdownKey, setBreakdownKey] = useState(null);
+  const breakdown = breakdownKey === 'roth'
+    ? { title:'Roth IRA', subtitle:`Contributions counted toward ${year}`, rows:rothContributionRows(transactions, year), total:rothYTD }
+    : breakdownKey === '401k'
+    ? { title:'401(k) — You', subtitle:`Employee contributions counted toward ${year}`, rows:k401ContributionRows(transactions, 'employee401k', year), total:k401EmpYTD }
+    : null;
   return (
     <div>
       <div className="cal-head">
@@ -4570,25 +4608,34 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
         <button className="btn btn-ghost btn-sm" onClick={()=>goTo('goals')}>View All →</button>
       </div>
       <div className="card">
-        {rows.map((r,i) => (
-          <div key={r.label} style={{marginBottom:i<rows.length-1?14:0}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:10,fontSize:'.78rem',marginBottom:6}}>
-              <span style={{color:'var(--t2)',minWidth:0}}>
-                {r.label}
-                <span style={{color:'var(--t3)',fontSize:'.66rem',marginLeft:6}}>{r.note}</span>
-              </span>
-              <span style={{color:'var(--t1)',fontWeight:600,flexShrink:0,fontVariantNumeric:'tabular-nums'}}>
-                {currency(r.bal)} / {currency(r.goal)}
-              </span>
-            </div>
-            <div className="track" role="progressbar" aria-label={`${r.label} progress`}
-              aria-valuenow={round2(r.bal)} aria-valuemin={0} aria-valuemax={round2(r.goal)}>
-              <div className="fill" style={{width:`${r.pct}%`,background:r.color}}/>
-            </div>
-            {r.extra && <div style={{fontSize:'.64rem',color:'var(--t3)',marginTop:4}}>{r.extra}</div>}
-          </div>
-        ))}
+        {rows.map((r,i) => {
+          const Wrap = r.breakdown ? 'button' : 'div';
+          return (
+            <Wrap key={r.label}
+              {...(r.breakdown ? { type:'button', onClick:()=>setBreakdownKey(r.breakdown),
+                style:{display:'block',width:'100%',textAlign:'left',background:'none',border:'none',padding:0,
+                  fontFamily:'inherit',cursor:'pointer',marginBottom:i<rows.length-1?14:0} }
+                : { style:{marginBottom:i<rows.length-1?14:0} })}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:10,fontSize:'.78rem',marginBottom:6}}>
+                <span style={{color:'var(--t2)',minWidth:0}}>
+                  {r.label}
+                  <span style={{color:'var(--t3)',fontSize:'.66rem',marginLeft:6}}>{r.note}</span>
+                  {r.breakdown && <span style={{color:'var(--accent)',fontSize:'.66rem',marginLeft:6}}>view →</span>}
+                </span>
+                <span style={{color:'var(--t1)',fontWeight:600,flexShrink:0,fontVariantNumeric:'tabular-nums'}}>
+                  {currency(r.bal)} / {currency(r.goal)}
+                </span>
+              </div>
+              <div className="track" role="progressbar" aria-label={`${r.label} progress`}
+                aria-valuenow={round2(r.bal)} aria-valuemin={0} aria-valuemax={round2(r.goal)}>
+                <div className="fill" style={{width:`${r.pct}%`,background:r.color}}/>
+              </div>
+              {r.extra && <div style={{fontSize:'.64rem',color:'var(--t3)',marginTop:4}}>{r.extra}</div>}
+            </Wrap>
+          );
+        })}
       </div>
+      {breakdown && <ContributionBreakdownModal {...breakdown} onClose={()=>setBreakdownKey(null)}/>}
     </div>
   );
 }
@@ -5928,6 +5975,58 @@ function Confetti() {
     </div>
   );
 }
+// Shows exactly which transactions produced a contribution total — the row
+// list and the printed number are computed from the same pass (see
+// rothContributionRows/k401ContributionRows), so they can never disagree.
+// A row the duplicate rule excluded is shown, not hidden, struck through
+// and labeled, so "why is this number what it is" has a real answer
+// instead of asking to be trusted.
+function ContributionBreakdownModal({ title, subtitle, rows, total, onClose }) {
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-card" role="dialog" aria-modal="true" aria-label={title}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',padding:'20px 20px 4px'}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:'1.05rem',fontWeight:700,color:'var(--t1)'}}>{title}</div>
+            {subtitle && <div style={{fontSize:'.72rem',color:'var(--t3)',marginTop:2}}>{subtitle}</div>}
+          </div>
+          <button className="btn-icon" onClick={onClose} aria-label="Close"><Icon name="x" size={18}/></button>
+        </div>
+        <div style={{padding:'8px 20px 4px',maxHeight:'54vh',overflowY:'auto'}}>
+          {!rows.length && (
+            <div style={{padding:'26px 0',textAlign:'center',color:'var(--t3)',fontSize:'.8rem'}}>
+              No contributing transactions found this year.
+            </div>
+          )}
+          {rows.map(r => (
+            <div key={r.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,
+              padding:'10px 0',borderBottom:'1px solid var(--border)',opacity:r.excluded?.5:1}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:'.8rem',fontWeight:600,color:'var(--t1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  {r.description}
+                </div>
+                <div style={{fontSize:'.66rem',color:r.excluded?'var(--red)':'var(--t3)',marginTop:1}}>
+                  {new Date(r.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                  {' · '}{r.source==='paycheck' ? 'from a paycheck' : 'logged directly'}
+                  {r.excluded && ' · excluded as a duplicate'}
+                </div>
+              </div>
+              <div style={{fontSize:'.85rem',fontWeight:700,flexShrink:0,fontVariantNumeric:'tabular-nums',
+                color:r.excluded?'var(--t3)':'var(--accent)',textDecoration:r.excluded?'line-through':'none'}}>
+                {currency(r.amount,2)}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',padding:'14px 20px 20px',fontSize:'.85rem',fontWeight:700}}>
+          <span style={{color:'var(--t2)'}}>Total counted</span>
+          <span style={{color:'var(--accent)'}}>{currency(total,2)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GoalFormModal({ onClose, onSave, onDelete, accounts, goal }) {
   const g = goal || defaultCustomGoalFields();
   const [name, setName]       = useState(g.name);
