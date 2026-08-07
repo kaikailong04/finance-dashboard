@@ -633,6 +633,22 @@ html{-webkit-text-size-adjust:100%}
 .phase-pill-off{background:var(--wash-2);color:var(--t3)}
 .phase-pill-off:hover{background:var(--wash-3);color:var(--t2)}
 
+/* ── Group sub-nav (Phase 3) — switches between the pages grouped under one
+   of the 5 top-level tab-bar destinations (e.g. Plan: Budget/Bills/Goals/
+   Commission). Deliberately its own classes, not .phase-pill-row — a page
+   like Budget already uses that name for its own Rent-Free/With Rent
+   toggle, and stacking two identical-looking pill rows would be confusing.
+   Auto-width (not flex:1) since this row can hold up to 4 items. ──────── */
+.subnav-row{display:flex;gap:8px;flex-wrap:wrap}
+.subnav-pill{
+  padding:8px 15px;border-radius:10px;text-align:center;
+  font-size:.76rem;font-weight:700;cursor:pointer;transition:all .15s;
+  border:none;font-family:inherit;white-space:nowrap;
+}
+.subnav-pill-on{background:var(--accent);color:#000}
+.subnav-pill-off{background:var(--wash-2);color:var(--t3)}
+.subnav-pill-off:hover{background:var(--wash-3);color:var(--t2)}
+
 /* ── Add button (green pill) ─────────────────────────────────────── */
 .add-btn{
   background:var(--accent);color:#000;border:none;
@@ -3719,6 +3735,21 @@ const TABS = [
   { id:'networth',  label:'Net Worth',  short:'Worth',  icon:'worth'  },
   { id:'settings',  label:'Settings',   short:'More',   icon:'more'   },
 ];
+// ── Nav consolidation (Phase 3) ──────────────────────────────────────────
+// The 10 real pages above, and every existing goTo(id)/setTab(id) call site
+// across the app, are untouched — this just groups them under 5 top-level
+// tab-bar destinations so the bar doesn't blow past what fits on a phone.
+// A group with more than one page gets its own sub-nav (rendered once in
+// App(), just under the header) for switching between its pages; a
+// single-page group (Home, Accounts) navigates directly.
+const NAV_GROUPS = [
+  { id:'home',      label:'Home',      icon:'dash',     tabs:['dashboard'] },
+  { id:'accounts',  label:'Accounts',  icon:'accounts', tabs:['accounts'] },
+  { id:'plan',      label:'Plan',      icon:'budget',   tabs:['budget','bills','goals','commission'] },
+  { id:'insights',  label:'Insights',  icon:'insights', tabs:['spending','networth'] },
+  { id:'more',      label:'More',      icon:'more',     tabs:['settings'] },
+];
+const groupForTab = id => NAV_GROUPS.find(g => g.tabs.includes(id)) || NAV_GROUPS[0];
 
 // Fixed set the rest of the app (budget scenario fields, forecasting, the
 // AI coach) is wired to by id — never user-deletable. User-defined
@@ -9371,26 +9402,45 @@ function App() {
                   customCategories={customCategories} setCustomCategories={setCustomCategories} goTo={setTab} />,
   };
 
+  // Which of the 5 nav groups the current real page belongs to, and — for a
+  // group with more than one page — the pill row that switches between them.
+  const activeGroup = groupForTab(tab);
+  const goToGroup = g => setTab(g.tabs.includes(tab) ? tab : g.tabs[0]);
+
   return (
     <div className="app">
       <header className="header">
         <div className="header-inner">
           <div className="logo"><div className="logo-dot" />Finance</div>
           <nav className="nav">
-            {TABS.map(t=>(
-              <button key={t.id} className={'nav-btn'+(tab===t.id?' active':'')} onClick={()=>setTab(t.id)}>
-                {t.label}
+            {NAV_GROUPS.map(g=>(
+              <button key={g.id} className={'nav-btn'+(activeGroup.id===g.id?' active':'')} onClick={()=>goToGroup(g)}>
+                {g.label}
               </button>
             ))}
           </nav>
         </div>
       </header>
+      {activeGroup.tabs.length > 1 && (
+        <div style={{maxWidth:1040,margin:'0 auto',width:'100%',padding:'16px 28px 0',boxSizing:'border-box'}}>
+          <div className="subnav-row">
+            {activeGroup.tabs.map(id => {
+              const t = TABS.find(x=>x.id===id);
+              return (
+                <button key={id} className={'subnav-pill '+(tab===id?'subnav-pill-on':'subnav-pill-off')} onClick={()=>setTab(id)}>
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <main className="main">{pages[tab]}</main>
       <nav className="mobile-nav">
-        {TABS.map(t=>(
-          <button key={t.id} className={'mnav-btn'+(tab===t.id?' active':'')} onClick={()=>setTab(t.id)}>
-            <NavIcon name={t.icon} active={tab===t.id} />
-            {tab===t.id && <div className="nav-pip" />}
+        {NAV_GROUPS.map(g=>(
+          <button key={g.id} className={'mnav-btn'+(activeGroup.id===g.id?' active':'')} onClick={()=>goToGroup(g)}>
+            <NavIcon name={g.icon} active={activeGroup.id===g.id} />
+            {activeGroup.id===g.id && <div className="nav-pip" />}
           </button>
         ))}
       </nav>
