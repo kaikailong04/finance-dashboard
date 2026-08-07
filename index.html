@@ -4363,18 +4363,28 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   const monthName   = now.toLocaleDateString('en-US',{month:'long', year:'numeric'});
   const baseDeposit = netPerCheck(settings);          // $1,713 take-home
   const nextPayDate = payDates[Math.min(checkCount, perMonth-1)];
-  // 401(k): employee amount is fixed per check; employer match is 50% of it,
-  // capped for the calendar year (never exceeds employerMatchAnnualCap).
-  const empContrib  = k401Active(settings, nextPayDate) ? employee401kPerCheck(settings) : 0;
-  const matchYTD    = ytdEmployerMatch(transactions, now.getFullYear());
-  const emprContrib = employerMatchForPaycheck(settings, empContrib, matchYTD);
   const [payOpen, setPayOpen] = useState(false);
   const [payAmt,  setPayAmt]  = useState(baseDeposit);
   const baseAlloc   = perCheckAllocations(settings);   // ordered [{key,label,amount}] for this month
+  // Every allocation for THIS check — HYSA/Roth/budget categories AND the
+  // 401(k) withholding below — scales with whatever amount was actually
+  // typed in, not just the configured default. A real paycheck rarely lands
+  // at exactly the expected figure (overtime, a short week, PTO payout),
+  // and since the 401(k) election is itself a percentage of gross pay, it
+  // moves with the check the same way every other allocation already does.
   const payScale    = baseDeposit>0 ? (parseFloat(payAmt)||0)/baseDeposit : 1;
   const scaledAlloc = baseAlloc.map(a => ({ ...a, amount: +(a.amount*payScale).toFixed(2) }));
   const allocOf     = key => (scaledAlloc.find(a=>a.key===key)||{}).amount || 0;
   const allocSum    = +scaledAlloc.reduce((s,a)=>s+a.amount,0).toFixed(2);
+  // 401(k): employee amount is a fixed per-check baseline from Settings,
+  // scaled by the same payScale ratio as every other allocation above —
+  // employer match is then 50% of THIS check's scaled employee
+  // contribution, capped for the calendar year (never exceeds
+  // employerMatchAnnualCap).
+  const baseEmpContrib = k401Active(settings, nextPayDate) ? employee401kPerCheck(settings) : 0;
+  const empContrib  = round2(baseEmpContrib * payScale);
+  const matchYTD    = ytdEmployerMatch(transactions, now.getFullYear());
+  const emprContrib = employerMatchForPaycheck(settings, empContrib, matchYTD);
   // "Funded this month" — how much of each monthly budget line the logged
   // paychecks have covered so far (each check funds ~half; two checks = 100%).
   const fundedByKey = {};
@@ -4800,6 +4810,19 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
                   style={{width:'100%',background:'var(--s2)',border:'1px solid var(--border2)',borderRadius:'var(--r-s)',color:'var(--t1)',padding:'12px 12px 12px 32px',fontSize:'1.35rem',fontWeight:700,outline:'none',fontVariantNumeric:'tabular-nums'}} />
               </div>
               <div style={{fontSize:'.68rem',color:'var(--t4)',marginBottom:16}}>Default {currency(baseDeposit,2)} · edit to scale all allocations proportionally</div>
+
+              {empContrib > 0 && (
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--s2)',border:'1px solid var(--border2)',borderRadius:'var(--r-s)',padding:'10px 12px',marginBottom:16}}>
+                  <div>
+                    <div style={{fontSize:'.72rem',fontWeight:600,color:'var(--t2)'}}>401(k) this check</div>
+                    <div style={{fontSize:'.66rem',color:'var(--t4)'}}>pre-tax · already withheld, scales with the amount above</div>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <div style={{fontSize:'.82rem',fontWeight:700,color:'var(--purple)',fontVariantNumeric:'tabular-nums'}}>{currency(empContrib,2)}</div>
+                    <div style={{fontSize:'.66rem',color:'var(--t4)'}}>+{currency(emprContrib,2)} match</div>
+                  </div>
+                </div>
+              )}
 
               <div className="eyebrow" style={{marginBottom:4}}>This Check's Allocation</div>
               {scaledAlloc.map(a=>(
