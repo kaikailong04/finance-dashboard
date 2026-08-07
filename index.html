@@ -4385,18 +4385,6 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   const empContrib  = round2(baseEmpContrib * payScale);
   const matchYTD    = ytdEmployerMatch(transactions, now.getFullYear());
   const emprContrib = employerMatchForPaycheck(settings, empContrib, matchYTD);
-  // "Funded this month" — how much of each monthly budget line the logged
-  // paychecks have covered so far (each check funds ~half; two checks = 100%).
-  const fundedByKey = {};
-  for (const p of paychecksThisMonth)
-    for (const [k,v] of Object.entries(p.allocations||{})) fundedByKey[k] = (fundedByKey[k]||0) + v;
-  const fundedRows  = baseAlloc.map(a => ({
-    key:a.key, label:a.label,
-    target: round2(a.amount*perMonth),         // full monthly budget line (per-check × 2)
-    funded: round2(fundedByKey[a.key]||0),
-  }));
-  const fundedTotal = +fundedRows.reduce((s,r)=>s+r.funded,0).toFixed(2);
-  const targetTotal = +fundedRows.reduce((s,r)=>s+r.target,0).toFixed(2);
   const openPay = () => { setPayAmt(baseDeposit); setPayOpen(true); };
   const confirmPay = () => {
     const amt = round2(parseFloat(payAmt)||0);
@@ -4703,38 +4691,6 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
           </div>
         </div>
       </div>
-
-      {/* Funded This Month — fills as each paycheck half lands */}
-      {!phase.isPreEmployment && (
-        <div>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:10}}>
-            <div className="section-head" style={{padding:0,marginBottom:0}}>Funded This Month</div>
-            <div style={{fontSize:'.72rem',color:'var(--t3)',fontVariantNumeric:'tabular-nums'}}>
-              {currency(fundedTotal)} / {currency(targetTotal)} · {checkCount} of 2 checks
-            </div>
-          </div>
-          <div className="card-flush">
-            {fundedRows.map(r => {
-              const p_  = r.target>0 ? Math.min((r.funded/r.target)*100,100) : 0;
-              const done = p_>=100;
-              return (
-                <div key={r.key} className="sp-cat">
-                  <div className="sp-top">
-                    <span className="sp-name">{r.label}{done && <span style={{color:'var(--accent)',marginLeft:6}}>✓</span>}</span>
-                    <span className="sp-nums">
-                      <span className="sp-spent">{currency(r.funded)}</span>
-                      <span className="sp-bgt"> / {currency(r.target)}</span>
-                    </span>
-                  </div>
-                  <div className="bar" role="progressbar" aria-label={`${r.label} funded`} aria-valuenow={r.funded} aria-valuemin={0} aria-valuemax={r.target}>
-                    <div className="bar-in" style={{width:`${p_}%`}}/>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* This Month — a one-line total, not a second copy of the full
           9-category breakdown Budget and Spending already show in more
