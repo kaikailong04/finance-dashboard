@@ -83,6 +83,25 @@
     return tx.employee401k != null || tx.employer401k != null || !!tx.allocations;
   }
 
+  // index.html defines its OWN keyword-aware classifiers
+  // (isRetirementContribution / isSavingsTransfer / isCreditCardPayment /
+  // isInternalTransfer / isRefund) feeding a pre-existing, explicitly
+  // documented "THE definition of spending. Everything else in the app
+  // defers to this." function (isSpendingTransaction). That predates this
+  // file and catches things this module's structural checks alone can't
+  // (e.g. a manually-typed "Transfer to savings" description with no
+  // hysa/rothIRA category and no credit-type account attached). Rather
+  // than fork a second, slightly-different "what counts as spending",
+  // classifyTransaction defers to those functions when they're present
+  // (i.e. running in the browser, after index.html's script has loaded —
+  // by the time any UI code actually calls a calc.js function, both
+  // scripts have finished executing) and only falls back to its own
+  // structural-only logic when they're not (Node tests, which is exactly
+  // why those tests exist to cover the structural path directly).
+  function host(name) {
+    return (typeof window !== 'undefined' && typeof window[name] === 'function') ? window[name] : null;
+  }
+
   // Classifies a transaction into the richer `kind` taxonomy from its
   // existing `type` + category + (optional) account context. Idempotent —
   // if a transaction already carries a valid `kind` (set at creation time,
@@ -95,23 +114,39 @@
     byId = byId || {};
     if (tx.type === 'transfer') {
       const to = byId[tx.toAccountId];
-      if (to && to.type === 'credit') return 'creditCardPayment';
+      const hostCcPay = host('isCreditCardPayment');
+      if ((to && to.type === 'credit') || (hostCcPay && hostCcPay(tx))) return 'creditCardPayment';
       return 'transfer';
     }
     if (tx.type === 'income') return looksLikePaycheck(tx) ? 'paycheck' : 'income';
-    // type === 'expense' from here down.
-    if (looksLikeRefund(tx)) return 'refund';
-    if (tx.category === 'hysa') return 'savingsContribution';
+    // type === 'expense' from here down. Each check prefers the host's
+    // keyword-aware version when available, OR-ed with this module's own
+    // structural check, so either signal alone is enough to classify.
+    const hostRefund      = host('isRefund');
+    const hostRetirement  = host('isRetirementContribution');
+    const hostSavings     = host('isSavingsTransfer');
+    const hostCcPayment   = host('isCreditCardPayment');
+    const hostTransfer    = host('isInternalTransfer');
+    if (looksLikeRefund(tx) || (hostRefund && hostRefund(tx))) return 'refund';
+    if (hostRetirement && hostRetirement(tx)) return 'investmentContribution';
     if (tx.category === 'rothIRA') return 'investmentContribution';
+    if (tx.category === 'hysa' || (hostSavings && hostSavings(tx))) return 'savingsContribution';
+    if (hostCcPayment && hostCcPayment(tx)) return 'creditCardPayment';
     const acct = byId[tx.accountId];
     if (acct && acct.type === 'credit') return 'creditCardPurchase';
+    if (hostTransfer && hostTransfer(tx)) return 'transfer';
     return 'expense';
   }
 
   // "Real spending" — the single definition every screen should share
   // instead of each writing its own filter. Transfers, savings/investment
   // contributions, credit-card payments, and refunds are never spending.
-  function isRealExpense(tx, byId) {
+  // Prefers the host's own isSpendingTransaction(t, all, index) — the
+  // app's pre-existing canonical definition — over reconstructing the
+  // same answer from classifyTransaction, so the two can never disagree.
+  function isRealExpense(tx, byId, transactions, index) {
+    const hostIsSpending = host('isSpendingTransaction');
+    if (hostIsSpending && transactions) return hostIsSpending(tx, transactions, index);
     const kind = classifyTransaction(tx, byId);
     return kind === 'expense' || kind === 'creditCardPurchase' || kind === 'fee';
   }
@@ -119,19 +154,34 @@
   function isInvestmentContribution(tx, byId) { return classifyTransaction(tx, byId) === 'investmentContribution'; }
   // "Purchase count" per the audit: real spending only — transfers,
   // savings/investment contributions, and credit-card payments excluded.
-  function isPurchase(tx, byId) { return isRealExpense(tx, byId); }
+  function isPurchase(tx, byId, transactions, index) { return isRealExpense(tx, byId, transactions, index); }
 
   function monthKeyOf(dateStr) { return (dateStr || '').slice(0, 7); }
 
+  // Sums one transaction's signed contribution to spending. Prefers the
+  // host's own spendingDelta(t, all, index) when available — it's the
+  // exact function every existing spending total in the app already
+  // calls (per its own comment: "THE definition of spending"), including
+  // duplicate-transaction suppression this module has no equivalent for
+  // on its own. Falls back to classifyTransaction's structural read when
+  // there's no host (Node tests).
+  function spendingDeltaOf(t, index, transactions, byId) {
+    const hostDelta = host('spendingDelta');
+    if (hostDelta) return safeNum(hostDelta(t, transactions, index));
+    const kind = classifyTransaction(t, byId);
+    if (kind === 'expense' || kind === 'creditCardPurchase' || kind === 'fee') return safeNum(t.amount);
+    if (kind === 'refund') return -safeNum(t.amount);
+    return 0;
+  }
+
   function calcExpensesThisMonth(transactions, monthKey, accounts) {
+    transactions = transactions || [];
     const byId = accountsById(accounts);
     let total = 0;
-    for (const t of (transactions || [])) {
-      if (monthKeyOf(t.date) !== monthKey) continue;
-      const kind = classifyTransaction(t, byId);
-      if (kind === 'expense' || kind === 'creditCardPurchase' || kind === 'fee') total += safeNum(t.amount);
-      else if (kind === 'refund') total -= safeNum(t.amount);
-    }
+    transactions.forEach((t, i) => {
+      if (monthKeyOf(t.date) !== monthKey) return;
+      total += spendingDeltaOf(t, i, transactions, byId);
+    });
     return round2(Math.max(total, 0));
   }
 
@@ -156,12 +206,13 @@
   }
 
   function calcPurchaseCount(transactions, monthKey, accounts) {
+    transactions = transactions || [];
     const byId = accountsById(accounts);
     let n = 0;
-    for (const t of (transactions || [])) {
-      if (monthKeyOf(t.date) !== monthKey) continue;
-      if (isPurchase(t, byId)) n++;
-    }
+    transactions.forEach((t, i) => {
+      if (monthKeyOf(t.date) !== monthKey) return;
+      if (isPurchase(t, byId, transactions, i)) n++;
+    });
     return n;
   }
 
@@ -174,15 +225,14 @@
   // of four independent reimplementations of one of them.
   function calcSavingsRateActual(transactions, monthKey, accounts) {
     const byId = accountsById(accounts);
-    let income = 0, expenses = 0;
+    let income = 0;
     for (const t of (transactions || [])) {
       if (monthKeyOf(t.date) !== monthKey) continue;
       const kind = classifyTransaction(t, byId);
-      if (kind === 'income') income += safeNum(t.amount);
-      else if (kind === 'expense' || kind === 'creditCardPurchase' || kind === 'fee') expenses += safeNum(t.amount);
-      else if (kind === 'refund') expenses -= safeNum(t.amount);
+      if (kind === 'income' || kind === 'paycheck') income += safeNum(t.amount);
     }
     if (income <= 0) return 0;
+    const expenses = calcExpensesThisMonth(transactions, monthKey, accounts);
     return round2(((income - expenses) / income) * 100);
   }
 

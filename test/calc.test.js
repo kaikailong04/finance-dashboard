@@ -202,3 +202,52 @@ test('migrateTransactionKinds: repair is idempotent — a second pass over alrea
   assert.equal(second.changed, false);
   assert.deepEqual(second.transactions, first.transactions);
 });
+
+// ── Host delegation ────────────────────────────────────────────────────
+// calc.js must DEFER to index.html's pre-existing keyword-aware
+// classifiers (isSpendingTransaction, spendingDelta, isRefund, etc.) when
+// they're present, rather than maintaining a second, parallel "what
+// counts as spending" — that duplication is exactly the class of bug
+// this whole engine exists to eliminate. These tests simulate the
+// browser environment (global.window with mock host functions) to prove
+// the delegation actually fires, not just that the structural fallback
+// works when no host is present.
+test('classifyTransaction: defers to a host isSavingsTransfer when the host disagrees with structural signals', () => {
+  global.window = { isSavingsTransfer: (t) => t.description === 'Transfer to savings' };
+  try {
+    // No hysa/rothIRA category, no credit account — structurally this
+    // module alone would call it a plain expense. The host's keyword
+    // match should win.
+    const tx = { type: 'expense', date: '2026-08-01', amount: 500, description: 'Transfer to savings', accountId: 'acc_checking' };
+    assert.equal(calc.classifyTransaction(tx, calc.accountsById(accounts)), 'savingsContribution');
+  } finally {
+    delete global.window;
+  }
+});
+
+test('isRealExpense: defers to a host isSpendingTransaction over its own structural read', () => {
+  global.window = { isSpendingTransaction: () => false }; // host says "not spending", full stop
+  try {
+    const tx = { type: 'expense', date: '2026-08-01', amount: 40, category: 'dining', accountId: 'acc_checking' };
+    const transactions = [tx];
+    assert.equal(calc.isRealExpense(tx, calc.accountsById(accounts), transactions, 0), false);
+  } finally {
+    delete global.window;
+  }
+});
+
+test('calcExpensesThisMonth: uses a host spendingDelta when present, including its duplicate suppression', () => {
+  // Host spendingDelta reports the SECOND occurrence of an identical row
+  // as a duplicate (returns 0) — calcExpensesThisMonth has no idea what
+  // "duplicate" means on its own; it must pass this through to the host.
+  global.window = { spendingDelta: (t, all, index) => (index === 0 ? 40 : 0) };
+  try {
+    const transactions = [
+      { type: 'expense', date: d(1), amount: 40, category: 'dining', accountId: 'acc_checking' },
+      { type: 'expense', date: d(1), amount: 40, category: 'dining', accountId: 'acc_checking' }, // "duplicate" per host
+    ];
+    assert.equal(calc.calcExpensesThisMonth(transactions, MONTH, accounts), 40);
+  } finally {
+    delete global.window;
+  }
+});

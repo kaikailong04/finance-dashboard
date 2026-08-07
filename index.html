@@ -1868,6 +1868,25 @@ function spendingDelta(t, all, index) {
   if (isRefund(t) && !isDuplicateTransaction(t, all, index) && isValidDateKey(txDateKey(t))) return -safeNum(t.amount);
   return 0;
 }
+// Explicit bridge to calc.js (window.FinCalc's `host()` helper) — this
+// whole script runs inside an eval() call (see the bootstrap <script> at
+// the bottom of this file), so every function declared above is scoped
+// locally to that eval, not attached to `window` the way a normal
+// top-level <script> would be. Without this, FinCalc's "defer to the
+// app's own keyword-aware classifiers" design silently never engages —
+// it always falls back to its own structural-only logic, quietly
+// recreating the exact duplicate-definition-of-spending problem it
+// exists to eliminate. Assigning these here changes nothing about how
+// the rest of this file calls them (all internal calls keep resolving
+// through the normal local scope chain); it only adds a second way in.
+window.isSpendingTransaction      = isSpendingTransaction;
+window.spendingDelta              = spendingDelta;
+window.isRefund                   = isRefund;
+window.isRetirementContribution   = isRetirementContribution;
+window.isSavingsTransfer          = isSavingsTransfer;
+window.isCreditCardPayment        = isCreditCardPayment;
+window.isInternalTransfer         = isInternalTransfer;
+window.isIncomeTransaction        = isIncomeTransaction;
 const categoryOf = t => (t && t.category) || 'uncategorized';
 const accountOf  = t => (t && t.account) || 'Unspecified';
 
