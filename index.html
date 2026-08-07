@@ -2379,6 +2379,25 @@ function getCategorySpendingTotals(transactions) {
   }
   return out;
 }
+// HYSA / Roth IRA contributions can arrive two ways: money withheld straight
+// out of a logged paycheck (kind:'paycheck', tracked per-key on
+// t.allocations) or a transaction someone logged directly against that
+// category (type:'expense', category:'hysa'/'rothIRA' — however its kind
+// happens to be tagged). Every page reporting "how much went to HYSA/Roth
+// this month" needs BOTH sources, or it silently misses the majority of
+// real contributions — paychecks fund these lines automatically every
+// payday, on top of anything manually logged.
+function monthlyContributionAmount(monthTxAll, allocationKey, category) {
+  let total = 0;
+  for (const t of (monthTxAll || [])) {
+    if (t.kind === 'paycheck' && t.allocations && t.allocations[allocationKey] != null) {
+      total += safeNum(t.allocations[allocationKey]);
+    } else if (t.type === 'expense' && t.category === category) {
+      total += safeNum(t.amount);
+    }
+  }
+  return round2(total);
+}
 // rankingMode: 'spend' | 'largest' | 'frequency'
 function merchantStats(transactions) {
   const m = {};
@@ -4323,11 +4342,12 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   // HYSA and Roth IRA are contribution lines, not spending — the shared
   // classifier above (same one the Financial Health card uses) deliberately
   // excludes them from totalSpent, same as every "how much did I spend"
-  // number elsewhere. Their own "This Month" row still needs to reflect any
-  // hysa/rothIRA-categorized transactions logged this month, the same raw
-  // source the Spending page's per-category totals read from.
-  byCategory.hysa    = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='hysa').reduce((s,t)=>s+safeNum(t.amount),0));
-  byCategory.rothIRA = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='rothIRA').reduce((s,t)=>s+safeNum(t.amount),0));
+  // number elsewhere. Their own "This Month" row needs BOTH any hysa/rothIRA-
+  // categorized transaction logged this month AND whatever this month's
+  // logged paychecks already withheld via allocations — same shared helper
+  // the Budget and Spending pages read from, so this can never disagree.
+  byCategory.hysa    = monthlyContributionAmount(monthTxAllForSpend, 'hysa', 'hysa');
+  byCategory.rothIRA = monthlyContributionAmount(monthTxAllForSpend, 'rothIRA', 'rothIRA');
   const recentTx = [...transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
 
   // ── Paycheck logging — 1st & 3rd Thursday, exactly 2 per month ──────
@@ -4828,11 +4848,12 @@ function Budget({ settings, transactions }) {
   for (const [cat, v] of Object.entries(catTotalsForSpend)) spent[cat] = v.total;
   // HYSA and Roth IRA are contribution lines, not spending, so the shared
   // classifier above always reports 0 for them (by design). Their "spent"
-  // here is any hysa/rothIRA-categorized transaction logged this month —
-  // and crucially each reads its OWN category, not a shared 'savings' key,
-  // so a Roth IRA contribution never shows up as HYSA spending or vice versa.
-  spent.hysa    = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='hysa').reduce((s,t)=>s+safeNum(t.amount),0));
-  spent.rothIRA = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='rothIRA').reduce((s,t)=>s+safeNum(t.amount),0));
+  // here is any hysa/rothIRA-categorized transaction logged this month PLUS
+  // whatever this month's logged paychecks already withheld via allocations
+  // — each reads its OWN key, not a shared 'savings' bucket, so a Roth IRA
+  // contribution never shows up as HYSA spending or vice versa.
+  spent.hysa    = monthlyContributionAmount(monthTxAllForSpend, 'hysa', 'hysa');
+  spent.rothIRA = monthlyContributionAmount(monthTxAllForSpend, 'rothIRA', 'rothIRA');
 
   const eb = settings.earlyBudget;
   const lb = settings.laterBudget;
@@ -5026,9 +5047,13 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
   // "Spent" alone was ambiguous about what it did and didn't include — this
   // page now clearly distinguishes three separate things happening to the
   // user's money this month, matching what Home/Budget already track.
-  const savedInvestedTotal = round2(monthTxAllForSpend
-    .filter(t => t.kind==='savingsContribution' || t.kind==='investmentContribution')
-    .reduce((s,t) => s+safeNum(t.amount), 0));
+  // Saved & Invested = HYSA + Roth IRA contributions this month, counting
+  // BOTH manually-logged hysa/rothIRA transactions AND whatever this
+  // month's logged paychecks already withheld via allocations — the same
+  // shared helper Home and Budget use, so this can never disagree with them.
+  const hysaContribThisMonth = monthlyContributionAmount(monthTxAllForSpend, 'hysa', 'hysa');
+  const rothContribThisMonth = monthlyContributionAmount(monthTxAllForSpend, 'rothIRA', 'rothIRA');
+  const savedInvestedTotal = round2(hysaContribThisMonth + rothContribThisMonth);
   const incomeTotal = round2(monthTxAllForSpend
     .filter(isIncomeTransaction)
     .reduce((s,t) => s+safeNum(t.amount), 0));
@@ -5042,10 +5067,11 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
   const byCategory = {};
   for (const [cat, v] of Object.entries(catTotalsForSpend)) byCategory[cat] = v.total;
   // HYSA and Roth IRA are contribution lines, not spending, so the shared
-  // classifier above always reports 0 for them — read their actual logged
-  // amounts straight off this month's transactions instead.
-  byCategory.hysa    = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='hysa').reduce((s,t)=>s+safeNum(t.amount),0));
-  byCategory.rothIRA = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='rothIRA').reduce((s,t)=>s+safeNum(t.amount),0));
+  // classifier above always reports 0 for them — reuse the same figures
+  // savedInvestedTotal above already computed (manual contributions +
+  // paycheck allocations), so this list can't disagree with that summary.
+  byCategory.hysa    = hysaContribThisMonth;
+  byCategory.rothIRA = rothContribThisMonth;
 
   // HYSA and Roth IRA are tracked as separate budget lines and separate
   // categories — never combined into one "Savings" bucket. Legacy 'savings'-
