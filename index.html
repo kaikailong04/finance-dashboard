@@ -2568,9 +2568,15 @@ function topSpendingCategory(byCategory) {
 // contributions banked before this January so the floor stays a YTD figure.
 function reconciled401kYTD(fromTx, baseline, ledger, priorYears) {
   const counted = round2(safeNum(baseline) + safeNum(fromTx));
-  if (counted > 0) return counted;
   const thisYearLedger = round2(safeNum(ledger) - safeNum(priorYears));
-  return thisYearLedger > 0 ? thisYearLedger : 0;
+  // The HIGHER of the two, not "history unless it's zero". Transaction
+  // history is a partial reconstruction — checks logged before the
+  // employee401k field existed carry no amount to sum — while the ledger is
+  // the running total every logged check added to. Preferring history
+  // whenever it was merely non-zero under-reported any MIXED history: with
+  // one modern check and one legacy check, it reported a single check's
+  // contribution while the ledger plainly held two.
+  return Math.max(counted, thisYearLedger, 0);
 }
 function employee401kYTD(transactions, goals, year) {
   const y = year != null ? year : new Date().getFullYear();
@@ -2593,7 +2599,8 @@ function is401kYTDEstimated(transactions, goals, year) {
   const y = year != null ? year : new Date().getFullYear();
   const g = goals || {};
   const counted = safeNum(g.k401EmployeeYTDBaseline) + ytd401kEmployeeContributions(transactions, y);
-  return counted <= 0 && safeNum(g.k401Employee) > 0;
+  const ledger  = safeNum(g.k401Employee) - safeNum(g.k401PriorYearsEmployee);
+  return ledger > counted + 0.005;
 }
 // Total tracked 401(k) account value — what Accounts and Net Worth show.
 function total401kBalance(goals) {
@@ -4872,8 +4879,8 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   const paycheckRows = [
     { icon:'check',  iconBg:'rgba(0,200,5,.08)',   iconClr:'#00C805', name:'Net Paycheck',         sub:`1st & 3rd Thursday · ${perMonth}× / mo`,                       val:currency(baseDeposit,2),   vc:'var(--green)' },
     { icon:'dollar', iconBg:'rgba(0,200,5,.08)',   iconClr:'#00C805', name:'Monthly Take-Home',    sub:currency(annualNetIncome(settings))+' / yr · '+checksPerYear(settings)+' checks', val:currency(netMonthly,2), vc:'var(--t1)' },
-    { icon:'bank',   iconBg:'rgba(245,166,35,.1)', iconClr:'#F5A623', name:'401(k) — You',         sub:`${currency(empContrib,2)}/check · already withheld`,           val:currency(empMonthly,2),    vc:'var(--yellow)'},
-    { icon:'shield', iconBg:'rgba(123,116,255,.12)',iconClr:'#7B74FF',name:'401(k) — Employer',    sub:`${currency(emprContrib,2)}/check · not spendable`,             val:currency(emprMonthly,2),   vc:'var(--purple)'},
+    { icon:'bank',   iconBg:'rgba(245,166,35,.1)', iconClr:'#F5A623', name:'401(k) — You',         sub:`${currency(empContrib,2)}/check × ${perMonth} · already withheld`, val:currency(empMonthly,2)+'/mo', vc:'var(--yellow)'},
+    { icon:'shield', iconBg:'rgba(123,116,255,.12)',iconClr:'#7B74FF',name:'401(k) — Employer',    sub:`${currency(emprContrib,2)}/check × ${perMonth} · not spendable`,  val:currency(emprMonthly,2)+'/mo', vc:'var(--purple)'},
   ];
 
   // Category bars for "This Month" (only show if transactions exist)
