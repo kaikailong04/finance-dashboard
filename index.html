@@ -3006,7 +3006,10 @@ function seedAccounts() {
       order:1, hidden:false, archived:false, notes:'', linked:'hysa', manualBalance:0, createdAt:now },
     { id:'acc_savor', name:'Capital One Savor Rewards', type:'credit', institution:'Capital One', icon:'creditCard', color:'#7B74FF',
       order:2, hidden:false, archived:false, notes:'', linked:'creditCard', manualBalance:0, createdAt:now,
-      card: defaultCardFields({ network:'Mastercard', creditLimit:5000, apr:24.99, statementCloseDay:24, dueDay:18,
+      // creditLimit intentionally 0 — the real limit is the user's to enter.
+      // Seeding a plausible-looking figure made every utilization percentage on
+      // the dashboard a ratio against a number nobody supplied.
+      card: defaultCardFields({ network:'Mastercard', creditLimit:0, apr:24.99, statementCloseDay:24, dueDay:18,
         rewards:{ dining:3, groceries:3, entertainment:3, streaming:3, other:1 } }) },
     { id:'acc_roth', name:'Roth IRA', type:'roth', institution:'', icon:'shield', color:'#F5A623',
       order:3, hidden:false, archived:false, notes:'', linked:'roth', manualBalance:0, createdAt:now },
@@ -4195,10 +4198,10 @@ function ProjectedChart({ settings }) {
       {/* Title */}
       <div style={{padding:'0 20px 10px'}}>
         <div style={{fontSize:'.88rem',fontWeight:700,color:'var(--t1)',letterSpacing:'-.02em'}}>
-          Projected Net Worth
+          Base-Case Net Worth Projection
         </div>
         <div style={{fontSize:'.65rem',color:'var(--t3)',marginTop:3}}>
-          Base salary only · commission not included
+          Based on base salary · commission excluded
         </div>
       </div>
 
@@ -4443,7 +4446,11 @@ function CreditUtilizationMini({ accounts, settings, goals, netWorth, goTo }) {
             <div key={a.id} className="v-row">
               <div className="v-row-left">
                 <div className="v-row-icon" style={{background:a.color+'20'}}><Icon name={a.icon} size={16} color={a.color}/></div>
-                <div><div className="v-row-name">{a.name}</div><div className="v-row-sub">{currency(bal)} of {currency(card.creditLimit)}</div></div>
+                <div><div className="v-row-name">{a.name}</div><div className="v-row-sub">
+                  {safeNum(card.creditLimit) > 0
+                    ? `${currency(bal)} of ${currency(card.creditLimit)}`
+                    : `${currency(bal)} · set a credit limit`}
+                </div></div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:8}}>
                 <div className="track" style={{width:60}}><div className="fill" style={{width:`${Math.min(util,100)}%`,background:utilizationColor(util)}}/></div>
@@ -4502,10 +4509,15 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
   // THIS YEAR'S CONTRIBUTIONS toward an annual figure. Without the
   // qualifier, the Roth row reads as a balance and disagrees with the very
   // different balance shown on Accounts/Net Worth for the same account.
+  const k401EmprYTD = employer401kYTD(transactions, goals, year);
   const rows = [
-    { label:'HYSA',     note:'balance',                    bal:hysaBal,    goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
-    { label:'Roth IRA', note:`contributed ${year}`,        bal:rothYTD,    goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)' },
-    { label:'401(k)',   note:`contributed ${year}`,        bal:k401EmpYTD, goal:k401Goal,                    pct:k401Pct, color:'var(--yellow)' },
+    { label:'HYSA',     note:'balance',                     bal:hysaBal,    goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
+    { label:'Roth IRA', note:`you contributed ${year}`,     bal:rothYTD,    goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)' },
+    { label:'401(k)',   note:`you contributed ${year}`,     bal:k401EmpYTD, goal:k401Goal,                    pct:k401Pct, color:'var(--yellow)',
+      // Employer money is real retirement funding but is NOT the user's own
+      // contribution and never counts toward the employee goal above, so it
+      // rides alongside the row rather than inside its number.
+      extra: k401EmprYTD > 0 ? `+ ${currency(k401EmprYTD)} employer match ${year}` : null },
   ];
   return (
     <div>
@@ -4529,6 +4541,7 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
               aria-valuenow={round2(r.bal)} aria-valuemin={0} aria-valuemax={round2(r.goal)}>
               <div className="fill" style={{width:`${r.pct}%`,background:r.color}}/>
             </div>
+            {r.extra && <div style={{fontSize:'.64rem',color:'var(--t3)',marginTop:4}}>{r.extra}</div>}
           </div>
         ))}
       </div>
