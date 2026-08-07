@@ -1800,6 +1800,32 @@ function ytdEmployerMatch(transactions, year) {
     .filter(t => t.kind === 'paycheck' && t.date && Number(t.date.slice(0,4)) === year)
     .reduce((s, t) => s + (t.employer401k || 0), 0));
 }
+// This calendar year's employEE 401(k) contributions — the IRS employee
+// deferral limit is a per-YEAR figure, never a lifetime one, so it must be
+// measured against contributions made since Jan 1, not the all-time
+// cumulative total goals.k401Employee holds (PRD §15: "Reset contribution
+// progress each January 1. Do not reset the actual account balance.").
+function ytd401kEmployeeContributions(transactions, year) {
+  return round2((transactions || [])
+    .filter(t => t.kind === 'paycheck' && t.date && Number(t.date.slice(0,4)) === year)
+    .reduce((s, t) => s + (t.employee401k || 0), 0));
+}
+// This calendar year's Roth IRA contributions — same reasoning as above,
+// but Roth has no dedicated ledger field the way 401(k) contributions do
+// (goals.rothIRAOverride is a market-value BALANCE, not a running
+// contribution count, so it inflates with investment growth and is never
+// safe to compare against the annual IRS limit). Reconstructed from the
+// same transaction history everything else already reads: paycheck
+// allocations plus any Roth IRA contribution logged directly.
+function ytdRothContributions(transactions, year) {
+  let total = 0;
+  for (const t of (transactions || [])) {
+    if (!t.date || Number(t.date.slice(0,4)) !== year) continue;
+    if (t.kind === 'paycheck' && t.allocations && t.allocations.rothIRA) total += safeNum(t.allocations.rothIRA);
+    else if (t.type === 'expense' && t.category === 'rothIRA') total += safeNum(t.amount);
+  }
+  return round2(total);
+}
 // Has the 401(k) started as of a given date?
 function k401Active(s, ref) {
   if (!s.contribution401kStart) return true;
@@ -3229,6 +3255,25 @@ function buildForecastEvents({ settings, accounts, bills, recurring, transaction
     }
   }
 
+  // User-entered future transactions — a manually-logged transaction dated
+  // ahead of today (the app never restricts the date picker to today or
+  // earlier) should show up in the forecast too, not just recurring
+  // templates and bills. Strictly AFTER today, not >=, since today's own
+  // starting balance already reflects anything dated today or earlier.
+  for (const t of (transactions||[])) {
+    const d = parseLocalDate(txDateKey(t));
+    if (!(d > today && d <= endDate)) continue;
+    if (t.type === 'transfer') {
+      const fromB = bucketForAccountId(accounts, t.accountId), toB = bucketForAccountId(accounts, t.toAccountId);
+      if (fromB) events.push({ date:d, bucket:fromB, delta:-safeNum(t.amount), label:t.description||'Transfer' });
+      if (toB)   events.push({ date:d, bucket:toB,   delta: safeNum(t.amount), label:t.description||'Transfer' });
+    } else {
+      const b = bucketForAccountId(accounts, t.accountId);
+      if (!b) continue;
+      events.push({ date:d, bucket:b, delta: t.type==='income' ? safeNum(t.amount) : -safeNum(t.amount), label:t.description||(t.type==='income'?'Income':'Expense') });
+    }
+  }
+
   return events.sort((a,b) => a.date - b.date);
 }
 // Walks day-by-day from today, applying that day's events to a running
@@ -3273,10 +3318,11 @@ function vizColor(catId) {
 const catLabel = id => (CATEGORIES.find(c => c.id === id) || {}).label
   || (id === 'uncategorized' ? 'Uncategorized' : id ? id.charAt(0).toUpperCase()+id.slice(1) : 'Uncategorized');
 
-function Bar({ value, max, color='var(--blue)', lg=false }) {
+function Bar({ value, max, color='var(--blue)', lg=false, label }) {
   const p = max ? Math.min((value/max)*100, 100) : 0;
   return (
-    <div className={'track'+(lg?' track-lg':'')}>
+    <div className={'track'+(lg?' track-lg':'')} role="progressbar"
+      aria-label={label} aria-valuenow={round2(safeNum(value))} aria-valuemin={0} aria-valuemax={safeNum(max)}>
       <div className="fill" style={{width:`${p}%`,background:color}} />
     </div>
   );
@@ -4107,17 +4153,21 @@ function UpcomingBillsMini({ accounts, bills, transactions, settings, goals, net
   );
 }
 
-function SavingsGoalsMini({ settings, goals, goTo }) {
+function SavingsGoalsMini({ settings, goals, transactions, goTo }) {
+  const year = new Date().getFullYear();
   const hysaBal = goals.hysaBalance || 0;
   const hysaPct = settings.hysaGoal > 0 ? Math.min((hysaBal/settings.hysaGoal)*100,100) : 0;
-  const rothBal = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
-  const rothPct = settings.rothIRAYearlyLimit > 0 ? Math.min((rothBal/settings.rothIRAYearlyLimit)*100,100) : 0;
-  const k401Bal = round2((goals.k401Employee||0) + (goals.k401Employer||0));
-  const k401Pct = settings.ira401kYearlyMax > 0 ? Math.min((k401Bal/settings.ira401kYearlyMax)*100,100) : 0;
+  // Roth/401(k) progress is measured against THIS YEAR's contributions, not
+  // the all-time balance (which inflates with growth and prior years) —
+  // same fix as the Goals page (PRD §15).
+  const rothYTD = ytdRothContributions(transactions, year);
+  const rothPct = settings.rothIRAYearlyLimit > 0 ? Math.min((rothYTD/settings.rothIRAYearlyLimit)*100,100) : 0;
+  const k401EmpYTD = ytd401kEmployeeContributions(transactions, year);
+  const k401Pct = settings.ira401kYearlyMax > 0 ? Math.min((k401EmpYTD/settings.ira401kYearlyMax)*100,100) : 0;
   const rows = [
-    { label:'HYSA',     bal:hysaBal, goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
-    { label:'Roth IRA', bal:rothBal, goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)' },
-    { label:'401(k)',   bal:k401Bal, goal:settings.ira401kYearlyMax,   pct:k401Pct, color:'var(--yellow)' },
+    { label:'HYSA',     bal:hysaBal,  goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
+    { label:'Roth IRA', bal:rothYTD,  goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)' },
+    { label:'401(k)',   bal:k401EmpYTD, goal:settings.ira401kYearlyMax, pct:k401Pct, color:'var(--yellow)' },
   ];
   return (
     <div>
@@ -4489,7 +4539,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
         <UpcomingBillsMini accounts={accounts} bills={bills} transactions={transactions} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
       </div>
 
-      <SavingsGoalsMini settings={settings} goals={goals} goTo={goTo}/>
+      <SavingsGoalsMini settings={settings} goals={goals} transactions={transactions} goTo={goTo}/>
 
       {/* Paycheck Breakdown */}
       <div>
@@ -4646,7 +4696,9 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
                       <span className="sp-bgt"> / {currency(r.target)}</span>
                     </span>
                   </div>
-                  <div className="bar"><div className="bar-in" style={{width:`${p_}%`}}/></div>
+                  <div className="bar" role="progressbar" aria-label={`${r.label} funded`} aria-valuenow={r.funded} aria-valuemin={0} aria-valuemax={r.target}>
+                    <div className="bar-in" style={{width:`${p_}%`}}/>
+                  </div>
                 </div>
               );
             })}
@@ -5179,7 +5231,11 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
                         {lim>0 && <span className="sp-bgt"> / {currency(lim)}</span>}
                       </span>
                     </div>
-                    {lim>0 && <div className="bar"><div className={`bar-in ${cls}`} style={{width:`${p_||0}%`}}/></div>}
+                    {lim>0 && (
+                      <div className="bar" role="progressbar" aria-label={`${cat.label} spent`} aria-valuenow={s} aria-valuemin={0} aria-valuemax={lim}>
+                        <div className={`bar-in ${cls}`} style={{width:`${p_||0}%`}}/>
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -5226,7 +5282,7 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
                         <div className="tx-amt" style={{color:info.color}}>
                           {info.sign}{currency(t.amount)}
                         </div>
-                        <button className="tx-del btn-icon-del" onClick={()=>del(t.id)}>×</button>
+                        <button className="tx-del btn-icon-del" onClick={()=>del(t.id)} aria-label={`Delete ${t.description||'transaction'}`}>×</button>
                       </div>
                     </SwipeableRow>
                   );
@@ -5494,8 +5550,13 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
   // Without Rent hold their own rothIRA value — neither is read as the other's.
   const rothRate    = blendedRate(settings, 'rothIRA');
   const rothBal   = goals.rothIRAOverride != null ? goals.rothIRAOverride : 0;
-  const rothPct_  = settings.rothIRAYearlyLimit > 0 ? Math.min((rothBal / settings.rothIRAYearlyLimit) * 100, 100) : 0;
-  const rothRem   = Math.max(settings.rothIRAYearlyLimit - rothBal, 0);
+  // The IRS annual limit is measured against THIS YEAR's contributions —
+  // never the account's total balance, which inflates with every prior
+  // year's contributions plus any investment growth (PRD §15: "Do not use
+  // total account value as the annual contribution amount").
+  const rothYTD   = ytdRothContributions(transactions, now.getFullYear());
+  const rothPct_  = settings.rothIRAYearlyLimit > 0 ? Math.min((rothYTD / settings.rothIRAYearlyLimit) * 100, 100) : 0;
+  const rothRem   = Math.max(settings.rothIRAYearlyLimit - rothYTD, 0);
   const rothMonthsLeft = rothRate > 0 && rothRem > 0
     ? Math.ceil(rothRem / rothRate) : 0;
   const rothETA   = rothMonthsLeft ? (() => {
@@ -5509,8 +5570,12 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
   // Combined is DERIVED from the two sources — never an independently editable
   // number, so the split and the total can never disagree.
   const k401Bal   = round2(k401Emp + k401Empr);
-  const k401Pct_ = settings.ira401kYearlyMax > 0 ? Math.min((k401Bal / settings.ira401kYearlyMax) * 100, 100) : 0;
-  const k401Rem  = Math.max(settings.ira401kYearlyMax - k401Bal, 0);
+  // Same fix as Roth above: the IRS employee deferral limit resets every
+  // January 1 — measure progress against this year's employee
+  // contributions, not the all-time cumulative total k401Emp holds.
+  const k401EmpYTD = ytd401kEmployeeContributions(transactions, now.getFullYear());
+  const k401Pct_ = settings.ira401kYearlyMax > 0 ? Math.min((k401EmpYTD / settings.ira401kYearlyMax) * 100, 100) : 0;
+  const k401Rem  = Math.max(settings.ira401kYearlyMax - k401EmpYTD, 0);
   const matchCap    = settings.employerMatchAnnualCap != null ? settings.employerMatchAnnualCap : 0;
   const matchUsed   = ytdEmployerMatch(transactions, now.getFullYear());
   const matchCapped = matchCap > 0 && matchUsed >= matchCap;
@@ -5613,7 +5678,11 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
           </div>
           <div>
             <div className="gc-pct" style={{color:'var(--purple)'}}>{pct(rothPct_, 0)}</div>
-            <div className="gc-of">{currency(rothBal)} of {currency(settings.rothIRAYearlyLimit)}</div>
+            {/* This year's contributions vs. the IRS limit — NOT the account
+                balance, which includes every prior year's contributions
+                plus investment growth and would make this percentage
+                meaningless (PRD §15). */}
+            <div className="gc-of">{currency(rothYTD)} of {currency(settings.rothIRAYearlyLimit)}</div>
           </div>
         </div>
         <div className="gc-bar">
@@ -5622,12 +5691,17 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
         <div className="gc-foot">
           <span className="gc-rate">{currency(rothRate)}/mo · from paychecks</span>
           <span className="gc-date">
-            {etaHl.roth && rothBal < settings.rothIRAYearlyLimit && (
+            {etaHl.roth && rothYTD < settings.rothIRAYearlyLimit && (
               <span className="eta-up">↑ Moved up {fmtImprove(etaHl.roth.days)}</span>
             )}
-            {rothBal >= settings.rothIRAYearlyLimit ? '🎉 Maxed out!'
+            {rothYTD >= settings.rothIRAYearlyLimit ? '🎉 Maxed out!'
               : rothETA ? `${rothETA} · ${rothMonthsLeft}mo` : '—'}
           </span>
+        </div>
+        {/* Account balance — a distinct number from the contribution
+            progress above, shown once so the two are never confused. */}
+        <div style={{fontSize:'.68rem',color:'var(--t3)',marginTop:8}}>
+          Account balance: <span style={{color:'var(--t2)',fontWeight:600}}>{currency(rothBal)}</span>
         </div>
         <form onSubmit={updRoth} className="goal-update" style={{marginTop:14}}>
           <input type="number" step="0.01" min="0"
@@ -5648,7 +5722,9 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
             <div className="gc-pct" style={{color:'var(--yellow)'}}>
               {pct(k401Pct_, 0)}
             </div>
-            <div className="gc-of">{currency(k401Bal)} of {currency(settings.ira401kYearlyMax)}</div>
+            {/* This year's EMPLOYEE contributions vs. the IRS deferral
+                limit — not the combined all-time balance (PRD §15). */}
+            <div className="gc-of">{currency(k401EmpYTD)} of {currency(settings.ira401kYearlyMax)}</div>
           </div>
         </div>
         <div className="gc-bar">
@@ -7021,7 +7097,7 @@ function Commission({ settings, commissions, setCommissions, setGoals }) {
                 <span className="comm-s comm-s-green">+{currency(c.hysaPortion,2)} HYSA</span>
                 <span className="comm-s comm-s-blue">+{currency(c.personalPortion,2)} Personal</span>
               </div>
-              <button className="btn-icon btn-icon-del" onClick={()=>del(c.id)}>×</button>
+              <button className="btn-icon btn-icon-del" onClick={()=>del(c.id)} aria-label={`Delete ${currency(c.amount,2)} commission from ${c.date}`}>×</button>
             </div>
           ))}
         </div>
@@ -7623,6 +7699,10 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
   const k401Emp  = goals.k401Employee  || 0;
   const k401Empr = goals.k401Employer  || 0;
   const k401Bal  = round2(k401Emp + k401Empr);          // derived, not editable
+  // This year's contributions — for the IRS-limit "Goal Progress" card
+  // below, never the all-time balance above (PRD §15).
+  const rothYTD    = ytdRothContributions(transactions, new Date().getFullYear());
+  const k401EmpYTD = ytd401kEmployeeContributions(transactions, new Date().getFullYear());
 
   const setHYSA = v => setGoals(g => ({ ...g, hysaBalance:     v }));
   const setRoth = v => setGoals(g => ({ ...g, rothIRAOverride: v }));
@@ -8010,9 +8090,9 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
         <div className="card-label">Goal Progress</div>
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
           {[
-            { label:`HYSA — ${currency(hysaBal)} / ${currency(settings.hysaGoal)}`,              val:hysaBal, max:settings.hysaGoal,          color:'var(--accent)' },
-            { label:`Roth IRA — ${currency(rothBal)} / ${currency(settings.rothIRAYearlyLimit)}`, val:rothBal, max:settings.rothIRAYearlyLimit, color:'var(--purple)' },
-            { label:`401(k) — ${currency(k401Bal)} / ${currency(settings.ira401kYearlyMax)}`,     val:k401Bal, max:settings.ira401kYearlyMax,   color:'var(--yellow)' },
+            { label:`HYSA — ${currency(hysaBal)} / ${currency(settings.hysaGoal)}`,                    val:hysaBal,     max:settings.hysaGoal,           color:'var(--accent)' },
+            { label:`Roth IRA (this year) — ${currency(rothYTD)} / ${currency(settings.rothIRAYearlyLimit)}`,    val:rothYTD,     max:settings.rothIRAYearlyLimit, color:'var(--purple)' },
+            { label:`401(k) employee (this year) — ${currency(k401EmpYTD)} / ${currency(settings.ira401kYearlyMax)}`, val:k401EmpYTD, max:settings.ira401kYearlyMax,   color:'var(--yellow)' },
           ].map(g => (
             <div key={g.label}>
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:7}}>
@@ -8064,7 +8144,7 @@ function NetWorth({ netWorth, setNetWorth, transactions, goals, setGoals, settin
                 )}
               </span>
               <button className="btn-icon btn-icon-del" style={{justifySelf:'end'}}
-                onClick={()=>delSnapshot(h.month)} title="Delete">✕</button>
+                onClick={()=>delSnapshot(h.month)} aria-label={`Delete ${h.month} snapshot`} title="Delete">✕</button>
             </div>
           ))}
         </div>
@@ -8939,14 +9019,15 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
       </div>
 
       {card && (
-        <div className="subnav-row">
+        <div className="subnav-row" role="tablist" aria-label="Account sections">
           {[
             { id:'overview', label:'Overview' },
             { id:'payments', label:'Payments' },
             { id:'rewards',  label:'Rewards'  },
             { id:'activity', label:'Activity' },
           ].map(s => (
-            <button key={s.id} className={'subnav-pill '+(acctTab===s.id?'subnav-pill-on':'subnav-pill-off')} onClick={()=>setAcctTab(s.id)}>
+            <button key={s.id} className={'subnav-pill '+(acctTab===s.id?'subnav-pill-on':'subnav-pill-off')} onClick={()=>setAcctTab(s.id)}
+              role="tab" aria-selected={acctTab===s.id}>
               {s.label}
             </button>
           ))}
@@ -9857,7 +9938,10 @@ function App() {
     const hysaRate = blendedRate(settings, 'hysa');
     const rothRate = blendedRate(settings, 'rothIRA');
     const hysaBal  = goals.hysaBalance || 0;
-    const rothBal  = currentRothBal(settings, goals);
+    // This year's contributions, matching the Goals page's own ETA — using
+    // the raw account balance here would compute a "days to target" the
+    // Goals page's displayed ETA no longer agrees with (PRD §15).
+    const rothYTD  = ytdRothContributions(transactions, new Date().getFullYear());
     const track = (key, rem, rate, done) => {
       if (done) { next[key] = 0; delete hl[key]; return; }
       if (!(rate > 0)) return;
@@ -9867,10 +9951,10 @@ function App() {
       else if (days > prev[key] + 2) { next[key] = days; delete hl[key]; }
     };
     track('hysa', Math.max(settings.hysaGoal - hysaBal, 0), hysaRate, hysaBal >= settings.hysaGoal);
-    track('roth', Math.max(settings.rothIRAYearlyLimit - rothBal, 0), rothRate, rothBal >= settings.rothIRAYearlyLimit);
+    track('roth', Math.max(settings.rothIRAYearlyLimit - rothYTD, 0), rothRate, rothYTD >= settings.rothIRAYearlyLimit);
     localStorage.setItem('fd_eta_prev', JSON.stringify(next));
     try { sessionStorage.setItem('fd_eta_hl', JSON.stringify(hl)); } catch {}
-  }, [goals, settings]);
+  }, [goals, settings, transactions]);
 
   const pages = {
     dashboard:  <Dashboard  settings={settings} transactions={transactions} goals={goals} commissions={commissions} setGoals={setGoals} setTransactions={setTx} goTo={setTab}
@@ -9907,9 +9991,10 @@ function App() {
       <header className={'header'+(headerScrolled?' header-scrolled':'')}>
         <div className="header-inner">
           <div className="logo"><div className="logo-dot" />Finance</div>
-          <nav className="nav">
+          <nav className="nav" aria-label="Primary">
             {NAV_GROUPS.map(g=>(
-              <button key={g.id} className={'nav-btn'+(activeGroup.id===g.id?' active':'')} onClick={()=>goToGroup(g)}>
+              <button key={g.id} className={'nav-btn'+(activeGroup.id===g.id?' active':'')} onClick={()=>goToGroup(g)}
+                aria-current={activeGroup.id===g.id ? 'page' : undefined}>
                 {g.label}
               </button>
             ))}
@@ -9918,11 +10003,12 @@ function App() {
       </header>
       {activeGroup.tabs.length > 1 && (
         <div style={{maxWidth:1040,margin:'0 auto',width:'100%',padding:'16px 28px 0',boxSizing:'border-box'}}>
-          <div className="subnav-row">
+          <div className="subnav-row" role="tablist" aria-label={`${activeGroup.label} sections`}>
             {activeGroup.tabs.map(id => {
               const t = TABS.find(x=>x.id===id);
               return (
-                <button key={id} className={'subnav-pill '+(tab===id?'subnav-pill-on':'subnav-pill-off')} onClick={()=>setTab(id)}>
+                <button key={id} className={'subnav-pill '+(tab===id?'subnav-pill-on':'subnav-pill-off')} onClick={()=>setTab(id)}
+                  role="tab" aria-selected={tab===id}>
                   {t.label}
                 </button>
               );
@@ -9931,9 +10017,10 @@ function App() {
         </div>
       )}
       <main className="main">{pages[tab]}</main>
-      <nav className="mobile-nav">
+      <nav className="mobile-nav" aria-label="Primary">
         {NAV_GROUPS.map(g=>(
-          <button key={g.id} className={'mnav-btn'+(activeGroup.id===g.id?' active':'')} onClick={()=>goToGroup(g)}>
+          <button key={g.id} className={'mnav-btn'+(activeGroup.id===g.id?' active':'')} onClick={()=>goToGroup(g)}
+            aria-label={g.label} aria-current={activeGroup.id===g.id ? 'page' : undefined}>
             <NavIcon name={g.icon} active={activeGroup.id===g.id} />
             {activeGroup.id===g.id && <div className="nav-pip" />}
           </button>
