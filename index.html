@@ -4030,10 +4030,23 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   const surplus = netMonthly - totalBudgeted;
 
   const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const monthTx  = transactions.filter(t=>t.date.startsWith(monthStr)&&t.type==='expense');
-  const totalSpent = monthTx.reduce((s,t)=>s+t.amount, 0);
+  // Spending totals come from the same shared classifier every other page
+  // uses (getFilteredTransactions + getCategorySpendingTotals), so this
+  // widget can never disagree with the Financial Health card, Spending page,
+  // or Spending Insights for the same month.
+  const monthTxAllForSpend = getFilteredTransactions(transactions, { month: monthStr });
+  const catTotalsForSpend  = getCategorySpendingTotals(monthTxAllForSpend);
+  const totalSpent = round2(Object.values(catTotalsForSpend).reduce((s,c)=>s+c.total,0));
   const byCategory = {};
-  for (const t of monthTx) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
+  for (const [cat, v] of Object.entries(catTotalsForSpend)) byCategory[cat] = v.total;
+  // HYSA and Roth IRA are contribution lines, not spending — the shared
+  // classifier above (same one the Financial Health card uses) deliberately
+  // excludes them from totalSpent, same as every "how much did I spend"
+  // number elsewhere. Their own "This Month" row still needs to reflect any
+  // hysa/rothIRA-categorized transactions logged this month, the same raw
+  // source the Spending page's per-category totals read from.
+  byCategory.hysa    = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='hysa').reduce((s,t)=>s+safeNum(t.amount),0));
+  byCategory.rothIRA = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='rothIRA').reduce((s,t)=>s+safeNum(t.amount),0));
   const recentTx = [...transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
 
   // ── Paycheck logging — 1st & 3rd Thursday, exactly 2 per month ──────
@@ -4503,9 +4516,21 @@ function Budget({ settings, transactions }) {
 
   const now      = new Date();
   const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const monthTx  = transactions.filter(t=>t.date.startsWith(monthStr)&&t.type==='expense');
+  // Real spending categories route through the same shared classifier the
+  // Financial Health card and Spending page use (refunds netted, duplicates
+  // excluded, savings/retirement transfers never counted as spending), so
+  // this page can never show a different "spent" figure for the same month.
+  const monthTxAllForSpend = getFilteredTransactions(transactions, { month: monthStr });
+  const catTotalsForSpend  = getCategorySpendingTotals(monthTxAllForSpend);
   const spent = {};
-  for (const t of monthTx) spent[t.category]=(spent[t.category]||0)+t.amount;
+  for (const [cat, v] of Object.entries(catTotalsForSpend)) spent[cat] = v.total;
+  // HYSA and Roth IRA are contribution lines, not spending, so the shared
+  // classifier above always reports 0 for them (by design). Their "spent"
+  // here is any hysa/rothIRA-categorized transaction logged this month —
+  // and crucially each reads its OWN category, not a shared 'savings' key,
+  // so a Roth IRA contribution never shows up as HYSA spending or vice versa.
+  spent.hysa    = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='hysa').reduce((s,t)=>s+safeNum(t.amount),0));
+  spent.rothIRA = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='rothIRA').reduce((s,t)=>s+safeNum(t.amount),0));
 
   const eb = settings.earlyBudget;
   const lb = settings.laterBudget;
@@ -4513,8 +4538,8 @@ function Budget({ settings, transactions }) {
   const earlyRows = [
     { label:'Utilities & Fee',   limit:eb.utilitiesAndFee,  cat:'utilities', icon:'zap',     iconBg:'rgba(245,166,35,.1)',  iconClr:'#F5A623'         },
     { label:'Renters Insurance', limit:eb.rentersInsurance, cat:'other',     icon:'shield',  iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
-    { label:'Roth IRA',          limit:eb.rothIRA,          cat:'savings',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
-    { label:'HYSA',              limit:eb.hysa,             cat:'savings',   icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
+    { label:'Roth IRA',          limit:eb.rothIRA,          cat:'rothIRA',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
+    { label:'HYSA',              limit:eb.hysa,             cat:'hysa',      icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
     { label:'Groceries',         limit:eb.groceries,        cat:'groceries', icon:'cart',    iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Gas',               limit:eb.gas,              cat:'gas',       icon:'fuel',    iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Travel',            limit:eb.funTravel,        cat:'travel',    icon:'plane',   iconBg:'var(--wash-2)',iconClr:'#666'            },
@@ -4525,8 +4550,8 @@ function Budget({ settings, transactions }) {
     { label:'Rent & Fee',        limit:lb.rentAndFee,       cat:'housing',   icon:'home',    iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
     { label:'Utilities',         limit:lb.utilities,        cat:'utilities', icon:'zap',     iconBg:'rgba(245,166,35,.1)',  iconClr:'#F5A623'         },
     { label:'Renters Insurance', limit:lb.rentersInsurance, cat:'other',     icon:'shield',  iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
-    { label:'Roth IRA',          limit:lb.rothIRA,          cat:'savings',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
-    { label:'HYSA',              limit:lb.hysa,             cat:'savings',   icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
+    { label:'Roth IRA',          limit:lb.rothIRA,          cat:'rothIRA',   icon:'trendUp', iconBg:'var(--purple-lt)',     iconClr:'var(--purple)'   },
+    { label:'HYSA',              limit:lb.hysa,             cat:'hysa',      icon:'piggy',   iconBg:'var(--accent-lt)',     iconClr:'var(--accent)'   },
     { label:'Groceries',         limit:lb.groceries,        cat:'groceries', icon:'cart',    iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Gas',               limit:lb.gas,              cat:'gas',       icon:'fuel',    iconBg:'var(--wash-2)',iconClr:'#666'            },
     { label:'Travel',            limit:lb.funTravel,        cat:'travel',    icon:'plane',   iconBg:'var(--wash-2)',iconClr:'#666'            },
@@ -4640,8 +4665,13 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
 
   const monthStr  = `${viewMonth.y}-${String(viewMonth.m+1).padStart(2,'0')}`;
   const monthTx   = transactions.filter(t=>t.date.startsWith(monthStr));
-  const expenses  = monthTx.filter(t=>t.type==='expense');
-  const totalSpent= expenses.reduce((s,t)=>s+t.amount, 0);
+  // Spending totals route through the same shared classifier (refunds
+  // netted, duplicates excluded, savings/retirement/cc-payment transfers
+  // never counted as spending) that the Financial Health card, Dashboard,
+  // and Budget page all use — this page can never disagree with them.
+  const monthTxAllForSpend = getFilteredTransactions(transactions, { month: monthStr });
+  const catTotalsForSpend  = getCategorySpendingTotals(monthTxAllForSpend);
+  const totalSpent = round2(Object.values(catTotalsForSpend).reduce((s,c)=>s+c.total,0));
   // Phase is based on the MONTH BEING VIEWED, not today — so each month is
   // compared against the right budget. Rent-free = pre-employment + Months 1-3
   // (with Start Date = Jul 1 2026 that is Jun/Jul/Aug/Sep 2026); rest = Month 4-12.
@@ -4650,7 +4680,12 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
   const budget    = isRentFree ? settings.earlyBudget : settings.laterBudget;
 
   const byCategory = {};
-  for (const t of expenses) byCategory[t.category]=(byCategory[t.category]||0)+t.amount;
+  for (const [cat, v] of Object.entries(catTotalsForSpend)) byCategory[cat] = v.total;
+  // HYSA and Roth IRA are contribution lines, not spending, so the shared
+  // classifier above always reports 0 for them — read their actual logged
+  // amounts straight off this month's transactions instead.
+  byCategory.hysa    = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='hysa').reduce((s,t)=>s+safeNum(t.amount),0));
+  byCategory.rothIRA = round2(monthTxAllForSpend.filter(t=>t.type==='expense'&&t.category==='rothIRA').reduce((s,t)=>s+safeNum(t.amount),0));
 
   // HYSA and Roth IRA are tracked as separate budget lines and separate
   // categories — never combined into one "Savings" bucket. Legacy 'savings'-
