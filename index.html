@@ -2861,6 +2861,32 @@ function healthReasons({ budgetPctUsed, savingsRate, maxUtilization, overdueBill
   else reasons.push('No bills are overdue.');
   return reasons.slice(0, 4);
 }
+// The 5-factor checklist behind the score, for a tap-through breakdown —
+// same inputs as financialHealthScore/healthReasons (never a second,
+// competing definition of "healthy"), plus emergency-fund progress (the
+// HYSA balance against its own Settings goal), which the score itself
+// doesn't factor in but the spec calls out as a real, checkable status.
+function healthFactors({ budgetPctUsed, savingsRate, maxUtilization, overdueBillsCount, dayProgress, hysaBalance, hysaGoal, hysaContributedThisMonth }) {
+  const dp = (typeof dayProgress === 'number' && dayProgress > 0) ? Math.min(dayProgress, 1) : 1;
+  const expectedPct = dp * 100;
+  const paceOver = budgetPctUsed - expectedPct;
+  const onPace = !(budgetPctUsed > 100 || paceOver > 15);
+  const savingsOk = savingsRate >= 10;
+  const billsOk = (overdueBillsCount||0) === 0;
+  const utilOk = maxUtilization <= 30;
+  const goalSet = (hysaGoal||0) > 0;
+  const efundFunded = goalSet && safeNum(hysaBalance) >= hysaGoal;
+  const efundOk = !goalSet || efundFunded || safeNum(hysaContributedThisMonth) > 0;
+  return [
+    { label:'Spending pace', ok:onPace,
+      detail: budgetPctUsed>100 ? `${(budgetPctUsed-100).toFixed(0)}% over budget` : `${budgetPctUsed.toFixed(0)}% of budget used · ${expectedPct.toFixed(0)}% of month elapsed` },
+    { label:'Savings rate', ok:savingsOk, detail:`${savingsRate.toFixed(0)}% of income saved this month` },
+    { label:'Bills current', ok:billsOk, detail: billsOk ? 'No bills overdue' : `${overdueBillsCount} bill${overdueBillsCount===1?'':'s'} overdue` },
+    { label:'Credit utilization', ok:utilOk, detail:`${maxUtilization.toFixed(0)}% max utilization across cards` },
+    { label:'Emergency fund progress', ok:efundOk,
+      detail: !goalSet ? 'No HYSA goal set' : efundFunded ? `Fully funded — ${currency(hysaBalance)} of ${currency(hysaGoal)}` : `${currency(hysaBalance)} of ${currency(hysaGoal)} HYSA goal`+(safeNum(hysaContributedThisMonth)>0?' · funded this month':'') },
+  ];
+}
 function healthLabel(score) {
   if (score >= 90) return { label:'Excellent',       color:'#00C805' };
   if (score >= 80) return { label:'On Track',        color:'#00C805' };
@@ -3996,11 +4022,11 @@ function VizLegend({ items, onSelect }) {
 }
 
 // Screen-reader / no-colour fallback for any chart.
-function VizTable({ caption, cols, rows }) {
+function VizTable({ caption, cols, rows, label }) {
   if (!rows || !rows.length) return null;
   return (
     <details className="viz-table">
-      <summary>View as table</summary>
+      <summary>{label || 'View as table'}</summary>
       <table>
         <caption className="sr-only">{caption}</caption>
         <thead><tr>{cols.map(c => <th key={c} scope="col">{c}</th>)}</tr></thead>
@@ -4013,7 +4039,7 @@ function VizTable({ caption, cols, rows }) {
 // ── Line trend chart (spending over time, net worth over time) ────────
 // Multi-series with a shared crosshair. One y-axis only — never a second
 // scale, even when series differ in magnitude.
-function LineTrendChart({ series, labels, height=190, formatY=money0, emptyMsg }) {
+function LineTrendChart({ series, labels, height=190, formatY=money0, emptyMsg, tableLabel }) {
   const [hover, setHover] = useState(null);
   const svgRef = React.useRef(null);
   const live = (series || []).filter(s => s.points && s.points.length);
@@ -4082,7 +4108,7 @@ function LineTrendChart({ series, labels, height=190, formatY=money0, emptyMsg }
         )}
       </div>
       <VizLegend items={live.map(s => ({ key:s.key, label:s.label, color:s.color }))}/>
-      <VizTable caption="Chart data" cols={['Period', ...live.map(s=>s.label)]}
+      <VizTable label={tableLabel} caption="Chart data" cols={['Period', ...live.map(s=>s.label)]}
         rows={labels.map((l,i) => [l, ...live.map(s => money2(s.points[i]))])}/>
     </div>
   );
@@ -4404,7 +4430,11 @@ const NAV_GROUPS = [
 // redundant control for the exact same action on these tabs (PRD §5: "Do
 // not show both a top-right Add button and a floating plus button for the
 // same action"), so it's hidden there rather than fighting for space.
-const FAB_HIDDEN_ON = ['accounts','bills','goals','spending','commission'];
+// 'dashboard' (Home) is included here too — the FAB competed with the
+// dashboard's own dense stack of cards/CTAs (Quick Actions already gives
+// Home a prominent add-transaction entry point right at the top), so the
+// floating button is hidden there and only shown on tabs that need it.
+const FAB_HIDDEN_ON = ['dashboard','accounts','bills','goals','spending','commission'];
 const groupForTab = id => NAV_GROUPS.find(g => g.tabs.includes(id)) || NAV_GROUPS[0];
 
 // Fixed set the rest of the app (budget scenario fields, forecasting, the
@@ -4762,6 +4792,10 @@ function DashboardAIInsights({ settings, accounts, goals, netWorth, byCategory, 
 
 function CashFlowForecast({ settings, accounts, bills, recurring, transactions, goals, netWorth }) {
   const [days, setDays] = useState(30);
+  // Detail (daily-balance chart table + the full scheduled-events ledger)
+  // stays collapsed behind an explicit tap — the default view is the compact
+  // summary cards, chart, and a short upcoming-events preview.
+  const [showDetail, setShowDetail] = useState(false);
   const acctCtx = { settings, goals, netWorth };
   const start  = useMemo(() => currentBucketBalances(accounts, acctCtx), [accounts, settings, goals, netWorth]);
   const events = useMemo(() => buildForecastEvents({ settings, accounts, bills, recurring, transactions, goals, netWorth }, days),
@@ -4777,7 +4811,9 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
   // be traced to the dated events that produced it. Legs of one transfer
   // share a date+label, so they collapse into a single row showing money
   // leaving one bucket and arriving in another (net worth unchanged).
-  const ledgerRows = useMemo(() => {
+  // Kept as raw {date:Date,...} entries first so both the full ledger table
+  // and the compact "upcoming" preview below derive from one grouping pass.
+  const ledgerEntries = useMemo(() => {
     const byKey = new Map();
     for (const e of events) {
       const k = ymd(e.date) + '|' + e.label;
@@ -4785,14 +4821,30 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
       const row = byKey.get(k);
       row[e.bucket] = round2(safeNum(row[e.bucket]) + safeNum(e.delta));
     }
-    const cell = v => v ? (v > 0 ? '+' : '−') + currency(Math.abs(v), 2) : '—';
-    return [...byKey.values()]
-      .sort((a,b) => a.date - b.date)
-      .map(r => [
-        r.date.toLocaleDateString('en-US',{month:'short',day:'numeric'}),
-        r.label, cell(r.checking), cell(r.credit), cell(r.savings),
-      ]);
+    return [...byKey.values()].sort((a,b) => a.date - b.date);
   }, [events]);
+  const ledgerRows = useMemo(() => {
+    const cell = v => v ? (v > 0 ? '+' : '−') + currency(Math.abs(v), 2) : '—';
+    return ledgerEntries.map(r => [
+      r.date.toLocaleDateString('en-US',{month:'short',day:'numeric'}),
+      r.label, cell(r.checking), cell(r.credit), cell(r.savings),
+    ]);
+  }, [ledgerEntries]);
+  // A short, always-visible preview — the next few dated events, one line
+  // each — so "what's coming up" is readable at a glance without opening
+  // the full ledger table.
+  const upcomingPreview = useMemo(() => {
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const cell = v => v ? (v > 0 ? '+' : '−') + currency(Math.abs(v), 2) : null;
+    return ledgerEntries
+      .filter(r => r.date >= todayStart)
+      .slice(0, 4)
+      .map(r => ({
+        date: r.date.toLocaleDateString('en-US',{month:'short',day:'numeric'}),
+        label: r.label,
+        amount: cell(r.checking) || cell(r.savings) || cell(r.credit) || '—',
+      }));
+  }, [ledgerEntries]);
 
   return (
     <div>
@@ -4822,26 +4874,51 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
             <span className="ins-card-sub">in {days} days</span>
           </div>
           <div className="ins-card">
-            <span className="ins-card-lbl">Projected Savings</span>
+            <span className="ins-card-lbl">Projected Savings &amp; Investments</span>
             <span className="ins-card-val" style={{color:'var(--accent)'}}>{moneyForecast(endSavings)}</span>
             <span className="ins-card-sub">in {days} days</span>
           </div>
         </div>
         {events.length === 0
           ? <VizEmpty message="No upcoming bills, paychecks, or recurring transactions to project." hint="Add a bill or recurring transaction to see a forecast."/>
-          : <LineTrendChart labels={series.labels} formatY={moneyForecast}
+          : <LineTrendChart labels={series.labels} formatY={moneyForecast} tableLabel="Daily balances"
               series={[
-                { key:'checking', label:'Checking',    color:VIZ_SERIES[0], points:series.checking },
-                { key:'credit',   label:'Credit Card',  color:'#FF5000',     points:series.credit   },
-                { key:'savings',  label:'Savings',      color:VIZ_SERIES[2], points:series.savings  },
+                { key:'checking', label:'Checking',              color:VIZ_SERIES[0], points:series.checking },
+                { key:'credit',   label:'Credit Card',            color:'#FF5000',     points:series.credit   },
+                { key:'savings',  label:'Savings & Investments',  color:VIZ_SERIES[2], points:series.savings  },
               ]}/>}
         {endChecking < 0 && (
           <div style={{marginTop:12,padding:'10px 12px',background:'rgba(255,80,0,.08)',border:'1px solid rgba(255,80,0,.25)',borderRadius:'var(--r-s)',fontSize:'.76rem',color:'var(--t1)'}}>
             Checking is projected to go negative within {days} days based on known upcoming bills and paychecks.
           </div>
         )}
-        <VizTable caption={`Scheduled events over the next ${days} days`}
-          cols={['Date','Event','Checking','Credit Card','Savings']} rows={ledgerRows}/>
+        {upcomingPreview.length > 0 && (
+          <div style={{marginTop:16}}>
+            <div className="eyebrow" style={{marginBottom:8}}>Upcoming Cash Events</div>
+            <div className="card-flush">
+              {upcomingPreview.map((r,i) => (
+                <div key={i} className="v-row">
+                  <div className="v-row-left">
+                    <div style={{minWidth:0}}>
+                      <div className="v-row-name">{r.label}</div>
+                      <div className="v-row-sub">{r.date}</div>
+                    </div>
+                  </div>
+                  <div className="v-row-val" style={{color:r.amount.startsWith('+')?'var(--green)':'var(--t1)'}}>{r.amount}</div>
+                </div>
+              ))}
+            </div>
+            <button type="button" onClick={()=>setShowDetail(s=>!s)}
+              style={{background:'none',border:'none',padding:'10px 2px 0',cursor:'pointer',fontFamily:'inherit',
+                fontSize:'.78rem',color:'var(--accent)',fontWeight:600}}>
+              {showDetail ? 'Hide detailed forecast' : 'View detailed forecast →'}
+            </button>
+          </div>
+        )}
+        {showDetail && (
+          <VizTable label="Scheduled events" caption={`Scheduled events over the next ${days} days`}
+            cols={['Date','Event','Checking','Credit Card','Savings & Investments']} rows={ledgerRows}/>
+        )}
       </div>
     </div>
   );
@@ -4907,6 +4984,11 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   const baseDeposit = netPerCheck(settings);          // $1,713 take-home
   const nextPayDate = payDates[Math.min(checkCount, perMonth-1)];
   const [payOpen, setPayOpen] = useState(false);
+  // Tap-to-explain affordances — Savings Rate methodology and the Financial
+  // Health factor checklist are both collapsed by default so the score
+  // cards stay compact; tapping either reveals real, computed detail below.
+  const [srInfoOpen, setSrInfoOpen] = useState(false);
+  const [hfOpen, setHfOpen] = useState(false);
   const [payAmt,  setPayAmt]  = useState(baseDeposit);
   // Per-line manual overrides for THIS check, keyed by allocation key.
   // Proportional scaling handles "the whole check was bigger"; it cannot
@@ -5062,6 +5144,14 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   const healthScore = financialHealthScore(healthScoreInputs);
   const healthInfo   = healthLabel(healthScore);
   const healthWhy    = useMemo(() => healthReasons(healthScoreInputs), [budgetPctUsedForHealth, savingsRate, maxUtilizationForHealth, overdueBillsCountForHealth, dayProgress]);
+  // Real, computed checklist behind the score (item: tap-through breakdown)
+  // — every checkmark traces to an actual app number, never hardcoded.
+  const healthFactorList = useMemo(() => healthFactors({
+    ...healthScoreInputs,
+    hysaBalance: goals.hysaBalance || 0,
+    hysaGoal: settings.hysaGoal,
+    hysaContributedThisMonth: byCategory.hysa || 0,
+  }), [budgetPctUsedForHealth, savingsRate, maxUtilizationForHealth, overdueBillsCountForHealth, dayProgress, goals.hysaBalance, settings.hysaGoal, byCategory.hysa]);
 
   // Paycheck breakdown — built around the actual net paycheck. The 401(k) rows
   // are informational (already withheld); they are NOT deducted from take-home.
@@ -5129,11 +5219,61 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
       <DueRecurringCard recurring={recurring} accounts={accounts}
         ctxBase={{ settings, goals, netWorth, setGoals, setNetWorth, setAccounts, setTransactions, setRecurring }}/>
 
+      {/* ══ Near-term money: what's coming in/out soon ══ */}
       <CashFlowForecast settings={settings} accounts={accounts} bills={bills} recurring={recurring} transactions={transactions} goals={goals} netWorth={netWorth}/>
 
-      {/* Projected Net Worth chart */}
+      <UpcomingBillsMini accounts={accounts} bills={bills} transactions={transactions} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
+
+      {/* Next paycheck — payday-aware. Prominent only when a payday has
+          actually arrived and is still unlogged; a quiet single line the
+          rest of the time, so a full-width green button isn't sitting on
+          Home on an ordinary Tuesday. */}
+      {payIsDue ? (
+        <div className="card" style={{borderColor:'rgba(0,200,5,.35)',background:'rgba(0,200,5,.04)'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:12}}>
+            <div style={{minWidth:0}}>
+              <div className="eyebrow" style={{marginBottom:3}}>Check {checkCount+1} of {perMonth}</div>
+              <div style={{fontSize:'.9rem',fontWeight:700,color:'var(--t1)'}}>
+                {payDueDays === 0 ? 'Payday' : 'Paycheck not logged'}
+              </div>
+              <div style={{fontSize:'.7rem',color:'var(--t3)',marginTop:2}}>
+                {payDateLabel} · {payWhen}
+              </div>
+            </div>
+            <div style={{fontSize:'1.05rem',fontWeight:700,color:'var(--accent)',fontVariantNumeric:'tabular-nums',flexShrink:0}}>
+              {currency(baseDeposit)}
+            </div>
+          </div>
+          <button className="btn btn-primary btn-full" onClick={openPay}>
+            Log this check
+          </button>
+        </div>
+      ) : (
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,
+          fontSize:'.72rem',color:'var(--t3)',padding:'2px 2px'}}>
+          <span style={{minWidth:0}}>
+            {checkCount >= perMonth
+              ? `✓ ${perMonth === 2 ? 'Both paychecks' : 'All paychecks'} logged for ${monthName}`
+              : `Next paycheck ${payDateLabel} · ${payWhen}`}
+          </span>
+          {checkCount < perMonth && (
+            <button type="button" onClick={openPay}
+              style={{background:'none',border:'none',padding:0,cursor:'pointer',fontFamily:'inherit',
+                fontSize:'.72rem',color:'var(--accent)',fontWeight:600,flexShrink:0}}>
+              Log early
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ══ Long-term progress: goals, projection, credit health ══ */}
+      <SavingsGoalsMini settings={settings} goals={goals} transactions={transactions} goTo={goTo} setTransactions={setTransactions} accounts={accounts} netWorth={netWorth} setGoals={setGoals} setNetWorth={setNetWorth} setAccounts={setAccounts}/>
+
       <ProjectedChart settings={settings} />
 
+      <CreditUtilizationMini accounts={accounts} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
+
+      {/* ══ Monthly health & activity ══ */}
       {/* Stat strip */}
       <div style={{display:'flex',gap:0}}>
         {[
@@ -5151,13 +5291,6 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
           </div>
         ))}
       </div>
-
-      <div className="g2">
-        <CreditUtilizationMini accounts={accounts} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
-        <UpcomingBillsMini accounts={accounts} bills={bills} transactions={transactions} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
-      </div>
-
-      <SavingsGoalsMini settings={settings} goals={goals} transactions={transactions} goTo={goTo} setTransactions={setTransactions} accounts={accounts} netWorth={netWorth} setGoals={setGoals} setNetWorth={setNetWorth} setAccounts={setAccounts}/>
 
       {/* Paycheck Breakdown */}
       <div>
@@ -5207,63 +5340,47 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
         </div>
       )}
 
-      {/* Log Paycheck — payday-aware. Prominent only when a payday has
-          actually arrived and is still unlogged; a quiet single line the
-          rest of the time, so a full-width green button isn't sitting on
-          Home on an ordinary Tuesday. */}
-      {payIsDue ? (
-        <div className="card" style={{borderColor:'rgba(0,200,5,.35)',background:'rgba(0,200,5,.04)'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:12}}>
-            <div style={{minWidth:0}}>
-              <div className="eyebrow" style={{marginBottom:3}}>Check {checkCount+1} of {perMonth}</div>
-              <div style={{fontSize:'.9rem',fontWeight:700,color:'var(--t1)'}}>
-                {payDueDays === 0 ? 'Payday' : 'Paycheck not logged'}
-              </div>
-              <div style={{fontSize:'.7rem',color:'var(--t3)',marginTop:2}}>
-                {payDateLabel} · {payWhen}
-              </div>
-            </div>
-            <div style={{fontSize:'1.05rem',fontWeight:700,color:'var(--accent)',fontVariantNumeric:'tabular-nums',flexShrink:0}}>
-              {currency(baseDeposit)}
-            </div>
-          </div>
-          <button className="btn btn-primary btn-full" onClick={openPay}>
-            Log this check
-          </button>
-        </div>
-      ) : (
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,
-          fontSize:'.72rem',color:'var(--t3)',padding:'2px 2px'}}>
-          <span style={{minWidth:0}}>
-            {checkCount >= perMonth
-              ? `✓ ${perMonth === 2 ? 'Both paychecks' : 'All paychecks'} logged for ${monthName}`
-              : `Next paycheck ${payDateLabel} · ${payWhen}`}
-          </span>
-          {checkCount < perMonth && (
-            <button type="button" onClick={openPay}
-              style={{background:'none',border:'none',padding:0,cursor:'pointer',fontFamily:'inherit',
-                fontSize:'.72rem',color:'var(--accent)',fontWeight:600,flexShrink:0}}>
-              Log early
-            </button>
-          )}
-        </div>
-      )}
-
       {/* ── Financial Health ── */}
       {/* Reuses the corrected income + 401(k) logic: savings rate is out of
           net take-home (the 401(k) is already withheld and is NOT subtracted
           again), and the employer match is reported separately from cash. */}
       <div>
         <div className="section-head">Financial Health</div>
-        <div className="card" style={{marginBottom:12,display:'flex',alignItems:'center',gap:16}}>
-          <div className="grade-badge" style={{width:56,height:56,fontSize:'1.3rem',borderColor:healthInfo.color,color:healthInfo.color,flexShrink:0}}>
-            {healthScore}
+        <button type="button" onClick={()=>setHfOpen(o=>!o)} aria-expanded={hfOpen}
+          style={{width:'100%',textAlign:'left',font:'inherit',cursor:'pointer',
+            background:'var(--s1)',border:'1px solid var(--border)',borderRadius:'var(--r)',
+            padding:16,marginBottom:hfOpen?0:12,display:'block'}}>
+          <div style={{display:'flex',alignItems:'center',gap:16}}>
+            <div className="grade-badge" style={{width:56,height:56,fontSize:'1.3rem',borderColor:healthInfo.color,color:healthInfo.color,flexShrink:0}}>
+              {healthScore}
+            </div>
+            <div style={{minWidth:0,flex:1}}>
+              <div style={{fontSize:'.95rem',fontWeight:700,color:healthInfo.color}}>{healthInfo.label}</div>
+              <div style={{fontSize:'.76rem',color:'var(--t3)',marginTop:2,lineHeight:1.5}}>{healthWhy.join(' · ')}</div>
+            </div>
+            <span style={{fontSize:'.68rem',color:'var(--accent)',fontWeight:600,flexShrink:0}}>
+              {hfOpen ? 'Hide factors' : 'What’s this? →'}
+            </span>
           </div>
-          <div style={{minWidth:0}}>
-            <div style={{fontSize:'.95rem',fontWeight:700,color:healthInfo.color}}>{healthInfo.label}</div>
-            <div style={{fontSize:'.76rem',color:'var(--t3)',marginTop:2,lineHeight:1.5}}>{healthWhy.join(' · ')}</div>
+        </button>
+        {hfOpen && (
+          <div className="card-flush" style={{marginBottom:12}}>
+            {healthFactorList.map(f => (
+              <div key={f.label} className="v-row">
+                <div className="v-row-left">
+                  <div className="v-row-icon" style={{background:f.ok?'rgba(0,200,5,.1)':'rgba(255,80,0,.1)'}}>
+                    <Icon name={f.ok?'check':'x'} size={14} color={f.ok?'var(--green)':'var(--red)'} strokeWidth={2.2}/>
+                  </div>
+                  <div style={{minWidth:0}}>
+                    <div className="v-row-name">{f.label}</div>
+                    <div className="v-row-sub">{f.detail}</div>
+                  </div>
+                </div>
+                <div className="v-row-val" style={{color:f.ok?'var(--green)':'var(--red)',fontSize:'.8rem'}}>{f.ok?'✓':'!'}</div>
+              </div>
+            ))}
           </div>
-        </div>
+        )}
         <div className="ins-cards">
           <button type="button" className="ins-card" onClick={()=>goTo&&goTo('insights')}>
             <span className="ins-card-lbl">Spent This Month</span>
@@ -5281,12 +5398,17 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
             </span>
             <span className="ins-card-link">View budget →</span>
           </button>
-          <div className="ins-card">
-            <span className="ins-card-lbl">Savings Rate</span>
+          <button type="button" className="ins-card" onClick={()=>setSrInfoOpen(o=>!o)} aria-expanded={srInfoOpen}
+            aria-label="Savings Rate — how this is calculated">
+            <span className="ins-card-lbl" style={{display:'flex',alignItems:'center',gap:4}}>
+              Savings Rate
+              <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:13,height:13,
+                borderRadius:'50%',border:'1px solid var(--t4)',color:'var(--t4)',fontSize:'.56rem',fontWeight:700,flexShrink:0}}>i</span>
+            </span>
             <span className="ins-card-val" style={{color:'var(--accent)'}}>{pct(savingsRate,0)}</span>
             <span className="ins-card-sub">{money0(monthlyContrib)}/mo of {money0(savingsRateParts.base)} earned</span>
             <span className="ins-card-sub" style={{color:'var(--t3)'}}>HYSA + Roth + employee 401(k)</span>
-          </div>
+          </button>
           <button type="button" className="ins-card" onClick={()=>goTo&&goTo('networth')}>
             <span className="ins-card-lbl">Net Worth</span>
             <span className="ins-card-val" style={{color:health.nw>=0?'var(--t1)':'var(--red)'}}>{money2(health.nw)}</span>
@@ -5317,6 +5439,13 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
             </span>
           </div>
         </div>
+        {srInfoOpen && (
+          <div style={{marginTop:10,padding:'10px 12px',background:'var(--s2)',border:'1px solid var(--border2)',
+            borderRadius:'var(--r-s)',fontSize:'.74rem',color:'var(--t2)',lineHeight:1.6}}>
+            Savings rate includes HYSA, Roth IRA, and your employee 401(k) contributions. Employer match is shown
+            separately and is not included in your personal savings-rate percentage.
+          </div>
+        )}
       </div>
 
       {/* This Month — a one-line total, not a second copy of the full
@@ -5354,6 +5483,19 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
             <div className="tx-list">
               {recentTx.map(t => {
                 const cat = CATEGORIES.find(c=>c.id===t.category);
+                // Same shared kind lookup the Spending ledger uses — a
+                // transfer, card payment, or savings/investment contribution
+                // is never colored the same red as an actual purchase just
+                // because money left the account. Genuine spending keeps its
+                // existing red treatment untouched.
+                const info = txKindInfo(t);
+                const nonSpendKinds = ['Transfer','Card Payment','Savings','Investment'];
+                const isTransferLike = t.type==='transfer' || nonSpendKinds.includes(info.label);
+                const amtColor = t.type==='income' ? 'var(--green)' : isTransferLike ? info.color : 'var(--red)';
+                const amtSign  = t.type==='income' ? '+' : isTransferLike ? info.sign : '-';
+                const metaLabel = isPaycheckTransaction(t) ? 'Paycheck'
+                  : t.type==='transfer' ? `Transfer · ${t.account||'Account'} → ${t.toAccount||'Account'}`
+                  : (cat?.label || info.label || 'Other');
                 return (
                   <div key={t.id} className="tx-row">
                     {isPaycheckTransaction(t) ? <div className="tx-icon">PAY</div>
@@ -5361,10 +5503,10 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
                       : <MerchantLogo description={t.description}/>}
                     <div className="tx-body">
                       <div className="tx-desc">{t.description}</div>
-                      <div className="tx-meta">{(isPaycheckTransaction(t) ? 'Paycheck' : (cat?.label||'Other'))} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+                      <div className="tx-meta">{metaLabel} · {new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
                     </div>
-                    <div className="tx-amt" style={{color:t.type==='income'?'var(--green)':'var(--red)'}}>
-                      {t.type==='income'?'+':'-'}{currency(t.amount)}
+                    <div className="tx-amt" style={{color:amtColor}}>
+                      {amtSign}{currency(t.amount)}
                     </div>
                   </div>
                 );
