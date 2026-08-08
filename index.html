@@ -3576,8 +3576,13 @@ function bucketForAccountId(accounts, id) {
   if (!a) return null;
   if (a.type === 'checking') return 'checking';
   if (a.type === 'credit')   return 'credit';
-  if (a.type === 'hysa' || a.type === 'savings') return 'savings';
-  return null;   // cash/retirement/brokerage/etc. — outside this forecast's 3 buckets
+  // "Savings & Investments" means exactly that — HYSA cash AND Roth/401(k)
+  // investment balances. Excluding roth/401k here would make the bucket's
+  // STARTING balance just the HYSA slice while its own chart legend claims
+  // "Savings & Investments", silently missing the existing Roth + 401(k)
+  // balances from every projected figure.
+  if (a.type === 'hysa' || a.type === 'savings' || a.type === 'roth' || a.type === '401k') return 'savings';
+  return null;   // cash/brokerage/crypto/etc. — outside this forecast's 3 buckets
 }
 function currentBucketBalances(accounts, ctx) {
   const sums = { checking:0, credit:0, savings:0 };
@@ -4736,45 +4741,62 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo, setTransactions
 // Combines a budget read, the top spending category, and the worst credit
 // utilization into 2-3 sentences — the same never-shaming, plain-language
 // style as the Credit Card Dashboard's insights.
-function DashboardAIInsights({ settings, accounts, goals, netWorth, byCategory, totalSpent, totalBudgeted, dayProgress }) {
+function DashboardAIInsights({ settings, accounts, goals, netWorth, byCategory, totalSpent, totalBudgeted, dayProgress, savingsTarget, nextPayDate, nextPayChecking, daysToPay }) {
   const ctx = { settings, goals, netWorth };
-  const lines = [];
+  // Each candidate is scored by priority; only the top 2-3 that actually
+  // have reliable data behind them are shown, so this never just restates
+  // every card above it at once (PRD: "show 2-3 high-value insights").
+  const candidates = [];
   if (totalBudgeted > 0) {
     const usedPct = safePct(totalSpent, totalBudgeted);
     const dp = (typeof dayProgress === 'number' && dayProgress > 0) ? Math.min(dayProgress, 1) : 1;
     if (usedPct > 100) {
-      lines.push(`You're ${currency(totalSpent-totalBudgeted)} over your total budget this month.`);
+      candidates.push({ p:1, l:`You're ${currency(totalSpent-totalBudgeted)} over your total budget this month.` });
     } else if (dp < 1 && dp > 0.03) {
       // Predictive, pace-based read (PRD §8) rather than a flat percentage:
       // project the CURRENT daily burn rate out across the rest of the
       // month and say what it implies, instead of just restating "X% used".
       const projected = totalSpent / dp;
       const overBy = round2(projected - totalBudgeted);
-      lines.push(overBy > 0
-        ? `You've used ${usedPct.toFixed(0)}% of this month's budget with ${(100-dp*100).toFixed(0)}% of the month remaining. At your current pace, you may exceed budget by ${currency(overBy)}.`
-        : `You've used ${usedPct.toFixed(0)}% of this month's budget with ${(100-dp*100).toFixed(0)}% of the month remaining — on pace to stay within budget.`);
+      candidates.push({ p:1, l: overBy > 0
+        ? `You've used ${usedPct.toFixed(0)}% of this month's budget with ${(100-dp*100).toFixed(0)}% of the month remaining. At your current pace, you're projected to exceed budget by about ${currency(Math.abs(overBy))}.`
+        : `You've used ${usedPct.toFixed(0)}% of this month's budget with ${(100-dp*100).toFixed(0)}% of the month remaining. At your current pace, you're projected to finish about ${currency(Math.abs(overBy))} under budget.` });
     } else {
-      lines.push(`You've used ${usedPct.toFixed(0)}% of this month's budget.`);
+      candidates.push({ p:3, l:`You've used ${usedPct.toFixed(0)}% of this month's budget.` });
     }
   }
-  // Shared ranking — savings/retirement contributions are contributions,
-  // not spending, so a big HYSA transfer can never be reported as the
-  // month's top spending category.
-  const topCat = topSpendingCategory(byCategory);
-  if (topCat) lines.push(`${catLabel(topCat[0])} is your top spending category this month at ${currency(topCat[1])}.`);
-  // Contributions get their own affirmative line instead of being silently
-  // dropped — money moved into savings is worth surfacing, just not as spending.
+  // Contributions get their own affirmative line, upgraded with progress
+  // toward the actual planned monthly target (not just the raw dollar
+  // amount, which the Savings Goals card already shows on its own).
   const contributed = round2(safeNum((byCategory||{}).hysa) + safeNum((byCategory||{}).rothIRA));
   if (contributed > 0) {
     const parts = [];
-    if (safeNum((byCategory||{}).hysa) > 0)    parts.push(`${currency(byCategory.hysa)} to your HYSA`);
-    if (safeNum((byCategory||{}).rothIRA) > 0) parts.push(`${currency(byCategory.rothIRA)} to your Roth IRA`);
-    lines.push(`You've contributed ${parts.join(' and ')} this month.`);
+    if (safeNum((byCategory||{}).hysa) > 0)    parts.push(`${currency(byCategory.hysa)} to HYSA`);
+    if (safeNum((byCategory||{}).rothIRA) > 0) parts.push(`${currency(byCategory.rothIRA)} to Roth IRA`);
+    const targetPct = safeNum(savingsTarget) > 0 ? safePct(contributed, savingsTarget) : null;
+    candidates.push({ p:2, l: targetPct != null
+      ? `You've contributed ${parts.join(' and ')} this month — ${targetPct.toFixed(0)}% of your ${currency(savingsTarget)} monthly savings target.`
+      : `You've contributed ${parts.join(' and ')} this month.` });
+  }
+  // Top spending category, but only worth a line here if it adds context
+  // beyond the Financial Health "Top Category" tile above it — the share
+  // of this month's total spending it represents.
+  const topCat = topSpendingCategory(byCategory);
+  if (topCat && totalSpent > 0) {
+    const share = safePct(topCat[1], totalSpent);
+    candidates.push({ p:2, l:`${catLabel(topCat[0])} is your largest spending category this month at ${currency(topCat[1])} — ${share.toFixed(0)}% of what you've spent.` });
   }
   const worstCard = (accounts||[]).filter(a => a.type==='credit' && !a.archived)
     .map(a => ({ a, util: creditUtilization(accountBalance(a,ctx), (a.card||defaultCardFields()).creditLimit) }))
     .sort((x,y) => y.util-x.util)[0];
-  if (worstCard && worstCard.util > 30) lines.push(`${worstCard.a.name} is at ${worstCard.util.toFixed(0)}% utilization — worth an early payment before applying for new credit.`);
+  if (worstCard && worstCard.util > 30) candidates.push({ p:1, l:`${worstCard.a.name} is at ${worstCard.util.toFixed(0)}% utilization — worth an early payment before applying for new credit.` });
+  // Only surfaced when both the current checking balance and a next payday
+  // are actually known — never guessed when either input is missing.
+  if (nextPayChecking != null && nextPayDate) {
+    const when = daysToPay===0 ? 'today' : daysToPay===1 ? 'tomorrow' : `in ${daysToPay} days`;
+    candidates.push({ p:3, l:`Your next paycheck (${when}) and its HYSA/Roth transfer would leave about ${currency(nextPayChecking)} in checking.` });
+  }
+  const lines = candidates.sort((a,b)=>a.p-b.p).slice(0,3).map(c=>c.l);
   if (!lines.length) lines.push('Everything looks steady — no alerts today.');
   return (
     <div>
@@ -4989,6 +5011,12 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   // cards stay compact; tapping either reveals real, computed detail below.
   const [srInfoOpen, setSrInfoOpen] = useState(false);
   const [hfOpen, setHfOpen] = useState(false);
+  // Paycheck math (base/OTE/401(k) rates) is PROJECTED from payroll settings,
+  // not a posted transaction total — collapsed by default so it reads as
+  // secondary detail, per "detailed payroll mathematics should be
+  // secondary/expandable." Actual posted YTD contributions live in Savings
+  // Goals and are never recalculated here.
+  const [paycheckOpen, setPaycheckOpen] = useState(false);
   const [payAmt,  setPayAmt]  = useState(baseDeposit);
   // Per-line manual overrides for THIS check, keyed by allocation key.
   // Proportional scaling handles "the whole check was bigger"; it cannot
@@ -5153,48 +5181,40 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
     hysaContributedThisMonth: byCategory.hysa || 0,
   }), [budgetPctUsedForHealth, savingsRate, maxUtilizationForHealth, overdueBillsCountForHealth, dayProgress, goals.hysaBalance, settings.hysaGoal, byCategory.hysa]);
 
-  // Paycheck breakdown — built around the actual net paycheck. The 401(k) rows
-  // are informational (already withheld); they are NOT deducted from take-home.
+  // Paycheck breakdown — PROJECTED figures from payroll settings (rate ×
+  // cadence), not posted transaction totals. "Monthly Take-Home" is
+  // deliberately not repeated here — it's already the Hero number at the
+  // top of the page; showing it again here would be the exact-number
+  // redundancy the polish pass is trying to remove. The 401(k) rows are
+  // informational (already withheld pre-tax); never deducted from take-home.
   const empMonthly  = round2(empContrib  * perMonth);
   const emprMonthly = round2(emprContrib * perMonth);
   const paycheckRows = [
     { icon:'check',  iconBg:'rgba(0,200,5,.08)',   iconClr:'#00C805', name:'Net Paycheck',         sub:`1st & 3rd Thursday · ${perMonth}× / mo`,                       val:currency(baseDeposit,2),   vc:'var(--green)' },
-    { icon:'dollar', iconBg:'rgba(0,200,5,.08)',   iconClr:'#00C805', name:'Monthly Take-Home',    sub:currency(annualNetIncome(settings))+' / yr · '+checksPerYear(settings)+' checks', val:currency(netMonthly,2), vc:'var(--t1)' },
-    { icon:'bank',   iconBg:'rgba(245,166,35,.1)', iconClr:'#F5A623', name:'401(k) — You',         sub:`${currency(empContrib,2)}/check × ${perMonth} · already withheld`, val:currency(empMonthly,2)+'/mo', vc:'var(--yellow)'},
-    { icon:'shield', iconBg:'rgba(123,116,255,.12)',iconClr:'#7B74FF',name:'401(k) — Employer',    sub:`${currency(emprContrib,2)}/check × ${perMonth} · not spendable`,  val:currency(emprMonthly,2)+'/mo', vc:'var(--purple)'},
-  ];
-
-  // Category bars for "This Month" (only show if transactions exist)
-  // HYSA, Roth IRA and 401(k) are separate account categories — never
-  // combined into one "Savings" row — matching how Spending Insights and the
-  // Net Worth page already keep them distinct.
-  const catSpendRows = phase.isEarly || phase.isPreEmployment ? [
-    { label:'Utilities',  cat:'utilities', budget:budget.utilitiesAndFee },
-    { label:'HYSA',       cat:'hysa',      budget:budget.hysa||0 },
-    { label:'Roth IRA',   cat:'rothIRA',   budget:budget.rothIRA||0 },
-    { label:'401(k)',     cat:'__401k__',  budget:empMonthly },
-    { label:'Groceries',  cat:'groceries', budget:budget.groceries },
-    { label:'Gas',        cat:'gas',       budget:budget.gas },
-    { label:'Dining',     cat:'dining',    budget:budget.outToEat },
-    { label:'Shopping',   cat:'shopping',  budget:budget.shopping },
-    { label:'Travel',     cat:'travel',    budget:budget.funTravel },
-  ] : [
-    { label:'Housing',    cat:'housing',   budget:budget.rentAndFee },
-    { label:'Utilities',  cat:'utilities', budget:budget.utilities },
-    { label:'HYSA',       cat:'hysa',      budget:budget.hysa||0 },
-    { label:'Roth IRA',   cat:'rothIRA',   budget:budget.rothIRA||0 },
-    { label:'401(k)',     cat:'__401k__',  budget:empMonthly },
-    { label:'Groceries',  cat:'groceries', budget:budget.groceries },
-    { label:'Gas',        cat:'gas',       budget:budget.gas },
-    { label:'Dining',     cat:'dining',    budget:budget.outToEat },
-    { label:'Shopping',   cat:'shopping',  budget:budget.shopping },
-    { label:'Travel',     cat:'travel',    budget:budget.funTravel },
+    { icon:'bank',   iconBg:'rgba(245,166,35,.1)', iconClr:'#F5A623', name:'Employee 401(k)',      sub:`${currency(empContrib,2)}/check · expected, already withheld`, val:currency(empMonthly,2)+'/mo', vc:'var(--yellow)'},
+    { icon:'shield', iconBg:'rgba(123,116,255,.12)',iconClr:'#7B74FF',name:'Employer Match',       sub:`${currency(emprContrib,2)}/check · expected, not spendable`,  val:currency(emprMonthly,2)+'/mo', vc:'var(--purple)'},
   ];
 
   let phaseBadge;
   if (phase.isPreEmployment)   phaseBadge = <span className="badge badge-purple">Pre-Employment</span>;
   else if (phase.isRentFree)   phaseBadge = <span className="badge badge-green">Rent-Free Month</span>;
   else                         phaseBadge = <span className="badge badge-blue">Rent Month</span>;
+
+  // ── Smart Insights inputs (derived, not restated) ──────────────────────
+  // What the NEXT scheduled paycheck leaves in checking, after its own
+  // HYSA + Roth allocation moves back out — same per-check plan the
+  // paycheck sheet uses (baseAlloc), so this can't disagree with it.
+  const baseToSavingsPerCheck = round2(baseAlloc
+    .filter(a => a.key === 'hysa' || a.key === 'rothIRA')
+    .reduce((s,a) => s + safeNum(a.amount), 0));
+  const currentChecking = (netWorth && netWorth.accounts && typeof netWorth.accounts.checking === 'number')
+    ? netWorth.accounts.checking : null;
+  const nextPayChecking = (currentChecking != null && health.nextPay)
+    ? round2(currentChecking + baseDeposit - baseToSavingsPerCheck) : null;
+  // Monthly savings TARGET (planned, from the budget) vs. what's actually
+  // been contributed so far this month — reused by Smart Insights so it
+  // isn't re-deriving its own copy of "what counts as a contribution."
+  const savingsTarget = round2((budget.hysa||0) + (budget.rothIRA||0));
 
   return (
     <div className="page">
@@ -5274,71 +5294,119 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
       <CreditUtilizationMini accounts={accounts} settings={settings} goals={goals} netWorth={netWorth} goTo={goTo}/>
 
       {/* ══ Monthly health & activity ══ */}
-      {/* Stat strip */}
-      <div style={{display:'flex',gap:0}}>
-        {[
-          { lbl:'Base',         val:currency(settings.grossBase), sub:currency(settings.grossBase*12)+'/yr', c:'var(--t1)' },
-          { lbl:'OTE',          val:currency(settings.grossOTE),  sub:currency(settings.grossOTE*12)+'/yr',  c:'var(--accent)' },
-          { lbl:'Savings Rate', val:pct(savingsRate,0),           sub:currency(monthlyContrib)+'/mo saved',   c:'var(--accent)' },
-        ].map((s,i,arr) => (
-          <div key={s.lbl} style={{
-            flex:1, paddingRight:i<arr.length-1?16:0, marginRight:i<arr.length-1?16:0,
-            borderRight: i<arr.length-1 ? '1px solid var(--border)' : 'none',
-          }}>
-            <div style={{fontSize:'.6rem',fontWeight:600,color:'var(--t3)',textTransform:'uppercase',letterSpacing:'.09em',marginBottom:5}}>{s.lbl}</div>
-            <div style={{fontSize:'1.1rem',fontWeight:700,letterSpacing:'-.02em',fontVariantNumeric:'tabular-nums',color:s.c}}>{s.val}</div>
-            <div style={{fontSize:'.68rem',color:'var(--t3)',marginTop:2}}>{s.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Paycheck Breakdown */}
+      {/* Income & Paycheck — Base/OTE/take-home integrated into one place
+          instead of a standalone strip, with the per-check payroll math
+          (PROJECTED from Settings, not a posted total) collapsed behind
+          "View paycheck details" so the default page stays short. Savings
+          Rate is intentionally NOT repeated here — it already lives in
+          Financial Health below, with more context, so it's never shown
+          twice within a short scroll. */}
       <div>
-        <div className="section-head">Paycheck Breakdown</div>
-        <div className="card-flush">
-          {paycheckRows.map(r => (
-            <div key={r.name} className="v-row">
-              <div className="v-row-left">
-                <div className="v-row-icon" style={{background:r.iconBg}}>
-                  <Icon name={r.icon} size={16} color={r.iconClr} strokeWidth={1.7}/>
-                </div>
-                <div>
-                  <div className="v-row-name">{r.name}</div>
-                  <div className="v-row-sub">{r.sub}</div>
-                </div>
+        <div className="section-head">Income</div>
+        <div className="card">
+          <div style={{display:'flex',gap:16}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div className="eyebrow" style={{marginBottom:4}}>Base Salary</div>
+              <div style={{fontSize:'1.05rem',fontWeight:700,color:'var(--t1)',letterSpacing:'-.02em'}}>
+                {currency(settings.grossBase,0)}<span style={{fontSize:'.68rem',fontWeight:500,color:'var(--t3)'}}>/mo</span>
               </div>
-              <div className="v-row-val" style={{color:r.vc}}>{r.val}</div>
+              <div style={{fontSize:'.7rem',color:'var(--t3)',marginTop:2}}>{currency(settings.grossBase*12,0)}/yr</div>
             </div>
-          ))}
+            <div style={{flex:1,minWidth:0,textAlign:'right'}}>
+              <div className="eyebrow" style={{marginBottom:4}}>OTE</div>
+              <div style={{fontSize:'1.05rem',fontWeight:700,color:'var(--accent)',letterSpacing:'-.02em'}}>
+                {currency(settings.grossOTE,0)}<span style={{fontSize:'.68rem',fontWeight:500,color:'var(--t3)'}}>/mo</span>
+              </div>
+              <div style={{fontSize:'.7rem',color:'var(--t3)',marginTop:2}}>{currency(settings.grossOTE*12,0)}/yr</div>
+            </div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,
+            marginTop:16,paddingTop:14,borderTop:'1px solid var(--border)'}}>
+            <div style={{minWidth:0}}>
+              <div className="eyebrow" style={{marginBottom:3}}>Monthly Cash Take-Home</div>
+              <div style={{fontSize:'1.2rem',fontWeight:800,color:'var(--t1)',letterSpacing:'-.02em'}}>{currency(netMonthly)}</div>
+            </div>
+            <button type="button" onClick={()=>setPaycheckOpen(o=>!o)} aria-expanded={paycheckOpen}
+              style={{background:'none',border:'none',padding:0,cursor:'pointer',fontFamily:'inherit',
+                fontSize:'.74rem',color:'var(--accent)',fontWeight:600,flexShrink:0,whiteSpace:'nowrap'}}>
+              {paycheckOpen ? 'Hide details' : 'View paycheck details →'}
+            </button>
+          </div>
+          <Collapse open={paycheckOpen}>
+            <div style={{marginTop:14,paddingTop:2,borderTop:'1px solid var(--border)'}}>
+              {paycheckRows.map(r => (
+                <div key={r.name} className="v-row" style={{padding:'12px 0'}}>
+                  <div className="v-row-left">
+                    <div className="v-row-icon" style={{background:r.iconBg}}>
+                      <Icon name={r.icon} size={16} color={r.iconClr} strokeWidth={1.7}/>
+                    </div>
+                    <div style={{minWidth:0}}>
+                      <div className="v-row-name">{r.name}</div>
+                      <div className="v-row-sub">{r.sub}</div>
+                    </div>
+                  </div>
+                  <div className="v-row-val" style={{color:r.vc}}>{r.val}</div>
+                </div>
+              ))}
+              <div style={{fontSize:'.66rem',color:'var(--t4)',marginTop:2,lineHeight:1.5}}>
+                Projected from your payroll settings. Actual posted contribution totals are tracked separately in Savings Goals.
+              </div>
+            </div>
+          </Collapse>
         </div>
       </div>
 
-      {/* Monthly surplus */}
-      {!phase.isPreEmployment && (
-        <div style={{
-          background:surplus>=0?'var(--accent-lt)':'rgba(255,80,0,.08)',
-          border:'1px solid '+(surplus>=0?'rgba(0,200,5,.2)':'rgba(255,80,0,.2)'),
-          borderRadius:'var(--r)', padding:'18px 20px',
-          display:'flex', alignItems:'center', justifyContent:'space-between',
-        }}>
-          <div>
-            <div className="eyebrow" style={{marginBottom:6}}>Monthly Surplus</div>
-            <div style={{fontSize:'1.75rem',fontWeight:800,letterSpacing:'-.04em',fontVariantNumeric:'tabular-nums',
-              color:surplus>=0?'var(--green)':'var(--red)',lineHeight:1}}>
-              {surplus>=0?'+':''}{currency(surplus)}
+      {/* Monthly plan — every dollar allocated is the intentional, correct
+          state, so "Fully allocated ✓" replaces a technically-true but
+          broken-looking "+$0.00". Real surplus/over-allocation still show
+          their own dollar amount. A small tolerance absorbs float-rounding
+          dust (e.g. $0.01) so it never misreports as a real surplus. */}
+      {!phase.isPreEmployment && (() => {
+        const TOL = 0.02;
+        const isFull = Math.abs(surplus) <= TOL;
+        const isOver = surplus < -TOL;
+        return (
+          <div style={{
+            background:isOver?'rgba(255,80,0,.08)':'var(--accent-lt)',
+            border:'1px solid '+(isOver?'rgba(255,80,0,.2)':'rgba(0,200,5,.2)'),
+            borderRadius:'var(--r)', padding:'18px 20px',
+            display:'flex', alignItems:'center', justifyContent:'space-between',
+          }}>
+            <div style={{minWidth:0}}>
+              <div className="eyebrow" style={{marginBottom:6}}>{isFull ? 'Monthly Plan' : isOver ? 'Over-Allocated' : 'Monthly Surplus'}</div>
+              {isFull ? (
+                <>
+                  <div style={{fontSize:'1.35rem',fontWeight:800,letterSpacing:'-.03em',color:'var(--green)',
+                    lineHeight:1,display:'flex',alignItems:'center',gap:7}}>
+                    Fully allocated <Icon name="check" size={17} color="var(--green)" strokeWidth={3}/>
+                  </div>
+                  <div style={{fontSize:'.72rem',color:'var(--t3)',marginTop:6}}>
+                    {currency(netMonthly,0)} income · {currency(totalBudgeted,0)} planned
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{fontSize:'1.75rem',fontWeight:800,letterSpacing:'-.04em',fontVariantNumeric:'tabular-nums',
+                    color:isOver?'var(--red)':'var(--green)',lineHeight:1}}>
+                    {isOver?'−':'+'}{currency(Math.abs(surplus))}{!isOver && ' available'}
+                  </div>
+                  <div style={{fontSize:'.72rem',color:'var(--t3)',marginTop:5}}>
+                    {isOver
+                      ? `${currency(totalBudgeted)} budgeted − ${currency(netMonthly)} income`
+                      : `${currency(netMonthly)} − ${currency(totalBudgeted)} budgeted`}
+                  </div>
+                </>
+              )}
             </div>
-            <div style={{fontSize:'.72rem',color:'var(--t3)',marginTop:5}}>
-              {currency(netMonthly)} − {currency(totalBudgeted)} budgeted
+            <div style={{textAlign:'right',flexShrink:0}}>
+              {phaseBadge}
+              <div style={{fontSize:'.68rem',color:'var(--t3)',marginTop:6}}>
+                {phase.isEarly ? 'No rent — HYSA accelerated' : 'Rent due this month'}
+              </div>
             </div>
           </div>
-          <div style={{textAlign:'right'}}>
-            {phaseBadge}
-            <div style={{fontSize:'.68rem',color:'var(--t3)',marginTop:6}}>
-              {phase.isEarly ? 'No rent — HYSA accelerated' : 'Rent due this month'}
-            </div>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Financial Health ── */}
       {/* Reuses the corrected income + 401(k) logic: savings rate is out of
@@ -5406,7 +5474,8 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
                 borderRadius:'50%',border:'1px solid var(--t4)',color:'var(--t4)',fontSize:'.56rem',fontWeight:700,flexShrink:0}}>i</span>
             </span>
             <span className="ins-card-val" style={{color:'var(--accent)'}}>{pct(savingsRate,0)}</span>
-            <span className="ins-card-sub">{money0(monthlyContrib)}/mo of {money0(savingsRateParts.base)} earned</span>
+            <span className="ins-card-sub">{money2(monthlyContrib)}/mo saved</span>
+            <span className="ins-card-sub">of {money2(savingsRateParts.base)} available income*</span>
             <span className="ins-card-sub" style={{color:'var(--t3)'}}>HYSA + Roth + employee 401(k)</span>
           </button>
           <button type="button" className="ins-card" onClick={()=>goTo&&goTo('networth')}>
@@ -5442,28 +5511,18 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
         {srInfoOpen && (
           <div style={{marginTop:10,padding:'10px 12px',background:'var(--s2)',border:'1px solid var(--border2)',
             borderRadius:'var(--r-s)',fontSize:'.74rem',color:'var(--t2)',lineHeight:1.6}}>
-            Savings rate includes HYSA, Roth IRA, and your employee 401(k) contributions. Employer match is shown
-            separately and is not included in your personal savings-rate percentage.
+            *Available income includes your {currency(netMonthly,0)} monthly take-home plus {currency(monthlyEmployee401k,2)} of
+            employee 401(k) contributions withheld from your paycheck. Employer match is excluded from the
+            savings-rate calculation.
           </div>
         )}
       </div>
 
-      {/* This Month — a one-line total, not a second copy of the full
-          9-category breakdown Budget and Spending already show in more
-          detail (with the Rent-Free/With Rent split and "By Category"
-          list, respectively). Home links to the detail instead of
-          repeating it (PRD §7: "Home may link to detailed pages but
-          should not duplicate their entire contents"). */}
-      {!phase.isPreEmployment && (
-        <button type="button" className="ins-card" style={{width:'100%',textAlign:'left'}} onClick={()=>goTo&&goTo('budget')}>
-          <span className="ins-card-lbl">This Month</span>
-          <span className="ins-card-val">{currency(totalSpent)} spent</span>
-          <span className="ins-card-sub">
-            {catSpendRows.filter(r=>r.budget>0).length} budgeted categories
-          </span>
-          <span className="ins-card-link">View Budget →</span>
-        </button>
-      )}
+      {/* The old standalone "This Month" card (total spent + budgeted-
+          category count) was removed here — it repeated the exact same
+          number as "Spent This Month" in the Financial Health grid above,
+          with no added context beyond a link that "Budget Remaining"
+          already provides. Budget is still one tap away from either tile. */}
 
       {/* Pre-employment placeholder */}
       {phase.isPreEmployment && (
@@ -5517,7 +5576,8 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
       )}
 
       <DashboardAIInsights settings={settings} accounts={accounts} goals={goals} netWorth={netWorth}
-        byCategory={byCategory} totalSpent={totalSpent} totalBudgeted={totalBudgeted} dayProgress={dayProgress}/>
+        byCategory={byCategory} totalSpent={totalSpent} totalBudgeted={totalBudgeted} dayProgress={dayProgress}
+        savingsTarget={savingsTarget} nextPayDate={health.nextPay} nextPayChecking={nextPayChecking} daysToPay={health.daysToPay}/>
 
       {/* Paycheck confirmation modal */}
       {payOpen && (
@@ -6610,7 +6670,7 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
             <span style={{color:'var(--accent)',marginLeft:8,fontSize:'.76rem'}}>{srOpen ? 'Hide' : 'How?'}</span>
           </div>
           <div style={{fontSize:'.7rem',color:'var(--t3)',marginTop:4}}>
-            of earned income · includes HYSA, Roth IRA and employee 401(k)
+            of available income · includes HYSA, Roth IRA and employee 401(k)
           </div>
         </button>
         {srOpen && (
