@@ -932,6 +932,23 @@ button.ins-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .ins-card-sub{font-size:.65rem;color:var(--t3);word-break:break-word}
 .ins-card-link{font-size:.6rem;color:var(--accent);font-weight:600;margin-top:auto}
 
+/* ── Cash Flow Forecast — compact variant ────────────────────────────
+   Scoped to .cf-forecast only, so the shared .card, .ins-card, .viz
+   and .v-row rules every other page relies on are untouched. Cuts the
+   card's default vertical padding, chart height, and row spacing to
+   show the same information in less scroll on mobile. The chart's
+   viewBox height (LineTrendChart's `height` prop) is set to match this
+   150px, not just the CSS — otherwise the SVG's non-uniform stretch
+   would visually squash the axis labels instead of just shrinking. */
+.cf-forecast .cal-head{margin-bottom:6px}
+.cf-forecast .card{padding:14px 16px}
+.cf-forecast .ins-cards{gap:8px}
+.cf-forecast .ins-card{padding:8px 9px;gap:3px}
+.cf-forecast .viz-wrap{gap:6px}
+.cf-forecast .viz-svg{height:145px}
+.cf-forecast .viz-table summary{padding:2px 0}
+.cf-forecast .card-flush .v-row{padding:8px 14px}
+
 /* ── Day detail drawer ── */
 .day-panel{background:var(--s1);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden}
 .day-panel-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 15px;border-bottom:1px solid var(--border)}
@@ -4643,10 +4660,14 @@ function SavingsGoalsMini({ settings, goals, transactions, goTo, setTransactions
   // qualifier, the Roth row reads as a balance and disagrees with the very
   // different balance shown on Accounts/Net Worth for the same account.
   const k401EmprYTD = employer401kYTD(transactions, goals, year);
+  // Descriptor text after the "·" makes explicit what each number actually
+  // measures — HYSA is a live account BALANCE, Roth/401(k) are THIS YEAR'S
+  // CONTRIBUTIONS, not balances — since rendering all three identically
+  // made them look comparable when they aren't (see comment above).
   const rows = [
-    { label:'HYSA',     note:'balance',                     bal:hysaBal,    goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
-    { label:'Roth IRA', note:`you contributed ${year}`,     bal:rothYTD,    goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)', breakdown:'roth' },
-    { label:'401(k)',   note:`you contributed ${year}`,     bal:k401EmpYTD, goal:k401Goal,                    pct:k401Pct, color:'var(--yellow)', breakdown:'401k',
+    { label:'HYSA',     note:'· current balance',           bal:hysaBal,    goal:settings.hysaGoal,           pct:hysaPct, color:'var(--accent)' },
+    { label:'Roth IRA', note:`· ${year} contributed`,       bal:rothYTD,    goal:settings.rothIRAYearlyLimit, pct:rothPct, color:'var(--purple)', breakdown:'roth' },
+    { label:'401(k)',   note:`· ${year} contributed`,       bal:k401EmpYTD, goal:k401Goal,                    pct:k401Pct, color:'var(--yellow)', breakdown:'401k',
       // Employer money is real retirement funding but is NOT the user's own
       // contribution and never counts toward the employee goal above, so it
       // rides alongside the row rather than inside its number.
@@ -4875,7 +4896,7 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
   }, [ledgerEntries]);
 
   return (
-    <div>
+    <div className="cf-forecast">
       <div className="cal-head">
         <div style={{minWidth:0}}>
           <div className="section-head" style={{padding:0,marginBottom:0}}>Cash Flow Forecast</div>
@@ -4890,7 +4911,7 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
         </div>
       </div>
       <div className="card">
-        <div className="ins-cards" style={{marginBottom:16}}>
+        <div className="ins-cards" style={{marginBottom:10}}>
           <div className="ins-card">
             <span className="ins-card-lbl">Projected Checking</span>
             <span className="ins-card-val" style={{color:endChecking<0?'var(--red)':'var(--t1)'}}>{moneyForecast(endChecking)}</span>
@@ -4909,20 +4930,23 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
         </div>
         {events.length === 0
           ? <VizEmpty message="No upcoming bills, paychecks, or recurring transactions to project." hint="Add a bill or recurring transaction to see a forecast."/>
-          : <LineTrendChart labels={series.labels} formatY={moneyForecast} tableLabel="Daily balances"
+          // height=150 matches the .cf-forecast .viz-svg CSS override above —
+          // both must move together, or the chart's non-uniform SVG stretch
+          // would squash the axis labels instead of just shrinking the box.
+          : <LineTrendChart labels={series.labels} formatY={moneyForecast} tableLabel="Daily balances" height={145}
               series={[
                 { key:'checking', label:'Checking',              color:VIZ_SERIES[0], points:series.checking },
                 { key:'credit',   label:'Credit Card',            color:'#FF5000',     points:series.credit   },
                 { key:'savings',  label:'Savings & Investments',  color:VIZ_SERIES[2], points:series.savings  },
               ]}/>}
         {endChecking < 0 && (
-          <div style={{marginTop:12,padding:'10px 12px',background:'rgba(255,80,0,.08)',border:'1px solid rgba(255,80,0,.25)',borderRadius:'var(--r-s)',fontSize:'.76rem',color:'var(--t1)'}}>
+          <div style={{marginTop:8,padding:'8px 10px',background:'rgba(255,80,0,.08)',border:'1px solid rgba(255,80,0,.25)',borderRadius:'var(--r-s)',fontSize:'.76rem',color:'var(--t1)'}}>
             Checking is projected to go negative within {days} days based on known upcoming bills and paychecks.
           </div>
         )}
         {upcomingPreview.length > 0 && (
-          <div style={{marginTop:16}}>
-            <div className="eyebrow" style={{marginBottom:8}}>Upcoming Cash Events</div>
+          <div style={{marginTop:10}}>
+            <div className="eyebrow" style={{marginBottom:6}}>Upcoming Cash Events</div>
             <div className="card-flush">
               {upcomingPreview.map((r,i) => (
                 <div key={i} className="v-row">
@@ -4937,7 +4961,7 @@ function CashFlowForecast({ settings, accounts, bills, recurring, transactions, 
               ))}
             </div>
             <button type="button" onClick={()=>setShowDetail(s=>!s)}
-              style={{background:'none',border:'none',padding:'10px 2px 0',cursor:'pointer',fontFamily:'inherit',
+              style={{background:'none',border:'none',padding:'6px 2px 0',cursor:'pointer',fontFamily:'inherit',
                 fontSize:'.78rem',color:'var(--accent)',fontWeight:600}}>
               {showDetail ? 'Hide detailed forecast' : 'View detailed forecast →'}
             </button>
