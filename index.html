@@ -4311,7 +4311,7 @@ function ProjectedChart({ settings }) {
   }
 
   // ── SVG layout ────────────────────────────────────────────────────
-  const VW = 580, VH = 185, PL = 58, PR = 14, PT = 8, PB = 30;
+  const VW = 580, VH = 185, PL = 58, PR = 14, PT = 28, PB = 30;
   const IW = VW - PL - PR, IH = VH - PT - PB;
 
   const maxNW   = points[points.length - 1].nw || 1;
@@ -4405,10 +4405,20 @@ function ProjectedChart({ settings }) {
         <circle cx={fx} cy={fy} r="4.5" style={{fill:'var(--accent)'}}/>
         <circle cx={fx} cy={fy} r="9"   style={{fill:'var(--accent)'}} opacity="0.15"/>
 
-        {/* Final value label — above the last dot */}
-        <text x={fx} y={fy - 12} textAnchor="end"
+        {/* Final value label — above the last dot, with a small muted
+            "Projected <Mon 'YY>" caption directly beneath it so the number
+            reads unmistakably as a future projection, not the user's
+            current net worth. Reuses fmtX and the same final data point
+            the line/dot/x-axis already derive from, so if the projection
+            window ever changes this caption can't drift out of sync or
+            need a separate update. */}
+        <text x={fx} y={fy - 20} textAnchor="end"
           style={{fill:'var(--accent)'}} fontSize="14" fontWeight="700" fontFamily="Inter,system-ui,sans-serif">
           {moneyForecast(finalNW)}
+        </text>
+        <text x={fx} y={fy - 8} textAnchor="end"
+          style={{fill:'var(--t3)'}} fontSize="11" fontFamily="Inter,system-ui,sans-serif">
+          Projected {fmtX(points[points.length - 1].date)}
         </text>
       </svg>
 
