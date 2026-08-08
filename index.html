@@ -2267,10 +2267,16 @@ function txKindInfo(t) {
     case 'income':
     case 'paycheck':                return { label:'Income',       color:'var(--accent)', icon:'dollar',     sign:'+' };
     case 'refund':                  return { label:'Refund',       color:'var(--accent)', icon:'trendUp',    sign:'+' };
+    // Every internal, account-to-account money movement — a generic
+    // transfer, a card payment, or a HYSA/Roth/investment contribution
+    // logged as its own kind — gets ONE consistent blue treatment. None of
+    // these are income (green) or spending (red): the money never left the
+    // user's own accounts, so a single "this is a transfer" color is used
+    // everywhere, never split across green/blue/purple by sub-type.
     case 'transfer':                return { label:'Transfer',     color:'var(--blue)',   icon:'swap',       sign:'−' };
     case 'creditCardPayment':       return { label:'Card Payment', color:'var(--blue)',   icon:'creditCard', sign:'−' };
-    case 'savingsContribution':     return { label:'Savings',      color:'var(--accent)', icon:'piggy',      sign:'−' };
-    case 'investmentContribution':  return { label:'Investment',   color:'var(--purple)', icon:'trendUp',    sign:'−' };
+    case 'savingsContribution':     return { label:'Savings',      color:'var(--blue)',   icon:'piggy',      sign:'−' };
+    case 'investmentContribution':  return { label:'Investment',   color:'var(--blue)',   icon:'trendUp',    sign:'−' };
     case 'creditCardPurchase':
     case 'fee':
     case 'expense':
@@ -5323,7 +5329,7 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,
             marginTop:16,paddingTop:14,borderTop:'1px solid var(--border)'}}>
             <div style={{minWidth:0}}>
-              <div className="eyebrow" style={{marginBottom:3}}>Monthly Cash Take-Home</div>
+              <div className="eyebrow" style={{marginBottom:3}}>Cash Take-Home</div>
               <div style={{fontSize:'1.2rem',fontWeight:800,color:'var(--t1)',letterSpacing:'-.02em'}}>{currency(netMonthly)}</div>
             </div>
             <button type="button" onClick={()=>setPaycheckOpen(o=>!o)} aria-expanded={paycheckOpen}
@@ -5467,15 +5473,15 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
             <span className="ins-card-link">View budget →</span>
           </button>
           <button type="button" className="ins-card" onClick={()=>setSrInfoOpen(o=>!o)} aria-expanded={srInfoOpen}
-            aria-label="Savings Rate — how this is calculated">
+            aria-label="Total Savings Rate — how this is calculated">
             <span className="ins-card-lbl" style={{display:'flex',alignItems:'center',gap:4}}>
-              Savings Rate
+              Total Savings Rate
               <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:13,height:13,
                 borderRadius:'50%',border:'1px solid var(--t4)',color:'var(--t4)',fontSize:'.56rem',fontWeight:700,flexShrink:0}}>i</span>
             </span>
             <span className="ins-card-val" style={{color:'var(--accent)'}}>{pct(savingsRate,0)}</span>
             <span className="ins-card-sub">{money2(monthlyContrib)}/mo saved</span>
-            <span className="ins-card-sub">of {money2(savingsRateParts.base)} available income*</span>
+            <span className="ins-card-sub">of {money2(savingsRateParts.base)} total available income*</span>
             <span className="ins-card-sub" style={{color:'var(--t3)'}}>HYSA + Roth + employee 401(k)</span>
           </button>
           <button type="button" className="ins-card" onClick={()=>goTo&&goTo('networth')}>
@@ -5511,9 +5517,11 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
         {srInfoOpen && (
           <div style={{marginTop:10,padding:'10px 12px',background:'var(--s2)',border:'1px solid var(--border2)',
             borderRadius:'var(--r-s)',fontSize:'.74rem',color:'var(--t2)',lineHeight:1.6}}>
-            *Available income includes your {currency(netMonthly,0)} monthly take-home plus {currency(monthlyEmployee401k,2)} of
-            employee 401(k) contributions withheld from your paycheck. Employer match is excluded from the
-            savings-rate calculation.
+            Total Savings Rate measures how much of your available income you save or invest. It includes HYSA
+            deposits, Roth IRA contributions, and your employee 401(k) contributions. *Total available income is your
+            {' '}{currency(netMonthly,0)} cash take-home plus {currency(monthlyEmployee401k,2)} of employee 401(k)
+            contributions withheld from your paycheck. Employer match is excluded from both — it isn't part of your
+            own income or savings contribution.
           </div>
         )}
       </div>
@@ -5756,7 +5764,15 @@ function Budget({ settings, transactions, accounts }) {
   const total    = expenseTotal + savingsTotal;
   const takeHome = monthlyNetIncome(settings);
   const unallocated = round2(takeHome - total);
-  const savingsRateForBudget = takeHome > 0 ? safePct(savingsTotal, takeHome) : 0;
+  // Same shared formula Home and Goals use (computeSavingsRate) — employee
+  // 401(k) counts as personal savings and is added back to the denominator,
+  // since take-home is already net of it. Previously this divided just
+  // HYSA+Roth by cash take-home, a competing definition that could disagree
+  // with the Total Savings Rate shown everywhere else in the app.
+  const monthlyEmployee401kForBudget = round2(employee401kPerCheck(settings) * checksPerMonth(settings));
+  const savingsRateForBudget = computeSavingsRate({
+    hysa: savingsTotal, roth: 0, employee401k: monthlyEmployee401kForBudget, takeHome,
+  });
 
   const isEarlyActive = phase.isEarly || phase.isPreEmployment;
   const isLaterActive = phase.isFull;
@@ -5863,7 +5879,7 @@ function Budget({ settings, transactions, accounts }) {
         <div className="g3" style={{marginTop:16}}>
           <div className="stat"><div className="stat-label">Expenses</div><div className="stat-val" style={{fontSize:'1.1rem'}}>{currency(expenseTotal)}</div></div>
           <div className="stat"><div className="stat-label">Saving &amp; Investing</div><div className="stat-val" style={{fontSize:'1.1rem',color:'var(--accent)'}}>{currency(savingsTotal)}</div></div>
-          <div className="stat"><div className="stat-label">Savings Rate</div><div className="stat-val" style={{fontSize:'1.1rem',color:'var(--accent)'}}>{pct(savingsRateForBudget,0)}</div></div>
+          <div className="stat"><div className="stat-label">Total Savings Rate</div><div className="stat-val" style={{fontSize:'1.1rem',color:'var(--accent)'}}>{pct(savingsRateForBudget,0)}</div></div>
         </div>
       </div>
 
@@ -6659,7 +6675,7 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
           self-evident from a bare percentage, so the breakdown is one tap
           away rather than something to reverse-engineer. */}
       <div>
-        <div className="eyebrow" style={{marginBottom:8}}>Savings Rate</div>
+        <div className="eyebrow" style={{marginBottom:8}}>Total Savings Rate</div>
         <button type="button" onClick={()=>setSrOpen(o=>!o)} aria-expanded={srOpen}
           style={{background:'none',border:'none',padding:0,textAlign:'left',cursor:'pointer',display:'block'}}>
           <div className="mega" style={{color:'var(--accent)'}}>{pct(savingsRate, 0)}</div>
@@ -6670,13 +6686,13 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
             <span style={{color:'var(--accent)',marginLeft:8,fontSize:'.76rem'}}>{srOpen ? 'Hide' : 'How?'}</span>
           </div>
           <div style={{fontSize:'.7rem',color:'var(--t3)',marginTop:4}}>
-            of available income · includes HYSA, Roth IRA and employee 401(k)
+            of total available income · includes HYSA, Roth IRA and employee 401(k)
           </div>
         </button>
         {srOpen && (
           <div className="card" style={{marginTop:12,padding:'14px 16px'}}>
             <div style={{fontSize:'.72rem',color:'var(--t2)',lineHeight:1.6,marginBottom:10}}>
-              How much of everything you earn is going into savings and retirement.
+              Total Savings Rate measures how much of your available income you save or invest.
             </div>
             {[
               { l:'HYSA',              v:srParts.hysa },
@@ -6693,14 +6709,14 @@ function Goals({ settings, goals, setGoals, commissions, transactions, accounts,
               <span className="alloc-val" style={{fontWeight:700,color:'var(--accent)'}}>{currency(srParts.saved,2)}</span>
             </div>
             <div className="alloc-row">
-              <span className="alloc-name">Take-home + 401(k)</span>
+              <span className="alloc-name">Total Available Income</span>
               <span className="alloc-val">{currency(srParts.base,2)}</span>
             </div>
             <div style={{fontSize:'.68rem',color:'var(--t3)',lineHeight:1.6,marginTop:10}}>
-              Your take-home is already net of the 401(k), so it's added back here — otherwise
-              money you saved would be missing from the income it came out of. The employer
-              match is real wealth but isn't your own money set aside, so it's tracked
-              separately and never counted in this percentage.
+              Total available income is your cash take-home plus employee 401(k) contributions —
+              your take-home is already net of the 401(k), so it's added back here, otherwise
+              money you saved would be missing from the income it came out of. Employer match is
+              excluded because it isn't part of your own income or savings contribution.
             </div>
           </div>
         )}
@@ -7393,12 +7409,21 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
   const diningSpent     = safeNum(byCat.dining?.total);
   const diningRemaining = round2(diningLimit - diningSpent);
 
-  // Health score inputs — savings rate mirrors the Dashboard's own
-  // definition (HYSA + Roth out of take-home) so the two never disagree.
+  // Health score inputs — savings rate runs through the SAME shared
+  // computeSavingsRate formula as Home and Goals (HYSA + Roth + employee
+  // 401(k), over take-home + employee 401(k)), so the Financial Health
+  // score can never disagree between pages for the same month. This used
+  // to be its own simpler (HYSA + Roth) / take-home calculation, missing
+  // the 401(k) add-back — a competing definition that could silently
+  // score a month differently here than on Home for the exact same data.
   const budgetPctUsed = monthBudgetTotal > 0 ? safePct(totalSpend, monthBudgetTotal) : 0;
   const netMonthlyIncome = monthlyNetIncome(settings);
   const activeBudget     = activeBudgetFor(settings);
-  const savingsRate      = netMonthlyIncome > 0 ? safePct(safeNum(activeBudget.hysa)+safeNum(activeBudget.rothIRA), netMonthlyIncome) : 0;
+  const monthlyEmployee401kForInsights = round2(employee401kPerCheck(settings) * checksPerMonth(settings));
+  const savingsRate = computeSavingsRate({
+    hysa: safeNum(activeBudget.hysa), roth: safeNum(activeBudget.rothIRA),
+    employee401k: monthlyEmployee401kForInsights, takeHome: netMonthlyIncome,
+  });
   const acctCtx = { settings, goals, netWorth };
   const maxUtilization = (accounts||[]).filter(a=>a.type==='credit' && !a.archived).reduce((max,a) => {
     const card = a.card || defaultCardFields();
@@ -7890,7 +7915,7 @@ function SpendingInsights({ settings, transactions, setTransactions, goTo, accou
                   </div>
                   </div>
                 </div>
-                <div className="day-tx-amt" style={{color:refund?'var(--accent)':t.type==='income'?'var(--accent)':'var(--t1)'}}>
+                <div className="day-tx-amt" style={{color:refund?'var(--accent)':t.type==='income'?'var(--accent)':t.type==='transfer'?'var(--blue)':'var(--t1)'}}>
                   {refund?'+':t.type==='income'?'+':'−'}{money2(t.amount)}
                 </div>
               </div>
