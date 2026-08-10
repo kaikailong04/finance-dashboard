@@ -5079,6 +5079,16 @@ function Dashboard({ settings, transactions, goals, commissions, setGoals, setTr
   const totalSpent = round2(Object.values(catTotalsForSpend).reduce((s,c)=>s+c.total,0));
   const byCategory = {};
   for (const [cat, v] of Object.entries(catTotalsForSpend)) byCategory[cat] = v.total;
+  // Rent-free months have no separate Housing line — Budget consolidates it
+  // into "Utilities & Fee" (see catBudget in the Spending page and
+  // topCatBudgetField below), so any transaction still tagged 'housing'
+  // (logged before this consolidation, via Recurring, etc.) rolls into
+  // 'utilities' here too, rather than surfacing as its own unbudgeted
+  // "Housing" category that duplicates the same dollars.
+  if (phase.isEarly || phase.isPreEmployment) {
+    byCategory.utilities = round2((byCategory.utilities||0) + (byCategory.housing||0));
+    delete byCategory.housing;
+  }
   // HYSA and Roth IRA are contribution lines, not spending — the shared
   // classifier above (same one the Financial Health card uses) deliberately
   // excludes them from totalSpent, same as every "how much did I spend"
@@ -6071,6 +6081,16 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
 
   const byCategory = {};
   for (const [cat, v] of Object.entries(catTotalsForSpend)) byCategory[cat] = v.total;
+  // Rent-free months have no separate Housing budget line — it's folded
+  // into "Utilities & Fee" (catBudget below reflects the same merge), so
+  // any transaction still tagged 'housing' rolls into 'utilities' here
+  // too, instead of showing as its own unbudgeted "Housing" row that
+  // silently doubles the utilities budget (a stale/legacy category, or one
+  // logged before this consolidation).
+  if (isRentFree) {
+    byCategory.utilities = round2((byCategory.utilities||0) + (byCategory.housing||0));
+    delete byCategory.housing;
+  }
   // HYSA and Roth IRA are contribution lines, not spending, so the shared
   // classifier above always reports 0 for them — reuse the same figures
   // savedInvestedTotal above already computed (manual contributions +
@@ -6082,8 +6102,12 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
   // categories — never combined into one "Savings" bucket. Legacy 'savings'-
   // tagged transactions get no budget line here (lim=0 hides the bar) but
   // stay visible in the category list below via CATEGORIES' catch-all entry.
+  // Rent-free months have no separate Housing budget line — "housing" is
+  // deliberately 0 here (not budget.utilitiesAndFee) so the single
+  // consolidated "Utilities & Fee" limit lives only under 'utilities' and
+  // never gets counted twice toward the month's total budget.
   const catBudget = isRentFree ? {
-    housing:   budget.utilitiesAndFee||0,
+    housing:   0,
     groceries: budget.groceries, gas:budget.gas, dining:budget.outToEat,
     shopping:  budget.shopping,  travel:budget.funTravel, utilities:budget.utilitiesAndFee||0,
     hysa:      budget.hysa||0,   rothIRA: budget.rothIRA||0, other:0,
@@ -6111,9 +6135,17 @@ function Spending({ settings, transactions, setTransactions, goals, setGoals, ac
       for (const t of mTx) mByCat[t.category] = (mByCat[t.category]||0) + safeNum(t.amount);
       const mPhase = getPhaseInfo(settings.startDate, d);
       const mIsRentFree = mPhase.isEarly || mPhase.isPreEmployment;
+      // Same Housing -> Utilities & Fee consolidation as byCategory/catBudget
+      // above, applied per historical month — otherwise a rent-free month's
+      // rollover would credit leftover "housing" budget that was never
+      // really its own line.
+      if (mIsRentFree && mByCat.housing) {
+        mByCat.utilities = (mByCat.utilities||0) + mByCat.housing;
+        delete mByCat.housing;
+      }
       const mBud = mIsRentFree ? settings.earlyBudget : settings.laterBudget;
       const mCatBudget = mIsRentFree ? {
-        housing:mBud.utilitiesAndFee||0, groceries:mBud.groceries, gas:mBud.gas, dining:mBud.outToEat,
+        housing:0, groceries:mBud.groceries, gas:mBud.gas, dining:mBud.outToEat,
         shopping:mBud.shopping, travel:mBud.funTravel, utilities:mBud.utilitiesAndFee||0, other:0,
       } : {
         housing:mBud.rentAndFee||0, groceries:mBud.groceries, gas:mBud.gas, dining:mBud.outToEat,
@@ -9516,6 +9548,18 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
   const [accountId, setAccountId]     = useState(defaultAcct ? defaultAcct.id : '');
   const [toAccountId, setToAccountId] = useState((preset && preset.toAccountId) || '');
 
+  // Rent-free months have no separate Housing category — Budget consolidates
+  // it into "Utilities & Fee" (single 'utilities' line), so Housing is
+  // hidden from the picker here rather than letting a new transaction
+  // recreate the duplicate-budget-line bug that consolidation fixes.
+  // Phase-checked against the transaction's OWN date, not today, so
+  // backdating into a rent month still offers Housing correctly.
+  const isRentFreeTx = useMemo(() => {
+    const p = getPhaseInfo(settings.startDate, new Date(date+'T12:00:00'));
+    return p.isEarly || p.isPreEmployment;
+  }, [settings.startDate, date]);
+  const categoryOptions = CATEGORIES.filter(c => c.id!=='hysa' && c.id!=='rothIRA' && !(c.id==='housing' && isRentFreeTx));
+
   // ── Tags (Bonus) — free-text labels, separate from category. A grocery
   // run tagged "vacation" shows up under Groceries in Budget/Spending as
   // always, but can also be pulled out later by tag (Search & Filters).
@@ -9739,7 +9783,7 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
                   </div>
                   {!splitMode && (
                     <div className="cat-grid">
-                      {CATEGORIES.filter(c => c.id!=='hysa' && c.id!=='rothIRA').map(c => (
+                      {categoryOptions.map(c => (
                         <button key={c.id} type="button" className={'cat-chip'+(category===c.id?' on':'')} onClick={()=>setCategory(c.id)}>
                           <span className="cat-chip-dot" style={{background:c.color}}>{c.abbr.slice(0,2)}</span>
                           {c.label}
@@ -9752,7 +9796,7 @@ function AddTransactionModal({ onClose, accounts, transactions, settings, goals,
                       {splits.map((row, i) => (
                         <div key={i} className="split-row">
                           <select value={row.category} onChange={e=>updateSplit(i,{category:e.target.value})}>
-                            {CATEGORIES.filter(c => c.id!=='hysa' && c.id!=='rothIRA').map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                            {categoryOptions.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                           </select>
                           <div className="split-amt">
                             <span>$</span>
