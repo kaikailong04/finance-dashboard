@@ -3144,8 +3144,22 @@ function defaultCardFields(overrides) {
 function formatRewardAmount(card, amount) {
   const n = safeNum(amount);
   if (!card || card.rewardType === 'cashback') return currency(n, 2);
-  const rounded = Math.round(n);
+  // `-0 === 0` is true in JS, so this also normalizes a rounded -0 (e.g.
+  // from Math.round(-0.3)) back to a clean positive zero — Number's
+  // toLocaleString, unlike toString, prints the sign on negative zero.
+  let rounded = Math.round(n);
+  if (rounded === 0) rounded = 0;
   return `${rounded.toLocaleString()} ${card.rewardType === 'miles' ? 'mi' : 'pts'}`;
+}
+// Has this card ever actually earned a reward? `applyCardRewards` is the
+// only writer of these fields (once per reward-eligible transaction), so
+// checking them is equivalent to — without re-scanning — asking "are there
+// any reward-generating transactions."
+function hasAnyRewards(card) {
+  if (!card) return false;
+  if (Math.abs(safeNum(card.cashbackLifetime)) >= 0.005) return true;
+  const life = card.rewardsEarnedLifetime || {};
+  return REWARD_BUCKETS.some(k => Math.abs(safeNum(life[k])) >= 0.005);
 }
 // Dollar-equivalent estimate for miles/points, using the card's own
 // point-value assumption — cash back is already a dollar amount.
@@ -3349,7 +3363,16 @@ function restoreDeletedTransaction(tx, ctx) {
 
 // ── Credit-card math (shared by Add Transaction's live snapshot and the
 // Accounts detail dashboard) ────────────────────────────────────────────
-function creditUtilization(balance, limit) { return limit > 0 ? (balance/limit)*100 : 0; }
+// Balance is normalized near zero before dividing — a card paid down to
+// "$0" can leave a tiny negative float residual (e.g. -0.0000001) after
+// enough add/subtract operations, which would otherwise divide through to
+// a percentage that displays as the confusing "-0%" (JS's .toFixed keeps
+// the sign on values that round to zero from the negative side).
+function creditUtilization(balance, limit) {
+  if (!(limit > 0)) return 0;
+  const bal = Math.abs(safeNum(balance)) < 0.005 ? 0 : safeNum(balance);
+  return (bal/limit)*100;
+}
 function utilizationColor(pct) {
   if (pct <= 10) return '#00C805';
   if (pct <= 30) return '#F5A623';
@@ -3409,29 +3432,50 @@ function suggestedEarlyPayment(balance, limit, targetPct) {
   const target = round2(limit * (targetPct/100));
   return round2(Math.max(balance - target, 0));
 }
-// Six-step visual timeline explaining how a purchase becomes a reported
-// balance — the PRD's core "utilization mostly matters before you apply
-// for new credit" education, made concrete with this card's real dates.
+// The due date for a given close is always AFTER that close — walking
+// forward from the close date itself (rather than just asking
+// nextOccurrenceOfDay for card.dueDay from "today") guarantees that even
+// when dueDay's day-of-month is numerically <= closeDay's (e.g. close=24,
+// due=18), the date returned still belongs to THIS close's own statement
+// instead of accidentally landing on the previous, already-closed one.
+function dueDateForClose(card, closeDate) {
+  const dayAfterClose = new Date(closeDate.getFullYear(), closeDate.getMonth(), closeDate.getDate()+1);
+  return nextOccurrenceOfDay(card.dueDay, dayAfterClose);
+}
+// Four-step visual timeline for the CURRENTLY OPEN billing cycle — every
+// date here belongs to the same forward-moving sequence (purchases now ->
+// this cycle's own close -> that same statement's own due date), so it can
+// never visually imply a due date lands before the close that generates
+// it. Whatever statement already closed and is actually payable right now
+// is a DIFFERENT date, deliberately kept out of this sequence — see
+// currentPaymentDue() below, surfaced as its own separate callout.
 function statementTimelineSteps(card, balance, paidThisCycle) {
   const today = new Date();
   const nextClose = nextOccurrenceOfDay(card.statementCloseDay, today);
-  const dueDate   = nextOccurrenceOfDay(card.dueDay, today);
+  const nextDue   = dueDateForClose(card, nextClose);
   const daysToClose = Math.round((nextClose - today) / 86400000);
-  const daysToDue    = Math.round((dueDate - today) / 86400000);
   return [
     { key:'purchases', label:'Purchases', status:'done', sub:'Ongoing',
-      desc:'Every purchase adds to your current balance right away.' },
+      desc:'Purchases made during the current billing cycle add to your current balance.' },
     { key:'current', label:'Current Balance', status:'done', sub:currency(balance,2),
       desc:`${currency(balance,2)} owed right now — what you'd pay to zero out the card today.` },
-    { key:'close', label:'Statement Closes', status: daysToClose<=5?'active':'upcoming', sub:fmtShortDate(nextClose),
-      desc:'Your balance on this date becomes the statement balance.' },
-    { key:'reported', label:'Reported Balance', status: daysToClose<=5?'active':'upcoming', sub:'To the bureaus',
-      desc:'Only the statement balance is typically reported — not your current balance or any early payment made before it closes.' },
-    { key:'due', label:'Payment Due', status: paidThisCycle?'done':(daysToDue<=5?'active':'upcoming'), sub:fmtShortDate(dueDate),
-      desc:'Pay at least the statement balance by this date to avoid interest.' },
-    { key:'paid', label:'Paid', status: paidThisCycle?'done':'upcoming', sub: paidThisCycle?'Posted':'Not yet',
-      desc:'Early payments reduce reported utilization but are optional — paying the statement balance by the due date is all that’s required to avoid interest.' },
+    { key:'close', label:'Current Statement Closes', status: daysToClose<=5?'active':'upcoming', sub:fmtShortDate(nextClose),
+      desc:'Your balance on this date becomes your next statement balance.' },
+    { key:'due', label:'Next Statement Payment Due', status:'upcoming', sub:fmtShortDate(nextDue),
+      desc:'The payment due date for the statement this cycle generates — always after it closes.' },
   ];
+}
+// The due date for whatever statement has ALREADY closed and is actually
+// payable right now — kept separate from the forward-looking timeline
+// above, since mixing the two into one visual sequence is exactly what
+// made the old timeline read as "due before it even closes." Only
+// surfaced when there's a real statement balance still outstanding.
+function currentPaymentDue(card, paidThisCycle) {
+  if (!(safeNum(card.statementBalance) > 0) || paidThisCycle) return null;
+  const prevClose = lastOccurrenceOfDay(card.statementCloseDay);
+  const dueDate = dueDateForClose(card, prevClose);
+  const daysToDue = Math.round((dueDate - new Date()) / 86400000);
+  return { dueDate, overdue: daysToDue < 0 };
 }
 // Never-shaming, plain-language reads of this card's numbers — the same
 // shape of sentence the fuller AI Spending Coach (a later pass) will use
@@ -10081,16 +10125,41 @@ function AccountFormModal({ onClose, onSave, accounts }) {
 
 function StatementTimeline({ card, balance, paidThisCycle }) {
   const steps = statementTimelineSteps(card, balance, paidThisCycle);
+  const due   = currentPaymentDue(card, paidThisCycle);
   return (
-    <div className="timeline">
-      {steps.map(s => (
-        <div key={s.key} className={'timeline-step '+s.status}>
-          <div className="timeline-dot">{s.status==='done' && <Icon name="check" size={12} color="#000"/>}</div>
-          <div className="timeline-lbl">{s.label}</div>
-          <div className="timeline-sub">{s.sub}</div>
-          <div className="timeline-desc">{s.desc}</div>
+    <div>
+      {due && (
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,
+          padding:'12px 14px',borderRadius:'var(--r-s)',marginBottom:14,
+          background: due.overdue ? 'rgba(255,80,0,.08)' : 'var(--s1)',
+          border: '1px solid '+(due.overdue ? 'rgba(255,80,0,.3)' : 'var(--border)')}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:'.7rem',fontWeight:700,letterSpacing:'.02em',textTransform:'uppercase',
+              color: due.overdue ? 'var(--red)' : 'var(--t2)'}}>
+              {due.overdue ? 'Payment Overdue' : 'Current Payment Due'}
+            </div>
+            <div style={{fontSize:'.74rem',color:'var(--t3)',marginTop:3}}>
+              For your last closed statement — separate from the cycle below.
+            </div>
+          </div>
+          <div style={{textAlign:'right',flexShrink:0}}>
+            <div style={{fontWeight:700,fontSize:'.92rem',color: due.overdue ? 'var(--red)' : 'var(--t1)'}}>
+              {currency(safeNum(card.statementBalance),2)}
+            </div>
+            <div style={{fontSize:'.72rem',color:'var(--t3)'}}>{fmtShortDate(due.dueDate)}</div>
+          </div>
         </div>
-      ))}
+      )}
+      <div className="timeline">
+        {steps.map(s => (
+          <div key={s.key} className={'timeline-step '+s.status}>
+            <div className="timeline-dot">{s.status==='done' && <Icon name="check" size={12} color="#000"/>}</div>
+            <div className="timeline-lbl">{s.label}</div>
+            <div className="timeline-sub">{s.sub}</div>
+            <div className="timeline-desc">{s.desc}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -10101,21 +10170,35 @@ function RewardsBreakdown({ card }) {
   const maxMonth = Math.max(...REWARD_BUCKETS.map(k => safeNum(monthly[k])), 0.01);
   const totalMonth = round2(REWARD_BUCKETS.reduce((s,k) => s+safeNum(monthly[k]), 0));
   const trend = rewardsMonthSeries(card, 6);
+  const hasRewards = hasAnyRewards(card);
   return (
     <>
-      {REWARD_BUCKETS.map(k => (
-        <div key={k} className="reward-row">
-          <div className="reward-name">{REWARD_BUCKET_LABEL[k]}</div>
-          <div className="reward-bar-track"><div className="reward-bar-fill" style={{width:`${Math.min((safeNum(monthly[k])/maxMonth)*100,100)}%`}}/></div>
-          <div className="reward-val">{formatRewardAmount(card, monthly[k])}</div>
+      {!hasRewards && (
+        <div style={{textAlign:'center',padding:'22px 10px 18px'}}>
+          <div style={{fontSize:'.9rem',fontWeight:700,color:'var(--t1)',marginBottom:4}}>No rewards yet</div>
+          <div style={{fontSize:'.78rem',color:'var(--t3)',lineHeight:1.5}}>
+            Rewards will appear here as eligible purchases are added.
+          </div>
         </div>
-      ))}
-      <div className="b-total-row" style={{marginTop:10,borderRadius:'var(--r-s)'}}>
-        <div><div className="b-total-lbl">Total Rewards (This Month)</div><div className="b-surplus">{formatRewardAmount(card, totalMonth)}</div></div>
-        <div style={{textAlign:'right'}}>
-          <div className="b-total-lbl">Lifetime Rewards</div>
-          <div className="b-surplus" style={{color:'var(--t1)'}}>{formatRewardAmount(card, card.cashbackLifetime)}</div>
-          {card.rewardType!=='cashback' && <div style={{fontSize:'.62rem',color:'var(--t3)',marginTop:2}}>≈ {currency(estimatedRewardValue(card, card.cashbackLifetime),2)}</div>}
+      )}
+      {/* Categories stay visible either way (real per-category data, never
+          hardcoded) — just visually secondary once there's nothing in them
+          yet, so the page reads as "not started" rather than "broken." */}
+      <div style={hasRewards ? undefined : {opacity:.45}}>
+        {REWARD_BUCKETS.map(k => (
+          <div key={k} className="reward-row">
+            <div className="reward-name">{REWARD_BUCKET_LABEL[k]}</div>
+            <div className="reward-bar-track"><div className="reward-bar-fill" style={{width:`${Math.min((safeNum(monthly[k])/maxMonth)*100,100)}%`}}/></div>
+            <div className="reward-val">{formatRewardAmount(card, monthly[k])}</div>
+          </div>
+        ))}
+        <div className="b-total-row" style={{marginTop:10,borderRadius:'var(--r-s)'}}>
+          <div><div className="b-total-lbl">Total Rewards (This Month)</div><div className="b-surplus">{formatRewardAmount(card, totalMonth)}</div></div>
+          <div style={{textAlign:'right'}}>
+            <div className="b-total-lbl">Lifetime Rewards</div>
+            <div className="b-surplus" style={{color:'var(--t1)'}}>{formatRewardAmount(card, card.cashbackLifetime)}</div>
+            {card.rewardType!=='cashback' && <div style={{fontSize:'.62rem',color:'var(--t3)',marginTop:2}}>≈ {currency(estimatedRewardValue(card, card.cashbackLifetime),2)}</div>}
+          </div>
         </div>
       </div>
       {trend.points.some(p=>p>0) && (
@@ -10154,10 +10237,20 @@ function CreditPaymentCenter({ acct, card, balance, transactions, accounts, onOp
 
   const dueDate = nextOccurrenceOfDay(card.dueDay);
   const minPay  = minPaymentFor(card, balance);
-  const suggested   = useCustom ? (parseFloat(customAmt)||0) : suggestedEarlyPayment(balance, card.creditLimit, pct);
+  const hasBalance = balance > 0;
+  // Never suggest paying more than what's actually owed, and never a
+  // negative amount — a custom-typed figure larger than the balance (or a
+  // target percentage the balance already meets) both clamp down to what's
+  // real rather than being taken at face value.
+  const rawSuggested = useCustom ? (parseFloat(customAmt)||0) : suggestedEarlyPayment(balance, card.creditLimit, pct);
+  const suggested     = hasBalance ? round2(Math.min(Math.max(rawSuggested, 0), balance)) : 0;
   const afterBalance = Math.max(round2(balance - suggested), 0);
   const beforeUtil = creditUtilization(balance, card.creditLimit);
   const afterUtil  = creditUtilization(afterBalance, card.creditLimit);
+  // Only meaningful for the percentage chips — a custom dollar amount isn't
+  // "targeting" a utilization percentage, so it never claims to already be
+  // below one.
+  const alreadyBelowTarget = hasBalance && !useCustom && beforeUtil <= pct;
   const history    = paymentHistoryForCard(transactions, acct);
   const paySource  = defaultPaymentSourceAccount(accounts, acct);
 
@@ -10186,33 +10279,53 @@ function CreditPaymentCenter({ acct, card, balance, transactions, accounts, onOp
 
       <div className="early-pay-box">
         <div className="card-label" style={{marginBottom:8}}>Early Payment Assistant</div>
-        <div style={{fontSize:'.76rem',color:'var(--t3)',lineHeight:1.5}}>
-          Utilization mostly matters right before you apply for new credit — pick a target and we’ll calculate the payment.
-        </div>
-        <div className="early-pay-chips">
-          {[5,10,20,30].map(p => (
-            <button key={p} type="button" className={'ep-chip'+(!useCustom && pct===p?' on':'')} onClick={()=>{ setUseCustom(false); setPct(p); }}>{p}%</button>
-          ))}
-          <button type="button" className={'ep-chip'+(useCustom?' on':'')} onClick={()=>setUseCustom(true)}>Custom</button>
-        </div>
-        {useCustom && (
-          <div className="fg" style={{maxWidth:180,marginBottom:10}}>
-            <input type="number" min="0" step="1" placeholder="0.00" value={customAmt} onChange={e=>setCustomAmt(e.target.value)}/>
+        {!hasBalance ? (
+          // Nothing to calculate against a $0 balance — showing the target
+          // selector, before/after preview, and a $0 CTA here would just be
+          // the same controls rendered pointlessly, so a clean empty state
+          // replaces them entirely rather than disabling them piecemeal.
+          <div style={{textAlign:'center',padding:'20px 10px'}}>
+            <div style={{fontSize:'.86rem',fontWeight:700,color:'var(--t1)',marginBottom:4}}>No early payment needed</div>
+            <div style={{fontSize:'.78rem',color:'var(--t3)',lineHeight:1.5}}>
+              Your current balance is already {currency(0,2)}.<br/>
+              You can use the calculator once new purchases post.
+            </div>
           </div>
+        ) : (
+          <>
+            <div style={{fontSize:'.76rem',color:'var(--t3)',lineHeight:1.5}}>
+              Pick a target utilization and we’ll calculate the payment needed to reach it.
+            </div>
+            <div className="early-pay-chips">
+              {[5,10,20,30].map(p => (
+                <button key={p} type="button" className={'ep-chip'+(!useCustom && pct===p?' on':'')} onClick={()=>{ setUseCustom(false); setPct(p); }}>{p}%</button>
+              ))}
+              <button type="button" className={'ep-chip'+(useCustom?' on':'')} onClick={()=>setUseCustom(true)}>Custom</button>
+            </div>
+            {useCustom && (
+              <div className="fg" style={{maxWidth:180,marginBottom:10}}>
+                <input type="number" min="0" step="1" placeholder="0.00" value={customAmt} onChange={e=>setCustomAmt(e.target.value)}/>
+              </div>
+            )}
+            <div className="early-pay-preview">
+              <div className="ep-before">
+                <div className="ep-preview-val" style={{color:utilizationColor(beforeUtil)}}>{beforeUtil.toFixed(0)}%</div>
+                <div className="ep-preview-lbl">Before</div>
+              </div>
+              <span className="ep-arrow"><Icon name="chevronRight" size={18} color="var(--t3)"/></span>
+              <div className="ep-after">
+                <div className="ep-preview-val" style={{color:utilizationColor(afterUtil)}}>{afterUtil.toFixed(0)}%</div>
+                <div className="ep-preview-lbl">After</div>
+              </div>
+            </div>
+            {alreadyBelowTarget ? (
+              <div style={{fontSize:'.78rem',color:'var(--t2)',marginBottom:10}}>You’re already below this target.</div>
+            ) : (
+              <div style={{fontSize:'.78rem',color:'var(--t2)',marginBottom:10}}>Suggested payment: <b style={{color:'var(--t1)'}}>{currency(suggested,2)}</b></div>
+            )}
+            <button className="btn btn-primary btn-full" disabled={!paySource || !(suggested>0)} onClick={()=>pay(suggested)}>Make Early Payment</button>
+          </>
         )}
-        <div className="early-pay-preview">
-          <div className="ep-before">
-            <div className="ep-preview-val" style={{color:utilizationColor(beforeUtil)}}>{beforeUtil.toFixed(0)}%</div>
-            <div className="ep-preview-lbl">Before</div>
-          </div>
-          <span className="ep-arrow"><Icon name="chevronRight" size={18} color="var(--t3)"/></span>
-          <div className="ep-after">
-            <div className="ep-preview-val" style={{color:utilizationColor(afterUtil)}}>{afterUtil.toFixed(0)}%</div>
-            <div className="ep-preview-lbl">After</div>
-          </div>
-        </div>
-        <div style={{fontSize:'.78rem',color:'var(--t2)',marginBottom:10}}>Suggested payment: <b style={{color:'var(--t1)'}}>{currency(suggested,2)}</b></div>
-        <button className="btn btn-primary btn-full" disabled={!paySource || !(suggested>0)} onClick={()=>pay(suggested)}>Make Early Payment</button>
       </div>
 
       {history.length > 0 && (
@@ -10291,7 +10404,7 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
           <div className="acct-hero-sub">{accountTypeInfo(acct.type).label}{acct.institution?` · ${acct.institution}`:''}</div>
         </div>
         <div style={{textAlign:'right'}}>
-          <div className="mega" style={{fontSize:'2rem',color:liability&&balance>0?'var(--red)':'var(--t1)'}}>{liability?'−':''}<CountUp value={balance} format={v=>currency(v,2)}/></div>
+          <div className="mega" style={{fontSize:'2rem',color:liability&&balance>0?'var(--red)':'var(--t1)'}}>{liability&&balance>0?'−':''}<CountUp value={balance} format={v=>currency(v,2)}/></div>
         </div>
       </div>
 
@@ -10377,8 +10490,9 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
           <div style={{display:'flex',gap:24,flexWrap:'wrap',alignItems:'center'}}>
             <UtilizationRing pct={util}/>
             <div style={{flex:1,minWidth:220,fontSize:'.76rem',color:'var(--t3)',lineHeight:1.6}}>
-              Never shamed — utilization mostly matters right before you apply for new credit.
-              A card with $0 owed and this one look identical to a lender either way.
+              {util <= 0
+                ? '0% utilization — no balance is currently being used against your credit limit.'
+                : 'Credit utilization is generally based on the balance reported to the credit bureaus. Lower reported utilization can help your credit profile, especially before applying for new credit.'}
             </div>
           </div>
           <div className="cc-grid" style={{marginTop:16}}>
@@ -10388,8 +10502,12 @@ function AccountDetail({ acct, accounts, transactions, settings, goals, netWorth
             <div className="cc-item"><div className="cc-item-lbl">Credit Limit</div><div className="cc-item-val">{currency(safeNum(card.creditLimit),2)}</div></div>
             <div className="cc-item"><div className="cc-item-lbl">Available Credit</div><div className="cc-item-val">{currency(Math.max(safeNum(card.creditLimit)-balance,0),2)}</div></div>
             <div className="cc-item"><div className="cc-item-lbl">APR</div><div className="cc-item-val">{safeNum(card.apr).toFixed(2)}%</div></div>
-            <div className="cc-item"><div className="cc-item-lbl">Statement Closes</div><div className="cc-item-val">{fmtShortDate(nextOccurrenceOfDay(card.statementCloseDay))}</div></div>
-            <div className="cc-item"><div className="cc-item-lbl">Payment Due</div><div className="cc-item-val">{fmtShortDate(nextOccurrenceOfDay(card.dueDay))}</div></div>
+            <div className="cc-item"><div className="cc-item-lbl">Next Statement Closes</div><div className="cc-item-val">{fmtShortDate(nextOccurrenceOfDay(card.statementCloseDay))}</div></div>
+            {/* Deliberately labeled "Current," not "Next" — nextOccurrenceOfDay(dueDay)
+                from today lands on the due date for whatever statement already
+                closed, not the one "Next Statement Closes" above refers to. Same
+                distinction the Payments tab's timeline makes explicit. */}
+            <div className="cc-item"><div className="cc-item-lbl">Current Payment Due</div><div className="cc-item-val">{fmtShortDate(nextOccurrenceOfDay(card.dueDay))}</div></div>
             <div className="cc-item"><div className="cc-item-lbl">Minimum Payment</div><div className="cc-item-val">{currency(minPaymentFor(card,balance),2)}</div></div>
             <div className="cc-item"><div className="cc-item-lbl">Autopay</div><div className="cc-item-val" style={{color:card.autopay?'var(--accent)':'var(--t3)'}}>{card.autopay?'On':'Off'}</div></div>
             <div className="cc-item"><div className="cc-item-lbl">Lifetime Rewards</div><div className="cc-item-val" style={{color:'var(--accent)'}}>{formatRewardAmount(card, card.cashbackLifetime)}</div></div>
